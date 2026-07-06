@@ -16,7 +16,8 @@ import {
   updateProfile,
   verifyOtp,
 } from "@/lib/api/client";
-import type { Booking, Service, Slot, VehicleType } from "@/lib/api/types";
+import type { Booking, Service, Slot, VehicleType, WashTarget } from "@/lib/api/types";
+import { localized, useI18n } from "@/lib/i18n";
 
 const CURRENCY = "QR";
 
@@ -48,6 +49,13 @@ function priceFor(service: Service, vtype: VehicleType) {
 
 const STEPS = ["Services", "Location", "Schedule", "Payment", "Confirm"] as const;
 
+const TARGETS: { value: WashTarget; label: string; icon: string; categories: string[]; vtype: VehicleType | null }[] = [
+  { value: "car", label: "Car", icon: "🚗", categories: ["wash", "detailing"], vtype: null },
+  { value: "caravan", label: "Caravan", icon: "🚐", categories: ["caravan", "caravan_single"], vtype: "caravan" },
+  { value: "jet_ski", label: "Jet Ski", icon: "🌊", categories: ["jet_ski"], vtype: "jet_ski" },
+  { value: "jet_boat", label: "Jet Boat", icon: "🚤", categories: ["jet_boat"], vtype: "jet_boat" },
+];
+
 function fmt(amount: number) {
   return `${CURRENCY} ${amount}`;
 }
@@ -68,7 +76,9 @@ function next7Days(): { date: string; label: string; weekday: string }[] {
 }
 
 export function BookingWizard() {
+  const { t } = useI18n();
   const [step, setStep] = useState(0);
+  const [target, setTarget] = useState<WashTarget>("car");
   const [services, setServices] = useState<Service[]>([]);
   const [loadError, setLoadError] = useState(false);
 
@@ -151,6 +161,12 @@ export function BookingWizard() {
 
   function updateCar(key: number, patch: Partial<CarDraft>) {
     setCars((prev) => prev.map((c) => (c.key === key ? { ...c, ...patch } : c)));
+  }
+
+  function switchTarget(next: WashTarget) {
+    setTarget(next);
+    const meta = TARGETS.find((x) => x.value === next)!;
+    setCars([{ ...emptyCar(1), vtype: meta.vtype ?? "sedan" }]);
   }
 
   function requestLocation() {
@@ -247,13 +263,13 @@ export function BookingWizard() {
       setConfirmed(booking);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
-        setError("That slot was just taken. Please pick another time.");
+        setError(t("That slot was just taken. Please pick another time."));
         setStep(2);
         loadSlots(date);
       } else if (e instanceof ApiError && e.status === 422 && !authed) {
         setError(e.message);
       } else {
-        setError(e instanceof ApiError ? e.message : "Something went wrong. Please try again.");
+        setError(e instanceof ApiError ? e.message : t("Something went wrong. Please try again."));
       }
     } finally {
       setSubmitting(false);
@@ -263,8 +279,8 @@ export function BookingWizard() {
   if (loadError) {
     return (
       <div className="glass-panel mx-auto max-w-lg rounded-[var(--radius-card)] p-10 text-center">
-        <h2 className="text-xl font-bold">We couldn&apos;t load our services</h2>
-        <p className="mt-3 text-[color:var(--muted-foreground)]">Please refresh the page or try again shortly.</p>
+        <h2 className="text-xl font-bold">{t("We couldn't load our services")}</h2>
+        <p className="mt-3 text-[color:var(--muted-foreground)]">{t("Please refresh the page or try again shortly.")}</p>
       </div>
     );
   }
@@ -295,7 +311,7 @@ export function BookingWizard() {
                 i === step ? "text-[color:var(--navy)]" : "text-[color:var(--muted-foreground)]",
               )}
             >
-              {label}
+              {t(label)}
             </span>
             {i < STEPS.length - 1 && (
               <span className="mx-1 hidden h-px flex-1 bg-[color:var(--border)] sm:block" />
@@ -309,14 +325,24 @@ export function BookingWizard() {
           <StepServices
             services={services}
             cars={cars}
+            target={target}
+            onTarget={switchTarget}
             onUpdate={updateCar}
-            onAdd={() => setCars((prev) => [...prev, emptyCar(Math.max(...prev.map((c) => c.key)) + 1)])}
+            onAdd={() =>
+              setCars((prev) => [
+                ...prev,
+                {
+                  ...emptyCar(Math.max(...prev.map((c) => c.key)) + 1),
+                  vtype: TARGETS.find((x) => x.value === target)!.vtype ?? "sedan",
+                },
+              ])
+            }
             onRemove={(key) => setCars((prev) => prev.filter((c) => c.key !== key))}
           />
         )}
 
         {step === 1 && (
-          <StepPanel title="Where should we come?" subtitle="Our wash bus comes to you — home, office, anywhere.">
+          <StepPanel title={t("Where should we come?")} subtitle={t("Our wash bus comes to you — home, office, anywhere.")}>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -333,31 +359,31 @@ export function BookingWizard() {
                   />
                   <circle cx="12" cy="11" r="1.9" fill="currentColor" />
                 </svg>
-                {geoState === "locating" ? "Locating…" : "Use my exact location"}
+                {geoState === "locating" ? t("Locating…") : t("Use my exact location")}
               </button>
               {geo && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-                  ✓ Location pinned ({geo.lat.toFixed(4)}, {geo.lng.toFixed(4)})
+                  ✓ {t("Location pinned")} ({geo.lat.toFixed(4)}, {geo.lng.toFixed(4)})
                 </span>
               )}
               {geoState === "error" && (
                 <span className="text-xs font-medium text-red-600">
-                  Couldn&apos;t get your location — check browser permissions, or type the area below.
+                  {t("Couldn't get your location — check browser permissions, or type the area below.")}
                 </span>
               )}
             </div>
-            <Field label="Area / neighborhood" required>
+            <Field label={t("Area / neighborhood")} required>
               <input
                 className="wizard-input"
-                placeholder="e.g. West Bay, The Pearl…"
+                placeholder={t("e.g. West Bay, The Pearl…")}
                 value={area}
                 onChange={(e) => setArea(e.target.value)}
               />
             </Field>
-            <Field label="Building, street, parking details">
+            <Field label={t("Building, street, parking details")}>
               <textarea
                 className="wizard-input min-h-24 resize-y"
-                placeholder="Tower name, gate number, parking level…"
+                placeholder={t("Tower name, gate number, parking level…")}
                 value={details}
                 onChange={(e) => setDetails(e.target.value)}
               />
@@ -366,7 +392,7 @@ export function BookingWizard() {
         )}
 
         {step === 2 && (
-          <StepPanel title="Pick your time" subtitle="Choose a day and an available slot.">
+          <StepPanel title={t("Pick your time")} subtitle={t("Choose a day and an available slot.")}>
             <div className="flex gap-2 overflow-x-auto pb-2">
               {days.map((d) => (
                 <button
@@ -381,13 +407,13 @@ export function BookingWizard() {
                   )}
                 >
                   <span className="text-xs opacity-75">{d.weekday}</span>
-                  <span className="font-semibold">{d.label}</span>
+                  <span className="font-semibold">{t(d.label)}</span>
                 </button>
               ))}
             </div>
 
             {slots === null ? (
-              <p className="py-8 text-center text-sm text-[color:var(--muted-foreground)]">Checking availability…</p>
+              <p className="py-8 text-center text-sm text-[color:var(--muted-foreground)]">{t("Checking availability…")}</p>
             ) : (
               <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {slots.map((s) => (
@@ -414,25 +440,25 @@ export function BookingWizard() {
         )}
 
         {step === 3 && (
-          <StepPanel title="How would you like to pay?" subtitle="Pay securely online, or in person when we arrive.">
+          <StepPanel title={t("How would you like to pay?")} subtitle={t("Pay securely online, or in person when we arrive.")}>
             <div className="grid gap-3 sm:grid-cols-2">
               <PayOption
                 active={!payOnline}
                 onClick={() => setPayOnline(false)}
-                title="Pay on site"
-                description="Cash or card when the team arrives."
+                title={t("Pay on site")}
+                description={t("Cash or card when the team arrives.")}
               />
               <PayOption
                 active={payOnline}
                 onClick={() => setPayOnline(true)}
-                title="Pay online now"
-                description="Secure card payment at confirmation."
+                title={t("Pay online now")}
+                description={t("Secure card payment at confirmation.")}
               />
             </div>
-            <Field label="Notes for the team (optional)">
+            <Field label={t("Notes for the team (optional)")}>
               <textarea
                 className="wizard-input min-h-20 resize-y"
-                placeholder="Gate code, preferred parking spot…"
+                placeholder={t("Gate code, preferred parking spot…")}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
@@ -442,24 +468,24 @@ export function BookingWizard() {
 
         {step === 4 && (
           <StepPanel
-            title={authed ? "Review & confirm" : "Verify your phone"}
+            title={authed ? t("Review & confirm") : t("Verify your phone")}
             subtitle={
               authed
-                ? "Everything look right?"
-                : "We'll text you a 6-digit code to confirm your booking."
+                ? t("Everything look right?")
+                : t("We'll text you a 6-digit code to confirm your booking.")
             }
           >
             {!authed && (
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Your name" required>
+                <Field label={t("Your name")} required>
                   <input
                     className="wizard-input"
-                    placeholder="Full name"
+                    placeholder={t("Full name")}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
                 </Field>
-                <Field label="Phone number" required>
+                <Field label={t("Phone number")} required>
                   <div className="flex gap-2">
                     <input
                       className="wizard-input flex-1"
@@ -476,13 +502,13 @@ export function BookingWizard() {
                         disabled={phone.replace(/\D/g, "").length < 7 || !name.trim()}
                         onClick={sendOtp}
                       >
-                        Send code
+                        {t("Send code")}
                       </button>
                     )}
                   </div>
                 </Field>
                 {otpSent && (
-                  <Field label="Verification code" required>
+                  <Field label={t("Verification code")} required>
                     <input
                       className="wizard-input tracking-[0.4em]"
                       placeholder="••••••"
@@ -497,7 +523,7 @@ export function BookingWizard() {
                         className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[color:var(--blue)] hover:underline"
                         onClick={sendOtp}
                       >
-                        Resend code
+                        {t("Resend code")}
                       </button>
                       <button
                         type="button"
@@ -508,7 +534,7 @@ export function BookingWizard() {
                           setError(null);
                         }}
                       >
-                        Change phone number
+                        {t("Change phone number")}
                       </button>
                     </span>
                   </Field>
@@ -540,7 +566,7 @@ export function BookingWizard() {
           <div className="text-sm text-[color:var(--muted-foreground)]">
             {total > 0 && (
               <>
-                Total <span className="text-lg font-bold text-[color:var(--navy)]">{fmt(total)}</span>
+                {t("Total")} <span className="text-lg font-bold text-[color:var(--navy)]">{fmt(total)}</span>
               </>
             )}
           </div>
@@ -551,7 +577,7 @@ export function BookingWizard() {
                 className="secondary-button w-full sm:w-auto"
                 onClick={() => setStep(step - 1)}
               >
-                Back
+                {t("Back")}
               </button>
             )}
             {step < 4 ? (
@@ -561,7 +587,7 @@ export function BookingWizard() {
                 disabled={!canContinue}
                 onClick={() => setStep(step + 1)}
               >
-                Continue
+                {t("Continue")}
               </button>
             ) : (
               <button
@@ -570,7 +596,7 @@ export function BookingWizard() {
                 disabled={submitting || (!authed && (otp.length !== 6 || !name.trim()))}
                 onClick={submit}
               >
-                {submitting ? "Confirming…" : payOnline ? "Confirm & Pay" : "Confirm Booking"}
+                {submitting ? t("Confirming…") : payOnline ? t("Confirm & Pay") : t("Confirm Booking")}
               </button>
             )}
           </div>
@@ -625,18 +651,48 @@ function Field({
 function StepServices({
   services,
   cars,
+  target,
+  onTarget,
   onUpdate,
   onAdd,
   onRemove,
 }: {
   services: Service[];
   cars: CarDraft[];
+  target: WashTarget;
+  onTarget: (target: WashTarget) => void;
   onUpdate: (key: number, patch: Partial<CarDraft>) => void;
   onAdd: () => void;
   onRemove: (key: number) => void;
 }) {
+  const { lang, t } = useI18n();
+  const meta = TARGETS.find((x) => x.value === target)!;
+  const visibleServices = services.filter((s) => meta.categories.includes(s.category));
+  const isCar = target === "car";
+
   return (
-    <StepPanel title="What are we washing?" subtitle="Pick a service for each car — add as many cars as you like.">
+    <StepPanel
+      title={t("What are we washing?")}
+      subtitle={isCar ? t("Pick a service for each car — add as many cars as you like.") : t("Pick a service.")}
+    >
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {TARGETS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onTarget(option.value)}
+            className={clsx(
+              "flex flex-col items-center gap-1 rounded-2xl border px-3 py-3 text-sm font-semibold transition",
+              target === option.value
+                ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                : "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)]",
+            )}
+          >
+            <span className="text-xl">{option.icon}</span>
+            {t(option.label)}
+          </button>
+        ))}
+      </div>
       <div className="flex flex-col gap-6">
         {cars.map((car, index) => {
           const selected = services.find((s) => s.id === car.serviceId);
@@ -644,7 +700,7 @@ function StepServices({
             <div key={car.key} className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-sm font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">
-                  Car {index + 1}
+                  {t(TARGETS.find((x) => x.value === target)!.label)} {index + 1}
                 </h3>
                 {cars.length > 1 && (
                   <button
@@ -657,8 +713,8 @@ function StepServices({
                 )}
               </div>
 
-              <div className="mb-4">
-                <p className="mb-2 text-sm font-semibold">Vehicle type</p>
+              <div className={clsx("mb-4", !isCar && "hidden")}>
+                <p className="mb-2 text-sm font-semibold">{t("Vehicle type")}</p>
                 <div className="flex gap-2">
                   {(
                     [
@@ -677,14 +733,14 @@ function StepServices({
                           : "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)]",
                       )}
                     >
-                      {option.label}
+                      {t(option.label)}
                     </button>
                   ))}
                 </div>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3">
-                {services.map((service) => (
+                {visibleServices.map((service) => (
                   <button
                     key={service.id}
                     type="button"
@@ -696,14 +752,14 @@ function StepServices({
                         : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
                     )}
                   >
-                    <span className="font-bold">{service.name}</span>
+                    <span className="font-bold">{localized(lang, service.name, service.name_ar)}</span>
                     <span
                       className={clsx(
                         "mt-1 text-xs leading-5",
                         car.serviceId === service.id ? "text-white/75" : "text-[color:var(--muted-foreground)]",
                       )}
                     >
-                      {service.description}
+                      {localized(lang, service.description, service.description_ar)}
                     </span>
                     <span
                       className={clsx(
@@ -719,7 +775,7 @@ function StepServices({
 
               {selected && selected.add_ons.length > 0 && (
                 <div className="mt-4">
-                  <p className="mb-2 text-sm font-semibold">Add-ons</p>
+                  <p className="mb-2 text-sm font-semibold">{t("Add-ons")}</p>
                   <div className="flex flex-wrap gap-2">
                     {selected.add_ons.map((addOn) => {
                       const active = car.addOnIds.includes(addOn.id);
@@ -750,7 +806,7 @@ function StepServices({
               )}
 
               <div className="mt-4 grid gap-3 sm:grid-cols-4">
-                <Field label="Make" required>
+                <Field label={t("Make")} required>
                   <input
                     className="wizard-input"
                     placeholder="Toyota"
@@ -758,7 +814,7 @@ function StepServices({
                     onChange={(e) => onUpdate(car.key, { make: e.target.value })}
                   />
                 </Field>
-                <Field label="Model" required>
+                <Field label={t("Model")} required>
                   <input
                     className="wizard-input"
                     placeholder="Land Cruiser"
@@ -766,7 +822,7 @@ function StepServices({
                     onChange={(e) => onUpdate(car.key, { model: e.target.value })}
                   />
                 </Field>
-                <Field label="Color">
+                <Field label={t("Color")}>
                   <input
                     className="wizard-input"
                     placeholder="White"
@@ -774,7 +830,7 @@ function StepServices({
                     onChange={(e) => onUpdate(car.key, { color: e.target.value })}
                   />
                 </Field>
-                <Field label="Plate no." required>
+                <Field label={isCar ? t("Plate no.") : t("ID / Registration")} required>
                   <input
                     className="wizard-input"
                     placeholder="123456"
@@ -793,7 +849,7 @@ function StepServices({
         className="secondary-button self-start"
         onClick={onAdd}
       >
-        + Add another car
+        {t("+ Add another car")}
       </button>
     </StepPanel>
   );
@@ -848,7 +904,8 @@ function Summary({
   payOnline: boolean;
   total: number;
 }) {
-  const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString("en", {
+  const { lang, t } = useI18n();
+  const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(lang === "ar" ? "ar" : "en", {
     weekday: "long",
     month: "long",
     day: "numeric",
@@ -856,7 +913,7 @@ function Summary({
   return (
     <div className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5">
       <h3 className="text-sm font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">
-        Booking summary
+        {t("Booking summary")}
       </h3>
       <ul className="mt-3 flex flex-col gap-2 text-sm">
         {cars.map((car) => {
@@ -867,7 +924,7 @@ function Summary({
           return (
             <li key={car.key} className="flex items-start justify-between gap-4">
               <span>
-                <span className="font-semibold">{service.name}</span>
+                <span className="font-semibold">{localized(lang, service.name, service.name_ar)}</span>
                 {addOns.length > 0 && (
                   <span className="text-[color:var(--muted-foreground)]"> + {addOns.map((a) => a.name).join(", ")}</span>
                 )}
@@ -880,24 +937,24 @@ function Summary({
           );
         })}
         <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
-          <span className="text-[color:var(--muted-foreground)]">Location</span>
+          <span className="text-[color:var(--muted-foreground)]">{t("Location")}</span>
           <span className="max-w-[60%] text-right font-medium">
             {area}
             {details && <span className="block text-xs text-[color:var(--muted-foreground)]">{details}</span>}
           </span>
         </li>
         <li className="flex justify-between">
-          <span className="text-[color:var(--muted-foreground)]">When</span>
+          <span className="text-[color:var(--muted-foreground)]">{t("When")}</span>
           <span className="font-medium">
             {dateLabel} · {slot}
           </span>
         </li>
         <li className="flex justify-between">
-          <span className="text-[color:var(--muted-foreground)]">Payment</span>
-          <span className="font-medium">{payOnline ? "Online" : "Pay on site"}</span>
+          <span className="text-[color:var(--muted-foreground)]">{t("Payment")}</span>
+          <span className="font-medium">{payOnline ? t("Pay online now") : t("Pay on site")}</span>
         </li>
         <li className="flex justify-between border-t border-[color:var(--border)] pt-2 text-base font-bold">
-          <span>Total</span>
+          <span>{t("Total")}</span>
           <span>{fmt(total)}</span>
         </li>
       </ul>
@@ -906,7 +963,8 @@ function Summary({
 }
 
 function SuccessPanel({ booking }: { booking: Booking }) {
-  const when = new Date(booking.scheduled_at).toLocaleString("en", {
+  const { lang, t } = useI18n();
+  const when = new Date(booking.scheduled_at).toLocaleString(lang === "ar" ? "ar" : "en", {
     weekday: "long",
     month: "long",
     day: "numeric",
@@ -918,9 +976,9 @@ function SuccessPanel({ booking }: { booking: Booking }) {
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl">
         ✓
       </div>
-      <h2 className="mt-6 text-2xl font-bold">Booking confirmed!</h2>
+      <h2 className="mt-6 text-2xl font-bold">{t("Booking confirmed!")}</h2>
       <p className="mt-2 text-[color:var(--muted-foreground)]">
-        Reference <span className="font-bold text-[color:var(--navy)]">{booking.reference}</span>
+        {t("Reference")} <span className="font-bold text-[color:var(--navy)]">{booking.reference}</span>
       </p>
       <p className="mt-4 text-sm leading-7 text-[color:var(--muted-foreground)]">
         {when}
@@ -933,10 +991,10 @@ function SuccessPanel({ booking }: { booking: Booking }) {
       </p>
       <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
         <Link href="/account" className="primary-button">
-          View my bookings
+          {t("View my bookings")}
         </Link>
         <Link href="/" className="secondary-button">
-          Back to home
+          {t("Back to home")}
         </Link>
       </div>
     </div>

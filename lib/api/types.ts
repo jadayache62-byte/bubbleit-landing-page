@@ -24,12 +24,21 @@ export type AddOn = {
   price: number;
 };
 
-export type VehicleType = "sedan" | "suv";
+export type VehicleType =
+  | "sedan"
+  | "suv"
+  | "caravan"
+  | "jet_ski"
+  | "jet_boat";
+
+export type WashTarget = "car" | "caravan" | "jet_ski" | "jet_boat";
 
 export type Service = {
   id: number;
   name: string;
+  name_ar: string;
   description: string;
+  description_ar: string;
   price: number; // salon price
   price_suv: number;
   category: string;
@@ -73,7 +82,31 @@ export type Address = {
   longitude: number | null;
 };
 
-export type PaymentMethod = "pay_on_site" | "online";
+export type PaymentMethod = "pay_on_site" | "online" | "membership";
+
+export type MembershipPlan = {
+  id: number;
+  name: string;
+  name_ar: string;
+  scope: "full_wash" | "exterior" | "midnight_exterior";
+  vehicle_type: "sedan" | "suv" | null;
+  washes_count: number;
+  price: number;
+  validity_days: number;
+  window_start: string | null;
+  window_end: string | null;
+};
+
+export type CustomerMembership = {
+  id: number;
+  status: "pending_payment" | "active" | "exhausted" | "expired" | "cancelled";
+  washes_used: number;
+  washes_remaining: number;
+  price_paid: number;
+  activated_at: string | null;
+  expires_at: string | null;
+  plan: MembershipPlan;
+};
 
 export type BookingStatus =
   | "pending_payment"
@@ -115,11 +148,13 @@ export type VerifyOtpResult = {
 
 export type CreateBookingPayload = {
   scheduled_at: string;
-  cars: { vehicle_id: number; service_id: number; add_on_ids: number[] }[];
+  cars?: { vehicle_id: number; service_id: number; add_on_ids: number[] }[];
+  membership_id?: number;
+  vehicle_id?: number;
   address_id?: number;
   address_area?: string;
   latitude?: number;
   longitude?: number;
-  payment_method: PaymentMethod;
+  payment_method?: PaymentMethod;
   notes?: string;
 };

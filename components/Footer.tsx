@@ -1,6 +1,10 @@
+"use client";
+
 import Image from "next/image";
+import { useI18n } from "@/lib/i18n";
 
 export function Footer() {
+  const { t } = useI18n();
   return (
     <footer className="bg-[color:var(--navy)] pb-8 pt-14 text-white">
       <div className="section-shell">
@@ -14,35 +18,34 @@ export function Footer() {
               className="h-11 w-auto"
             />
             <p className="mt-5 max-w-md text-base leading-7 text-white/74">
-              Bubbleit makes mobile car wash booking simple, fast, and
-              convenient.
+              {t("Bubbleit makes mobile car wash booking simple, fast, and convenient.")}
             </p>
           </div>
 
           <div className="grid gap-8 sm:grid-cols-3">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white/72">
-                Book
+                {t("Book")}
               </h2>
               <div className="mt-4 flex flex-col gap-3 text-base">
                 <a
                   href="/book"
                   className="text-white/82 transition hover:text-[color:var(--cyan)]"
                 >
-                  Book a Wash
+                  {t("Book a Wash")}
                 </a>
                 <a
                   href="/account"
                   className="text-white/82 transition hover:text-[color:var(--cyan)]"
                 >
-                  My Bookings
+                  {t("My Bookings")}
                 </a>
               </div>
             </div>
 
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white/72">
-                Contact
+                {t("Contact")}
               </h2>
               <p className="mt-4 text-base text-white">+974 7788 6668</p>
               <a
@@ -51,7 +54,7 @@ export function Footer() {
                 rel="noopener noreferrer"
                 className="mt-3 inline-flex text-base font-medium text-[color:var(--cyan)] transition hover:text-white"
               >
-                WhatsApp
+                {t("WhatsApp")}
               </a>
               <div className="mt-3 flex flex-col gap-2 text-base">
                 <a
@@ -75,20 +78,20 @@ export function Footer() {
 
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-white/72">
-                Legal
+                {t("Legal")}
               </h2>
               <div className="mt-4 flex flex-col gap-3 text-base">
                 <a
                   href="#"
                   className="text-white/82 transition hover:text-[color:var(--cyan)]"
                 >
-                  Privacy Policy
+                  {t("Privacy Policy")}
                 </a>
                 <a
                   href="#"
                   className="text-white/82 transition hover:text-[color:var(--cyan)]"
                 >
-                  Terms &amp; Conditions
+                  {t("Terms & Conditions")}
                 </a>
               </div>
             </div>
@@ -96,7 +99,7 @@ export function Footer() {
         </div>
 
         <p className="pt-6 text-sm text-white/58">
-          © 2026 Bubbleit. All rights reserved.
+          © 2026 Bubbleit. {t("All rights reserved.")}
         </p>
       </div>
     </footer>

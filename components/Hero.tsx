@@ -1,4 +1,7 @@
+"use client";
+
 import { AppButton } from "@/components/ui";
+import { useI18n } from "@/lib/i18n";
 
 const phoneActions = [
   { label: "Service", icon: "sparkles" },
@@ -49,6 +52,7 @@ function PhoneActionIcon({ icon }: { icon: (typeof phoneActions)[number]["icon"]
 }
 
 export function Hero() {
+  const { t } = useI18n();
   return (
     <section className="relative isolate overflow-hidden bg-linear-to-br from-[#f6fbff] via-white to-[#e7f4ff]">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[34rem] bg-linear-to-b from-white/80 via-white/35 to-transparent" />
@@ -58,26 +62,24 @@ export function Hero() {
       <div className="relative mx-auto flex min-h-[calc(100dvh-4.5rem)] w-full max-w-[1400px] items-center px-6 py-16 md:px-16 md:py-20 xl:px-[120px]">
         <div className="grid w-full items-center gap-14 lg:grid-cols-[45%_55%] lg:gap-8">
           <div className="mx-auto flex w-full max-w-[34rem] flex-col items-center text-center lg:mx-0 lg:max-w-[36rem] lg:items-start lg:text-left">
-            <span className="section-kicker">Book. Confirm. Bubbleit arrives.</span>
+            <span className="section-kicker">{t("Book. Confirm. Bubbleit arrives.")}</span>
             <h1
               className="mt-6 max-w-[10ch] font-bold tracking-[-0.06em] text-[color:var(--foreground)]"
               style={{ fontSize: "clamp(3rem, 6vw, 4.5rem)", lineHeight: 0.95 }}
             >
-              Mobile Car Wash,
-              <span className="block text-[color:var(--blue)]">Booked in Minutes</span>
+              {t("Mobile Car Wash,")}
+              <span className="block text-[color:var(--blue)]">{t("Booked in Minutes")}</span>
             </h1>
             <p className="mt-6 max-w-[34.375rem] text-base leading-8 text-[color:var(--muted-foreground)] sm:text-lg">
-              Bubbleit lets you book a professional car wash from your phone.
-              Choose your service, pick your time, confirm your location, and
-              we&apos;ll come to you.
+              {t("Bubbleit lets you book a professional car wash from your phone. Choose your service, pick your time, confirm your location, and we'll come to you.")}
             </p>
 
             <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
               <AppButton href="/book" className="sm:min-w-[10.5rem]">
-                Book a Wash
+                {t("Book a Wash")}
               </AppButton>
               <AppButton href="/#how-it-works" variant="secondary" className="sm:min-w-[10.5rem]">
-                How it Works
+                {t("How it Works")}
               </AppButton>
             </div>
           </div>

@@ -5,6 +5,8 @@ import clsx from "clsx";
 import Link from "next/link";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
+import { OtpSignIn } from "@/components/booking/OtpSignIn";
+import { useI18n } from "@/lib/i18n";
 import {
   ApiError,
   cancelBooking,
@@ -13,8 +15,6 @@ import {
   logout,
   me,
   payBooking,
-  requestOtp,
-  verifyOtp,
 } from "@/lib/api/client";
 import type { Booking, BookingStatus, Customer } from "@/lib/api/types";
 
@@ -32,6 +32,7 @@ const STATUS_STYLES: Record<BookingStatus, string> = {
 const CANCELLABLE: BookingStatus[] = ["pending_payment", "paid", "assigned"];
 
 export default function AccountPage() {
+  const { t } = useI18n();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [checked, setChecked] = useState(false);
   const [bookings, setBookings] = useState<Booking[] | null>(null);
@@ -53,7 +54,7 @@ export default function AccountPage() {
   }, [refresh]);
 
   async function handleCancel(id: number) {
-    if (!window.confirm("Cancel this booking?")) return;
+    if (!window.confirm(t("Cancel this booking?"))) return;
     setError(null);
     try {
       await cancelBooking(id);
@@ -83,28 +84,33 @@ export default function AccountPage() {
       <Navbar />
       <main className="section-shell min-h-[60dvh] py-10 sm:py-14">
         {!checked ? null : !customer ? (
-          <LoginPanel
-            onAuthed={(c) => {
-              setCustomer(c);
-              refresh();
-            }}
-          />
+          <div className="mx-auto max-w-md">
+            <OtpSignIn
+              onAuthed={(c) => {
+                setCustomer(c);
+                refresh();
+              }}
+            />
+          </div>
         ) : (
           <>
             <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
               <div>
-                <span className="section-kicker">My Account</span>
+                <span className="section-kicker">{t("My Account")}</span>
                 <h1 className="section-title mt-4">
-                  {customer.name ? `Hi, ${customer.name.split(" ")[0]}` : "My bookings"}
+                  {customer.name ? `${t("Hi,")} ${customer.name.split(" ")[0]}` : t("My Bookings")}
                 </h1>
                 <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">{customer.phone}</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Link href="/book" className="primary-button">
-                  Book a wash
+                  {t("Book a Wash")}
+                </Link>
+                <Link href="/memberships" className="secondary-button">
+                  {t("My Memberships")}
                 </Link>
                 <button type="button" className="secondary-button" onClick={handleLogout}>
-                  Log out
+                  {t("Log out")}
                 </button>
               </div>
             </div>
@@ -116,15 +122,15 @@ export default function AccountPage() {
             )}
 
             {bookings === null ? (
-              <p className="py-16 text-center text-sm text-[color:var(--muted-foreground)]">Loading your bookings…</p>
+              <p className="py-16 text-center text-sm text-[color:var(--muted-foreground)]">{t("Loading your bookings…")}</p>
             ) : bookings.length === 0 ? (
               <div className="glass-panel rounded-[var(--radius-card)] p-12 text-center">
-                <h2 className="text-xl font-bold">No bookings yet</h2>
+                <h2 className="text-xl font-bold">{t("No bookings yet")}</h2>
                 <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-                  Your first sparkling-clean car is a few taps away.
+                  {t("Your first sparkling-clean car is a few taps away.")}
                 </p>
                 <Link href="/book" className="primary-button mt-6">
-                  Book your first wash
+                  {t("Book your first wash")}
                 </Link>
               </div>
             ) : (
@@ -156,6 +162,7 @@ function BookingCard({
   onCancel: () => void;
   onPay: () => void;
 }) {
+  const { t } = useI18n();
   const when = new Date(booking.scheduled_at).toLocaleString("en", {
     weekday: "short",
     month: "short",
@@ -196,7 +203,7 @@ function BookingCard({
         <div className="flex gap-2">
           {awaitingOnlinePayment && (
             <button type="button" className="primary-button min-h-9 px-4 py-2 text-xs" onClick={onPay}>
-              Pay now
+              {t("Pay now")}
             </button>
           )}
           {CANCELLABLE.includes(booking.status) && (
@@ -205,122 +212,11 @@ function BookingCard({
               className="secondary-button min-h-9 px-4 py-2 text-xs text-red-600 hover:border-red-400 hover:text-red-600"
               onClick={onCancel}
             >
-              Cancel
+              {t("Cancel")}
             </button>
           )}
         </div>
       </div>
     </article>
-  );
-}
-
-function LoginPanel({ onAuthed }: { onAuthed: (customer: Customer) => void }) {
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
-  const [sent, setSent] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function send() {
-    setBusy(true);
-    setError(null);
-    try {
-      await requestOtp(phone.trim());
-      setSent(true);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not send the code.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verify() {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await verifyOtp(phone.trim(), otp.trim());
-      onAuthed(result.customer);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Verification failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="glass-panel mx-auto max-w-md rounded-[var(--radius-card)] p-8 sm:p-10">
-      <span className="section-kicker">My Account</span>
-      <h1 className="mt-4 text-2xl font-bold">Sign in with your phone</h1>
-      <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-        We&apos;ll text you a 6-digit code — no passwords needed.
-      </p>
-
-      <div className="mt-6 flex flex-col gap-4">
-        <input
-          className="wizard-input"
-          placeholder="+974 5555 5555"
-          inputMode="tel"
-          value={phone}
-          disabled={sent}
-          onChange={(e) => setPhone(e.target.value.replace(/[^\d+\s]/g, ""))}
-        />
-        {sent && (
-          <>
-            <input
-              className="wizard-input tracking-[0.4em]"
-              placeholder="••••••"
-              inputMode="numeric"
-              maxLength={6}
-              value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-            />
-            <span className="flex items-center gap-4">
-              <button
-                type="button"
-                className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[color:var(--blue)] hover:underline"
-                onClick={send}
-              >
-                Resend code
-              </button>
-              <button
-                type="button"
-                className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[color:var(--muted-foreground)] hover:text-[color:var(--navy)] hover:underline"
-                onClick={() => {
-                  setSent(false);
-                  setOtp("");
-                  setError(null);
-                }}
-              >
-                Change phone number
-              </button>
-            </span>
-          </>
-        )}
-        {error && (
-          <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {error}
-          </p>
-        )}
-        {!sent ? (
-          <button
-            type="button"
-            className="primary-button disabled:opacity-40"
-            disabled={busy || phone.replace(/\D/g, "").length < 7}
-            onClick={send}
-          >
-            {busy ? "Sending…" : "Send code"}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="primary-button disabled:opacity-40"
-            disabled={busy || otp.length !== 6}
-            onClick={verify}
-          >
-            {busy ? "Verifying…" : "Sign in"}
-          </button>
-        )}
-      </div>
-    </div>
   );
 }

@@ -6,7 +6,9 @@ import type {
   Booking,
   CreateBookingPayload,
   Customer,
+  CustomerMembership,
   Envelope,
+  MembershipPlan,
   Paginated,
   Service,
   Vehicle,
@@ -80,8 +82,12 @@ export function getServices() {
   return request<Paginated<Service>>("/services", { auth: false }).then((r) => r.data);
 }
 
-export function getAvailability(date: string) {
-  return request<Availability>(`/availability?date=${date}`, { auth: false });
+export function getAvailability(date: string, window: "standard" | "midnight" = "standard") {
+  return request<Availability>(`/availability?date=${date}&window=${window}`, { auth: false });
+}
+
+export function getMembershipPlans() {
+  return request<Paginated<MembershipPlan>>("/membership-plans", { auth: false }).then((r) => r.data);
 }
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -132,6 +138,19 @@ export function createVehicle(payload: Omit<Vehicle, "id">) {
 
 export function createAddress(payload: Omit<Address, "id"> | Omit<Address, "id" | "latitude" | "longitude">) {
   return request<Address>("/addresses", { method: "POST", body: payload });
+}
+
+// ── Memberships ──────────────────────────────────────────────────────────────
+
+export function listMemberships() {
+  return request<Paginated<CustomerMembership>>("/memberships").then((r) => r.data);
+}
+
+export function buyMembership(planId: number) {
+  return request<CustomerMembership>("/memberships", {
+    method: "POST",
+    body: { plan_id: planId },
+  });
 }
 
 // ── Bookings ─────────────────────────────────────────────────────────────────

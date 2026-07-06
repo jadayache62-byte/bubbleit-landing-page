@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { DM_Sans, Space_Grotesk } from "next/font/google";
+import { DM_Sans, IBM_Plex_Sans_Arabic, Space_Grotesk } from "next/font/google";
+import { LanguageProvider } from "@/lib/i18n";
 import "./globals.css";
 
 const headingFont = Space_Grotesk({
@@ -10,6 +11,12 @@ const headingFont = Space_Grotesk({
 const bodyFont = DM_Sans({
   subsets: ["latin"],
   variable: "--font-body",
+});
+
+const arabicFont = IBM_Plex_Sans_Arabic({
+  subsets: ["arabic"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-arabic",
 });
 
 export const metadata: Metadata = {
@@ -44,8 +51,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${headingFont.variable} ${bodyFont.variable}`}>
-      <body>{children}</body>
+    <html
+      lang="en"
+      className={`${headingFont.variable} ${bodyFont.variable} ${arabicFont.variable}`}
+    >
+      <body>
+        <LanguageProvider>{children}</LanguageProvider>
+      </body>
     </html>
   );
 }

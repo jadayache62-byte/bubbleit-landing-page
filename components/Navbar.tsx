@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { AppButton } from "@/components/ui";
+import { useI18n } from "@/lib/i18n";
 
 // Absolute paths so the links work from /book and /account too.
 const navItems = [
@@ -16,6 +17,7 @@ const navItems = [
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
+  const { lang, t, setLang } = useI18n();
 
   useEffect(() => {
     const closeMenu = () => setIsOpen(false);
@@ -49,20 +51,33 @@ export function Navbar() {
                 href={item.href}
                 className="text-sm font-medium text-[color:var(--muted-foreground)] transition hover:text-[color:var(--navy)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)]"
               >
-                {item.label}
+                {t(item.label)}
               </a>
             ))}
           </nav>
 
           <div className="hidden items-center gap-3 lg:flex">
             <a
+              href="/memberships"
+              className="text-sm font-medium text-[color:var(--muted-foreground)] transition hover:text-[color:var(--navy)]"
+            >
+              {t("Memberships")}
+            </a>
+            <a
               href="/account"
               className="text-sm font-medium text-[color:var(--muted-foreground)] transition hover:text-[color:var(--navy)]"
             >
-              My Bookings
+              {t("My Bookings")}
             </a>
+            <button
+              type="button"
+              onClick={() => setLang(lang === "en" ? "ar" : "en")}
+              className="rounded-full border border-[color:var(--border)] px-3 py-1.5 text-sm font-semibold text-[color:var(--navy)] transition hover:border-[color:var(--blue)] hover:text-[color:var(--blue)]"
+            >
+              {lang === "en" ? "عربي" : "EN"}
+            </button>
             <AppButton href="/book" className="px-5">
-              Book Now
+              {t("Book Now")}
             </AppButton>
           </div>
 
@@ -117,18 +132,32 @@ export function Navbar() {
                   className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] transition hover:bg-[color:var(--background)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)]"
                   onClick={() => setIsOpen(false)}
                 >
-                  {item.label}
+                  {t(item.label)}
                 </a>
               ))}
+              <a
+                href="/memberships"
+                className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] transition hover:bg-[color:var(--background)]"
+                onClick={() => setIsOpen(false)}
+              >
+                {t("Memberships")}
+              </a>
               <a
                 href="/account"
                 className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] transition hover:bg-[color:var(--background)]"
                 onClick={() => setIsOpen(false)}
               >
-                My Bookings
+                {t("My Bookings")}
               </a>
+              <button
+                type="button"
+                onClick={() => setLang(lang === "en" ? "ar" : "en")}
+                className="rounded-2xl px-4 py-3 text-start text-sm font-semibold text-[color:var(--navy)] transition hover:bg-[color:var(--background)]"
+              >
+                {lang === "en" ? "عربي" : "English"}
+              </button>
               <AppButton href="/book" className="mt-2 w-full" variant="primary">
-                Book Now
+                {t("Book Now")}
               </AppButton>
             </nav>
           </div>

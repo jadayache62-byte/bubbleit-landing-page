@@ -1,4 +1,7 @@
+"use client";
+
 import { SectionHeader } from "@/components/ui";
+import { useI18n } from "@/lib/i18n";
 
 const services = [
   {
@@ -47,13 +50,14 @@ const services = [
 ];
 
 export function Services() {
+  const { t } = useI18n();
   return (
     <section id="services" className="section-spacing">
       <div className="section-shell">
         <SectionHeader
-          eyebrow="Services"
-          title="Car Wash Services at Your Doorstep"
-          description="Choose the service you need and book directly from the app."
+          eyebrow={t("Services")}
+          title={t("Car Wash Services at Your Doorstep")}
+          description={t("Choose the service you need and book directly from the app.")}
           titleId="services-title"
         />
 
@@ -75,7 +79,7 @@ export function Services() {
               <div className="mt-5 flex items-center gap-4 border-t border-[color:var(--border)] pt-4 text-sm">
                 <span>
                   <span className="block text-xs font-medium text-[color:var(--muted-foreground)]">
-                    Salon
+                    {t("Salon")}
                   </span>
                   <span className="font-bold text-[color:var(--blue)]">
                     {service.salon} QR
@@ -83,7 +87,7 @@ export function Services() {
                 </span>
                 <span>
                   <span className="block text-xs font-medium text-[color:var(--muted-foreground)]">
-                    SUV
+                    {t("SUV")}
                   </span>
                   <span className="font-bold text-[color:var(--blue)]">
                     {service.suv} QR
@@ -93,7 +97,7 @@ export function Services() {
                   href="/book"
                   className="ml-auto text-sm font-semibold text-[color:var(--navy)] transition hover:text-[color:var(--blue)]"
                 >
-                  Book →
+                  {t("Book →")}
                 </a>
               </div>
             </article>

@@ -3,8 +3,10 @@
 // the frontend swaps to the real Laravel backend via NEXT_PUBLIC_API_BASE only.
 
 import { NextRequest, NextResponse } from "next/server";
-import type { Booking, BookingStatus, PaymentMethod } from "@/lib/api/types";
+import type { Booking, BookingStatus, PaymentMethod, Vehicle } from "@/lib/api/types";
 import {
+  MEMBERSHIP_PLANS,
+  MIDNIGHT_SLOT_GRID,
   MOCK_OTP,
   SERVICES,
   SLOT_GRID,
@@ -72,6 +74,9 @@ async function handle(req: NextRequest, segments: string[]) {
   if (method === "GET" && path === "services") {
     return envelope(paginated(SERVICES));
   }
+  if (method === "GET" && path === "membership-plans") {
+    return envelope(paginated(MEMBERSHIP_PLANS));
+  }
   if (method === "GET" && path === "service-categories") {
     return envelope(paginated([...new Set(SERVICES.map((s) => s.category))].map((name, i) => ({ id: i + 1, name }))));
   }
@@ -84,7 +89,8 @@ async function handle(req: NextRequest, segments: string[]) {
     }
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
-    const slots = SLOT_GRID.map((start) => {
+    const grid = req.nextUrl.searchParams.get("window") === "midnight" ? MIDNIGHT_SLOT_GRID : SLOT_GRID;
+    const slots = grid.map((start) => {
       const end = `${String(Number(start.slice(0, 2)) + 1).padStart(2, "0")}:00`;
       const isPast = date < todayStr || (date === todayStr && start <= now.toTimeString().slice(0, 5));
       const full = slotTakenCount(`${date}T${start}:00`) >= FLEET_CAPACITY;
@@ -173,7 +179,7 @@ async function handle(req: NextRequest, segments: string[]) {
       year: body.year ? Number(body.year) : null,
       color: String(body.color ?? "").trim(),
       plate_number: plate,
-      type: (body.type === "suv" ? "suv" : "sedan") as "suv" | "sedan",
+      type: (["suv", "sedan", "caravan", "jet_ski", "jet_boat"].includes(body.type) ? body.type : "sedan") as Vehicle["type"],
     };
     customer.vehicles.push(vehicle);
     return envelope(vehicle, { status: 201, message: "Vehicle added." });
@@ -200,6 +206,38 @@ async function handle(req: NextRequest, segments: string[]) {
     return envelope(address, { status: 201, message: "Address added." });
   }
 
+  // ── Memberships ──
+  if (method === "GET" && path === "memberships") {
+    const mine = store.memberships
+      .filter((m) => m.customer_id === customer.id)
+      .map(({ customer_id: _c, ...pub }) => pub);
+    return envelope(paginated(mine));
+  }
+  if (method === "POST" && path === "memberships") {
+    const chosenPlan = MEMBERSHIP_PLANS.find((pl) => pl.id === Number(body.plan_id));
+    if (!chosenPlan) return fail(422, "Validation failed.", { plan_id: ["Invalid plan."] });
+    const membership = {
+      id: store.nextId++,
+      customer_id: customer.id,
+      status: "pending_payment" as const,
+      washes_used: 0,
+      washes_remaining: chosenPlan.washes_count,
+      price_paid: chosenPlan.price,
+      activated_at: null,
+      expires_at: null,
+      plan: chosenPlan,
+    };
+    store.memberships.push(membership);
+    // Mock convenience: auto-activate after 5s so the flow can be demoed.
+    setTimeout(() => {
+      membership.status = "active" as never;
+      membership.activated_at = new Date().toISOString() as never;
+      membership.expires_at = new Date(Date.now() + 30 * 864e5).toISOString() as never;
+    }, 5000);
+    const { customer_id: _c, ...pub } = membership;
+    return envelope(pub, { status: 201, message: "Membership requested." });
+  }
+
   // ── Bookings ──
   if (method === "GET" && path === "bookings") {
     const mine = store.bookings
@@ -211,6 +249,49 @@ async function handle(req: NextRequest, segments: string[]) {
 
   if (method === "POST" && path === "bookings") {
     const scheduledAt = String(body.scheduled_at ?? "");
+
+    // Membership redemption: single vehicle, plan-defined service, QR 0.
+    if (body.membership_id) {
+      const membership = store.memberships.find(
+        (m) => m.id === Number(body.membership_id) && m.customer_id === customer.id,
+      );
+      const vehicle = customer.vehicles.find((v) => v.id === Number(body.vehicle_id));
+      if (!membership || !vehicle) return fail(422, "Invalid membership or vehicle.");
+      if (membership.status !== "active" || membership.washes_remaining <= 0) {
+        return fail(422, "This membership is not active or has no washes remaining.");
+      }
+      if (slotTakenCount(scheduledAt) >= FLEET_CAPACITY) {
+        return fail(409, "This time slot is no longer available. Please pick another slot.");
+      }
+      const planService = SERVICES.find((sv) => sv.id === (membership.plan.scope === "full_wash" ? 1 : 1)) ?? SERVICES[0];
+      membership.washes_used += 1;
+      membership.washes_remaining -= 1;
+      if (membership.washes_remaining === 0) membership.status = "exhausted" as never;
+      const id = store.nextId++;
+      const booking: Booking & { customer_id: number } = {
+        id,
+        customer_id: customer.id,
+        reference: makeReference(id),
+        status: "paid",
+        status_label: STATUS_LABELS.paid,
+        scheduled_at: scheduledAt,
+        payment_method: "membership",
+        total: 0,
+        address_area: String(body.address_area ?? "").trim(),
+        notes: String(body.notes ?? "").trim(),
+        cars: [{
+          vehicle,
+          service: { id: planService.id, name: planService.name, price: 0 },
+          add_ons: [],
+          subtotal: 0,
+        }],
+        created_at: new Date().toISOString(),
+      };
+      store.bookings.push(booking);
+      const { customer_id: _c, ...pub } = booking;
+      return envelope(pub, { status: 201, message: "Booking created." });
+    }
+
     const cars = Array.isArray(body.cars) ? body.cars : [];
     const paymentMethod = body.payment_method as PaymentMethod;
 
