@@ -184,7 +184,7 @@ export function BookingWizard() {
   }
 
   const carsValid = cars.every(
-    (c) => c.serviceId !== null && c.make.trim() && c.model.trim() && c.plate.trim(),
+    (c) => c.serviceId !== null && c.plate.trim(),
   );
 
   const canContinue =
@@ -765,7 +765,7 @@ function StepServices({
               )}
 
               <div className="mt-4 grid gap-3 sm:grid-cols-4">
-                <Field label={t("Make")} required>
+                <Field label={t("Make")}>
                   <input
                     className="wizard-input"
                     placeholder="Toyota"
@@ -773,7 +773,7 @@ function StepServices({
                     onChange={(e) => onUpdate(car.key, { make: e.target.value })}
                   />
                 </Field>
-                <Field label={t("Model")} required>
+                <Field label={t("Model")}>
                   <input
                     className="wizard-input"
                     placeholder="Land Cruiser"
@@ -892,7 +892,13 @@ function Summary({
                   <span className="text-[color:var(--muted-foreground)]"> + {addOns.map((a) => a.name).join(", ")}</span>
                 )}
                 <span className="block text-xs text-[color:var(--muted-foreground)]">
-                  {car.make} {car.model} · {car.plate} · {car.vtype === "suv" ? "SUV" : "Salon"}
+                  {[
+                    [car.make, car.model].filter(Boolean).join(" "),
+                    car.plate,
+                    car.vtype === "suv" ? "SUV" : "Salon",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
               </span>
               <span className="font-semibold">{fmt(subtotal)}</span>

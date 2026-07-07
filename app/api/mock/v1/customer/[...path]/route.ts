@@ -215,11 +215,10 @@ async function handle(req: NextRequest, segments: string[]) {
     const make = String(body.make ?? "").trim();
     const model = String(body.model ?? "").trim();
     const plate = String(body.plate_number ?? "").trim();
-    if (!make || !model || !plate) {
+    // Only the ID / plate number is required; make/model/color are optional.
+    if (!plate) {
       return fail(422, "Validation failed.", {
-        ...(make ? {} : { make: ["The make field is required."] }),
-        ...(model ? {} : { model: ["The model field is required."] }),
-        ...(plate ? {} : { plate_number: ["The plate number field is required."] }),
+        plate_number: ["The plate number field is required."],
       });
     }
     const vehicle = {
