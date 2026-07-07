@@ -120,7 +120,7 @@ function RedeemInner() {
   }
 
   const vehicleOk = addVehicle || vehicles.length === 0
-    ? make.trim() && model.trim() && plate.trim()
+    ? plate.trim().length > 0
     : vehicleId !== null;
   const canSubmit = vehicleOk && slot !== null && area.trim().length > 1 && !busy;
 
