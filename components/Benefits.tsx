@@ -18,7 +18,7 @@ const benefits = [
   {
     title: "Secure Payment",
     description:
-      "Pay in advance through the app when online payment is available.",
+      "Membership checkout is online today; regular bookings can be paid later when our team confirms or arrives.",
   },
   {
     title: "Customer Support",

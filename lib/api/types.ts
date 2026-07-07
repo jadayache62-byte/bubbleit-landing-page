@@ -1,4 +1,4 @@
-// Types mirror docs/api-contract/customer-contract-v1.md (bubbleit-mobile repo).
+// Types mirror the live Laravel customer API responses used by bubbleit.qa.
 // The envelope and paginator shapes are identical to the admin API.
 
 export type Envelope<T> = {
@@ -137,7 +137,6 @@ export type Booking = {
   notes: string;
   cars: BookingCar[];
   created_at: string;
-  payment?: { checkout_url: string | null };
 };
 
 export type VerifyOtpResult = {

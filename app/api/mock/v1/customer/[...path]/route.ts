@@ -397,9 +397,6 @@ async function handle(req: NextRequest, segments: string[]) {
     store.bookings.push(booking);
 
     const { customer_id: _c, ...pub } = booking;
-    if (paymentMethod === "online") {
-      pub.payment = { checkout_url: `/book/checkout?booking=${id}` };
-    }
     return envelope(pub, { status: 201, message: "Booking created." });
   }
 

@@ -94,11 +94,11 @@ const AR: Record<string, string> = {
   "Tomorrow": "غداً",
   "How would you like to pay?": "كيف تود الدفع؟",
   "Pay securely online, or in person when we arrive.":
-    "ادفع أونلاين بأمان أو نقداً عند وصولنا.",
+    "احجز الآن وادفع لاحقاً عند التأكيد أو عند وصولنا.",
   "Pay on site": "الدفع عند الوصول",
   "Cash or card when the team arrives.": "نقداً أو ببطاقة عند وصول الفريق.",
-  "Pay online now": "ادفع أونلاين الآن",
-  "Secure card payment at confirmation.": "دفع آمن بالبطاقة عند التأكيد.",
+  "Pay online now": "الدفع أونلاين غير متاح حالياً",
+  "Secure card payment at confirmation.": "حالياً نؤكد الحجز أولاً ثم يتم الدفع لاحقاً.",
   "Notes for the team (optional)": "ملاحظات للفريق (اختياري)",
   "Gate code, preferred parking spot…": "رمز البوابة، مكان الوقوف المفضل…",
   "Verify your phone": "تأكيد رقم هاتفك",
@@ -145,7 +145,6 @@ const AR: Record<string, string> = {
   "Your first sparkling-clean car is a few taps away.":
     "سيارتك النظيفة الأولى على بعد خطوات.",
   "Book your first wash": "احجز غسلتك الأولى",
-  "Pay now": "ادفع الآن",
   "Cancel": "إلغاء",
   "Cancel this booking?": "إلغاء هذا الحجز؟",
   "Hi,": "أهلاً،",
@@ -198,6 +197,14 @@ const AR: Record<string, string> = {
   "Sign in to confirm your booking.": "سجّل الدخول لتأكيد حجزك.",
   "Redirecting to secure payment…": "جاري التحويل إلى الدفع الآمن…",
   "Payment received — your membership is active!": "تم الدفع — اشتراكك فعّال الآن!",
+  "Book on the web today — app coming soon": "احجز من الموقع اليوم — التطبيق قريباً",
+  "Ready to book your next car wash?": "جاهز تحجز غسيلتك القادمة؟",
+  "Book your next wash on the web in minutes — pick your service, time, and location, manage your bookings from any device, and pay later when our team confirms or arrives. The Bubbleit mobile app is on its way.":
+    "احجز غسيلتك القادمة من الموقع خلال دقائق — اختر الخدمة والوقت والموقع، وأدر حجوزاتك من أي جهاز، وادفع لاحقاً عند تأكيد الحجز أو عند وصول فريقنا. تطبيق ببلت في الطريق.",
+  "Book a wash now": "احجز غسلة الآن",
+  "My bookings": "حجوزاتي",
+  "App Store": "آب ستور",
+  "Google Play": "جوجل بلاي",
 };
 
 type I18n = {

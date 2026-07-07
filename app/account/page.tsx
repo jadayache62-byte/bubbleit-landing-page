@@ -14,7 +14,6 @@ import {
   listBookings,
   logout,
   me,
-  payBooking,
 } from "@/lib/api/client";
 import type { Booking, BookingStatus, Customer } from "@/lib/api/types";
 
@@ -61,15 +60,6 @@ export default function AccountPage() {
       refresh();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not cancel the booking.");
-    }
-  }
-
-  async function handlePay(id: number) {
-    try {
-      const { checkout_url } = await payBooking(id);
-      window.location.assign(checkout_url);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not start the payment.");
     }
   }
 
@@ -140,7 +130,6 @@ export default function AccountPage() {
                     key={booking.id}
                     booking={booking}
                     onCancel={() => handleCancel(booking.id)}
-                    onPay={() => handlePay(booking.id)}
                   />
                 ))}
               </div>
@@ -156,13 +145,10 @@ export default function AccountPage() {
 function BookingCard({
   booking,
   onCancel,
-  onPay,
 }: {
   booking: Booking;
   onCancel: () => void;
-  onPay: () => void;
 }) {
-  const { t } = useI18n();
   const when = new Date(booking.scheduled_at).toLocaleString("en", {
     weekday: "short",
     month: "short",
@@ -170,8 +156,7 @@ function BookingCard({
     hour: "2-digit",
     minute: "2-digit",
   });
-  const awaitingOnlinePayment =
-    booking.status === "pending_payment" && booking.payment_method === "online";
+  const { t } = useI18n();
 
   return (
     <article className="glass-panel flex flex-col gap-4 rounded-[var(--radius-card)] p-6">
@@ -201,11 +186,6 @@ function BookingCard({
       <div className="flex items-center justify-between border-t border-[color:var(--border)] pt-4">
         <span className="font-bold">QR {booking.total}</span>
         <div className="flex gap-2">
-          {awaitingOnlinePayment && (
-            <button type="button" className="primary-button min-h-9 px-4 py-2 text-xs" onClick={onPay}>
-              {t("Pay now")}
-            </button>
-          )}
           {CANCELLABLE.includes(booking.status) && (
             <button
               type="button"

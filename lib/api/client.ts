@@ -203,7 +203,3 @@ export function getBooking(id: number) {
 export function cancelBooking(id: number) {
   return request<Booking>(`/bookings/${id}/cancel`, { method: "POST" });
 }
-
-export function payBooking(id: number) {
-  return request<{ checkout_url: string }>(`/bookings/${id}/pay`, { method: "POST" });
-}

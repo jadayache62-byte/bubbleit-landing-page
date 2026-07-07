@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   title: "Bubbleit | Mobile Car Wash Booking App",
   description:
     "Book a professional mobile car wash in minutes with Bubbleit. Choose your service, set your time, and let the team come to you.",
-  metadataBase: new URL("https://bubbleit.app"),
+  metadataBase: new URL("https://bubbleit.qa"),
   openGraph: {
     title: "Bubbleit | Mobile Car Wash Booking App",
     description:

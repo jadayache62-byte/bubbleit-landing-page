@@ -1,4 +1,7 @@
+ "use client";
+
 import { AppButton } from "@/components/ui";
+import { useI18n } from "@/lib/i18n";
 
 const qrPattern = [0, 1, 3, 5, 6, 10, 12, 14, 18, 19, 21, 22, 24];
 
@@ -71,6 +74,8 @@ function StoreBadge({
 }
 
 export function AppCTA() {
+  const { t } = useI18n();
+
   return (
     <section id="download" className="py-20">
       <div className="mx-auto w-full max-w-[1400px] px-6 md:px-16 xl:px-[72px]">
@@ -82,20 +87,18 @@ export function AppCTA() {
           <div className="relative grid items-center gap-14 lg:grid-cols-[65%_35%] lg:gap-10">
             <div className="mx-auto w-full max-w-[42rem] text-center lg:mx-0 lg:text-left">
               <span className="inline-flex rounded-full border border-white/16 bg-white/10 px-4 py-2 text-sm font-medium text-white/88 backdrop-blur-md">
-                Book on the Web — App Coming Soon
+                {t("Book on the web today — app coming soon")}
               </span>
 
               <h2
                 className="mt-5 max-w-[12ch] font-bold tracking-[-0.06em] text-white"
                 style={{ fontSize: "clamp(3rem, 5vw, 4.5rem)", lineHeight: 0.95 }}
               >
-                Ready to Book Your Next Car Wash?
+                {t("Ready to book your next car wash?")}
               </h2>
 
               <p className="mt-5 max-w-[37.5rem] text-base leading-8 text-white/78 sm:text-lg">
-                Book your next wash on the web in minutes — pick your service,
-                time, and location, and manage your bookings from any device.
-                The Bubbleit mobile app is on its way.
+                {t("Book your next wash on the web in minutes — pick your service, time, and location, manage your bookings from any device, and pay later when our team confirms or arrives. The Bubbleit mobile app is on its way.")}
               </p>
 
               <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap lg:items-start">
@@ -103,20 +106,20 @@ export function AppCTA() {
                   href="/book"
                   className="min-w-[12rem] bg-white text-[color:var(--navy)] hover:bg-[#eaf8ff]"
                 >
-                  Book a Wash Now
+                  {t("Book a wash now")}
                 </AppButton>
                 <AppButton
                   href="/account"
                   variant="secondary"
                   className="min-w-[12rem] border-white/20 bg-white/10 text-white backdrop-blur-md hover:border-white/40 hover:bg-white/14 hover:text-white"
                 >
-                  My Bookings
+                  {t("My bookings")}
                 </AppButton>
               </div>
 
               <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap lg:items-start">
-                <StoreBadge label="App Store" platform="apple" />
-                <StoreBadge label="Google Play" platform="play" />
+                <StoreBadge label={t("App Store")} platform="apple" />
+                <StoreBadge label={t("Google Play")} platform="play" />
               </div>
             </div>
 

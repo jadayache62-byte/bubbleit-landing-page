@@ -96,7 +96,6 @@ export function BookingWizard() {
   const [slot, setSlot] = useState<string | null>(null);
 
   // Step 4 — payment
-  const [payOnline, setPayOnline] = useState(false);
   const [notes, setNotes] = useState("");
 
   // Step 5 — identity + confirm
@@ -224,14 +223,10 @@ export function BookingWizard() {
         scheduled_at: `${date}T${slot}:00`,
         cars: carPayloads,
         address_id: address.id,
-        payment_method: payOnline ? "online" : "pay_on_site",
+        payment_method: "pay_on_site",
         notes: notes.trim() || undefined,
       });
 
-      if (booking.payment?.checkout_url) {
-        window.location.assign(booking.payment.checkout_url);
-        return;
-      }
       setConfirmed(booking);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
@@ -411,20 +406,12 @@ export function BookingWizard() {
 
         {step === 3 && (
           <StepPanel title={t("How would you like to pay?")} subtitle={t("Pay securely online, or in person when we arrive.")}>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <PayOption
-                active={!payOnline}
-                onClick={() => setPayOnline(false)}
-                title={t("Pay on site")}
-                description={t("Cash or card when the team arrives.")}
-              />
-              <PayOption
-                active={payOnline}
-                onClick={() => setPayOnline(true)}
-                title={t("Pay online now")}
-                description={t("Secure card payment at confirmation.")}
-              />
-            </div>
+            <PayOption
+              active
+              onClick={() => {}}
+              title={t("Pay on site")}
+              description={t("Cash or card when the team arrives.")}
+            />
             <Field label={t("Notes for the team (optional)")}>
               <textarea
                 className="wizard-input min-h-20 resize-y"
@@ -456,7 +443,6 @@ export function BookingWizard() {
               details={details}
               date={date}
               slot={slot}
-              payOnline={payOnline}
               total={total}
             />
           </StepPanel>
@@ -503,7 +489,7 @@ export function BookingWizard() {
                 disabled={submitting || !authed}
                 onClick={submit}
               >
-                {submitting ? t("Confirming…") : payOnline ? t("Confirm & Pay") : t("Confirm Booking")}
+                {submitting ? t("Confirming…") : t("Confirm Booking")}
               </button>
             )}
           </div>
@@ -799,7 +785,6 @@ function Summary({
   details,
   date,
   slot,
-  payOnline,
   total,
 }: {
   cars: CarDraft[];
@@ -808,7 +793,6 @@ function Summary({
   details: string;
   date: string;
   slot: string | null;
-  payOnline: boolean;
   total: number;
 }) {
   const { lang, t } = useI18n();
@@ -858,7 +842,7 @@ function Summary({
         </li>
         <li className="flex justify-between">
           <span className="text-[color:var(--muted-foreground)]">{t("Payment")}</span>
-          <span className="font-medium">{payOnline ? t("Pay online now") : t("Pay on site")}</span>
+          <span className="font-medium">{t("Pay on site")}</span>
         </li>
         <li className="flex justify-between border-t border-[color:var(--border)] pt-2 text-base font-bold">
           <span>{t("Total")}</span>
