@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import Link from "next/link";
 import { AuthPanel } from "@/components/booking/AuthPanel";
@@ -15,13 +15,18 @@ import {
   me,
   validatePromo,
 } from "@/lib/api/client";
-import type { Booking, Service, Slot, VehicleType, WashTarget } from "@/lib/api/types";
+import type { Booking, Service, Slot, VehicleType } from "@/lib/api/types";
 import { localized, useI18n } from "@/lib/i18n";
 
 const CURRENCY = "QR";
 
+// The three vehicle cards. Jet ski & jet boat share one "Jet" card with a
+// sub-toggle; each vehicle in a booking can independently be any kind.
+type WashKind = "car" | "caravan" | "jet";
+
 type CarDraft = {
   key: number;
+  kind: WashKind;
   vtype: VehicleType;
   serviceId: number | null;
   addOnIds: number[];
@@ -31,9 +36,21 @@ type CarDraft = {
   plate: string;
 };
 
-const emptyCar = (key: number): CarDraft => ({
+function defaultVtype(kind: WashKind): VehicleType {
+  switch (kind) {
+    case "car":
+      return "suv"; // SUV / 4-Wheel is the most common — default to it
+    case "caravan":
+      return "caravan";
+    case "jet":
+      return "jet_ski";
+  }
+}
+
+const emptyCar = (key: number, kind: WashKind = "car"): CarDraft => ({
   key,
-  vtype: "sedan",
+  kind,
+  vtype: defaultVtype(kind),
   serviceId: null,
   addOnIds: [],
   make: "",
@@ -48,12 +65,60 @@ function priceFor(service: Service, vtype: VehicleType) {
 
 const STEPS = ["Services", "Location", "Schedule", "Payment", "Confirm"] as const;
 
-const TARGETS: { value: WashTarget; label: string; icon: string; categories: string[]; vtype: VehicleType | null }[] = [
-  { value: "car", label: "Car", icon: "🚗", categories: ["wash", "detailing"], vtype: null },
-  { value: "caravan", label: "Caravan", icon: "🚐", categories: ["caravan", "caravan_single"], vtype: "caravan" },
-  { value: "jet_ski", label: "Jet Ski", icon: "🌊", categories: ["jet_ski"], vtype: "jet_ski" },
-  { value: "jet_boat", label: "Jet Boat", icon: "🚤", categories: ["jet_boat"], vtype: "jet_boat" },
+const KINDS: { value: WashKind; label: string; icon: string }[] = [
+  { value: "car", label: "Car", icon: "🚗" },
+  { value: "caravan", label: "Caravan", icon: "🚐" },
+  { value: "jet", label: "Jet", icon: "🚤" },
 ];
+
+// Sub-type toggle options per kind (empty = no toggle, e.g. caravan).
+function subTypesFor(kind: WashKind): { value: VehicleType; label: string }[] {
+  switch (kind) {
+    case "car":
+      return [
+        { value: "sedan", label: "Salon / Sedan" },
+        { value: "suv", label: "SUV / 4-Wheel" },
+      ];
+    case "jet":
+      return [
+        { value: "jet_ski", label: "Jet Ski" },
+        { value: "jet_boat", label: "Jet Boat" },
+      ];
+    case "caravan":
+      return [];
+  }
+}
+
+// Catalog categories that make up the service list for a kind + sub-type.
+function categoriesFor(kind: WashKind, vtype: VehicleType): string[] {
+  switch (kind) {
+    case "car":
+      return ["wash", "detailing"];
+    case "caravan":
+      return ["caravan", "caravan_single"];
+    case "jet":
+      return vtype === "jet_boat" ? ["jet_boat"] : ["jet_ski"];
+  }
+}
+
+function kindLabel(kind: WashKind): string {
+  return KINDS.find((k) => k.value === kind)!.label;
+}
+
+function vtypeLabel(vtype: VehicleType): string {
+  switch (vtype) {
+    case "suv":
+      return "SUV";
+    case "sedan":
+      return "Salon";
+    case "caravan":
+      return "Caravan";
+    case "jet_ski":
+      return "Jet Ski";
+    case "jet_boat":
+      return "Jet Boat";
+  }
+}
 
 function fmt(amount: number) {
   return `${CURRENCY} ${amount}`;
@@ -77,9 +142,15 @@ function next7Days(): { date: string; label: string; weekday: string }[] {
 export function BookingWizard() {
   const { t } = useI18n();
   const [step, setStep] = useState(0);
-  const [target, setTarget] = useState<WashTarget>("car");
+  const topRef = useRef<HTMLDivElement>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [loadError, setLoadError] = useState(false);
+
+  // On every step change, bring the top of the wizard into view (mobile
+  // otherwise lands at the bottom of the freshly rendered step).
+  useEffect(() => {
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [step]);
 
   // Step 1 — cars & services
   const [cars, setCars] = useState<CarDraft[]>([emptyCar(1)]);
@@ -197,12 +268,6 @@ export function BookingWizard() {
     setCars((prev) => prev.map((c) => (c.key === key ? { ...c, ...patch } : c)));
   }
 
-  function switchTarget(next: WashTarget) {
-    setTarget(next);
-    const meta = TARGETS.find((x) => x.value === next)!;
-    setCars([{ ...emptyCar(1), vtype: meta.vtype ?? "sedan" }]);
-  }
-
   function requestLocation() {
     if (!("geolocation" in navigator)) {
       setGeoState("error");
@@ -306,7 +371,7 @@ export function BookingWizard() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div ref={topRef} className="mx-auto w-full max-w-3xl scroll-mt-24">
       {/* Progress */}
       <ol className="mb-8 flex items-center justify-between gap-1 sm:gap-2" aria-label="Booking progress">
         {STEPS.map((label, i) => (
@@ -341,16 +406,11 @@ export function BookingWizard() {
           <StepServices
             services={services}
             cars={cars}
-            target={target}
-            onTarget={switchTarget}
             onUpdate={updateCar}
             onAdd={() =>
               setCars((prev) => [
                 ...prev,
-                {
-                  ...emptyCar(Math.max(...prev.map((c) => c.key)) + 1),
-                  vtype: TARGETS.find((x) => x.value === target)!.vtype ?? "sedan",
-                },
+                emptyCar(Math.max(...prev.map((c) => c.key)) + 1),
               ])
             }
             onRemove={(key) => setCars((prev) => prev.filter((c) => c.key !== key))}
@@ -615,56 +675,35 @@ function Field({
 function StepServices({
   services,
   cars,
-  target,
-  onTarget,
   onUpdate,
   onAdd,
   onRemove,
 }: {
   services: Service[];
   cars: CarDraft[];
-  target: WashTarget;
-  onTarget: (target: WashTarget) => void;
   onUpdate: (key: number, patch: Partial<CarDraft>) => void;
   onAdd: () => void;
   onRemove: (key: number) => void;
 }) {
   const { lang, t } = useI18n();
-  const meta = TARGETS.find((x) => x.value === target)!;
-  const visibleServices = services.filter((s) => meta.categories.includes(s.category));
-  const isCar = target === "car";
 
   return (
     <StepPanel
       title={t("What are we washing?")}
-      subtitle={isCar ? t("Pick a service for each car — add as many cars as you like.") : t("Pick a service.")}
+      subtitle={t("Pick a service for each vehicle — add as many as you like.")}
     >
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {TARGETS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onTarget(option.value)}
-            className={clsx(
-              "flex flex-col items-center gap-1 rounded-2xl border px-3 py-3 text-sm font-semibold transition",
-              target === option.value
-                ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
-                : "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)]",
-            )}
-          >
-            <span className="text-xl">{option.icon}</span>
-            {t(option.label)}
-          </button>
-        ))}
-      </div>
       <div className="flex flex-col gap-6">
         {cars.map((car, index) => {
+          const subTypes = subTypesFor(car.kind);
+          const cats = categoriesFor(car.kind, car.vtype);
+          const visibleServices = services.filter((s) => cats.includes(s.category));
           const selected = services.find((s) => s.id === car.serviceId);
+          const isCar = car.kind === "car";
           return (
             <div key={car.key} className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-sm font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">
-                  {t(TARGETS.find((x) => x.value === target)!.label)} {index + 1}
+                  {t(kindLabel(car.kind))} {index + 1}
                 </h3>
                 {cars.length > 1 && (
                   <button
@@ -672,50 +711,83 @@ function StepServices({
                     className="text-xs font-semibold text-red-500 hover:text-red-600"
                     onClick={() => onRemove(car.key)}
                   >
-                    Remove
+                    {t("Remove")}
                   </button>
                 )}
               </div>
 
-              <div className={clsx("mb-4", !isCar && "hidden")}>
-                <p className="mb-2 text-sm font-semibold">{t("Vehicle type")}</p>
-                <div className="flex gap-2">
-                  {(
-                    [
-                      { value: "sedan", label: "Salon / Sedan" },
-                      { value: "suv", label: "SUV / 4-Wheel" },
-                    ] as const
-                  ).map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => onUpdate(car.key, { vtype: option.value })}
-                      className={clsx(
-                        "flex-1 rounded-full border px-4 py-2.5 text-sm font-semibold transition sm:flex-none sm:px-6",
-                        car.vtype === option.value
-                          ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
-                          : "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)]",
-                      )}
-                    >
-                      {t(option.label)}
-                    </button>
-                  ))}
-                </div>
+              {/* Kind: Car / Caravan / Jet — each vehicle picks its own */}
+              <div className="mb-4 grid grid-cols-3 gap-2">
+                {KINDS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() =>
+                      onUpdate(car.key, {
+                        kind: option.value,
+                        vtype: defaultVtype(option.value),
+                        serviceId: null,
+                        addOnIds: [],
+                      })
+                    }
+                    className={clsx(
+                      "flex flex-col items-center gap-1 rounded-2xl border px-3 py-3 text-sm font-semibold transition",
+                      car.kind === option.value
+                        ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                        : "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)]",
+                    )}
+                  >
+                    <span className="text-xl">{option.icon}</span>
+                    {t(option.label)}
+                  </button>
+                ))}
               </div>
 
+              {subTypes.length > 0 && (
+                <div className="mb-4">
+                  <p className="mb-2 text-sm font-semibold">{t("Vehicle type")}</p>
+                  <div className="flex gap-2">
+                    {subTypes.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() =>
+                          onUpdate(car.key, { vtype: option.value, serviceId: null, addOnIds: [] })
+                        }
+                        className={clsx(
+                          "flex-1 rounded-full border px-4 py-2.5 text-sm font-semibold transition sm:flex-none sm:px-6",
+                          car.vtype === option.value
+                            ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                            : "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)]",
+                        )}
+                      >
+                        {t(option.label)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="grid gap-3 sm:grid-cols-3">
-                {visibleServices.map((service) => (
+                {visibleServices.map((service) => {
+                  const isPopular = service.name === "Deep Bubble";
+                  return (
                   <button
                     key={service.id}
                     type="button"
                     onClick={() => onUpdate(car.key, { serviceId: service.id, addOnIds: [] })}
                     className={clsx(
-                      "flex flex-col items-start rounded-2xl border p-4 text-left transition",
+                      "relative flex flex-col items-start rounded-2xl border p-4 text-left transition",
                       car.serviceId === service.id
                         ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
                         : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
                     )}
                   >
+                    {isPopular && (
+                      <span className="absolute end-2 top-2 rounded-full bg-[color:var(--cyan)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--navy)]">
+                        {t("Popular")}
+                      </span>
+                    )}
                     <span className="font-bold">{localized(lang, service.name, service.name_ar)}</span>
                     <span
                       className={clsx(
@@ -734,7 +806,8 @@ function StepServices({
                       {fmt(priceFor(service, car.vtype))}
                     </span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
 
               {selected && selected.add_ons.length > 0 && (
@@ -813,7 +886,7 @@ function StepServices({
         className="secondary-button self-start"
         onClick={onAdd}
       >
-        {t("+ Add another car")}
+        {t("+ Add vehicle")}
       </button>
     </StepPanel>
   );
@@ -900,7 +973,7 @@ function Summary({
                   {[
                     [car.make, car.model].filter(Boolean).join(" "),
                     car.plate,
-                    car.vtype === "suv" ? "SUV" : "Salon",
+                    t(vtypeLabel(car.vtype)),
                   ]
                     .filter(Boolean)
                     .join(" · ")}

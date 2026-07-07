@@ -70,11 +70,16 @@ export function Services() {
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-[color:var(--cyan)]/25 to-[color:var(--blue)]/20 text-sm font-bold text-[color:var(--deep-blue)]">
                 {service.icon}
               </div>
-              <h3 className="mt-5 text-xl font-bold text-[color:var(--foreground)]">
-                {service.title}
+              <h3 className="mt-5 flex items-center gap-2 text-xl font-bold text-[color:var(--foreground)]">
+                {t(service.title)}
+                {service.title === "Deep Bubble" && (
+                  <span className="rounded-full bg-[color:var(--cyan)]/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--navy)]">
+                    {t("Popular")}
+                  </span>
+                )}
               </h3>
               <p className="mt-3 flex-1 text-base leading-7 text-[color:var(--muted-foreground)]">
-                {service.description}
+                {t(service.description)}
               </p>
               <div className="mt-5 flex items-center gap-4 border-t border-[color:var(--border)] pt-4 text-sm">
                 <span>

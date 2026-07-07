@@ -47,6 +47,55 @@ const AR: Record<string, string> = {
   "Salon": "صالون",
   "SUV": "فور ويل",
   "Book →": "احجز ←",
+  // Home service cards
+  "Standard Bubble": "ستاندرد بابل",
+  "Steam Bubble": "ستيم بابل",
+  "Deep Bubble": "ديب بابل",
+  "Interior Detailing": "تلميع داخلي",
+  "Exterior Detailing": "تلميع خارجي",
+  "Bubbleit Detailing": "ببلت ديتيلنق",
+  "Exterior wash & interior cleaning.": "غسيل خارجي وتنظيف داخلي.",
+  "Exterior wash & interior cleaning with steam.": "غسيل خارجي وتنظيف داخلي بالبخار.",
+  "Exterior wash, engine wash, under-chassis & interior steam cleaning.":
+    "غسيل خارجي وغسيل المحرك وأسفل الهيكل وتنظيف داخلي بالبخار.",
+  "Full interior polish and deep detailing.": "تلميع داخلي كامل وتنظيف عميق.",
+  "Full exterior polish and paint care.": "تلميع خارجي كامل والعناية بالطلاء.",
+  "The complete package — interior & exterior polish.": "الباقة الكاملة — تلميع داخلي وخارجي.",
+  // Benefits section
+  "Why Book With Bubbleit?": "لماذا تحجز مع ببلت؟",
+  "Built around convenience, clarity, and a cleaner ownership experience.":
+    "مصمّمة حول الراحة والوضوح وتجربة امتلاك أنظف.",
+  "Easy Booking": "حجز سهل",
+  "Book your car wash in just a few taps.": "احجز غسيل سيارتك بلمسات قليلة.",
+  "Mobile Service": "خدمة متنقلة",
+  "No need to drive anywhere. Bubbleit comes to your location.":
+    "لا حاجة للقيادة إلى أي مكان. ببلت تأتي إليك.",
+  "Booking Management": "إدارة الحجوزات",
+  "View your upcoming bookings and service details from the app.":
+    "اطّلع على حجوزاتك القادمة وتفاصيل الخدمة من التطبيق.",
+  "Secure Payment": "دفع آمن",
+  "Membership checkout is online today; regular bookings can be paid later when our team confirms or arrives.":
+    "دفع الاشتراكات إلكتروني الآن؛ ويمكن دفع الحجوزات العادية لاحقاً عند تأكيد فريقنا أو وصوله.",
+  "Customer Support": "دعم العملاء",
+  "Get updates and support for your booking when needed.":
+    "احصل على التحديثات والدعم لحجزك عند الحاجة.",
+  "Arabic & English Ready": "يدعم العربية والإنجليزية",
+  "Built to support customers in both Arabic and English when enabled.":
+    "مبني لدعم العملاء بالعربية والإنجليزية عند التفعيل.",
+  // How it works section
+  "How Bubbleit Works": "كيف تعمل ببلت",
+  "A simple booking flow designed to feel fast, clear, and mobile-friendly.":
+    "تدفّق حجز بسيط مصمّم ليكون سريعاً وواضحاً وملائماً للهاتف.",
+  "Choose Your Service": "اختر خدمتك",
+  "Select the car wash package that fits your needs.": "اختر باقة الغسيل التي تناسب احتياجك.",
+  "Pick Time & Location": "اختر الوقت والموقع",
+  "Choose your booking time and add your location directly in the app.":
+    "اختر وقت الحجز وأضف موقعك مباشرة في التطبيق.",
+  "Confirm Your Booking": "أكّد حجزك",
+  "Review your details and confirm your booking.": "راجع تفاصيلك وأكّد حجزك.",
+  "We Come to You": "نأتي إليك",
+  "Our team arrives at your location and completes the service.":
+    "يصل فريقنا إلى موقعك وينجز الخدمة.",
 
   // Booking wizard
   "Book a Wash | Bubbleit": "احجز غسلة | ببلت",
@@ -59,12 +108,16 @@ const AR: Record<string, string> = {
   "Pick what you'd like us to wash.": "اختر ما تريد غسله.",
   "Car": "سيارة",
   "Caravan": "كرفان",
+  "Jet": "جت",
   "Jet Ski": "جت سكي",
   "Jet Boat": "جت بوت",
+  "Popular": "الأكثر طلباً",
   "Pick a service for each car — add as many cars as you like.":
     "اختر خدمة لكل سيارة — أضف أي عدد من السيارات.",
+  "Pick a service for each vehicle — add as many as you like.":
+    "اختر خدمة لكل مركبة — أضف ما تشاء.",
   "Pick a service.": "اختر الخدمة.",
-  "Vehicle type": "نوع السيارة",
+  "Vehicle type": "نوع المركبة",
   "Salon / Sedan": "صالون / سيدان",
   "SUV / 4-Wheel": "فور ويل / دفع رباعي",
   "Add-ons": "إضافات",
@@ -75,6 +128,7 @@ const AR: Record<string, string> = {
   "ID / Registration": "الرقم / التسجيل",
   "Remove": "حذف",
   "+ Add another car": "+ أضف سيارة أخرى",
+  "+ Add vehicle": "+ أضف مركبة",
   "Where should we come?": "أين نأتي إليك؟",
   "Our wash bus comes to you — home, office, anywhere.":
     "باص الغسيل يصل إليك — المنزل أو المكتب أو أي مكان.",

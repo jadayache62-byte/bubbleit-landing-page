@@ -1,4 +1,7 @@
+"use client";
+
 import { SectionHeader } from "@/components/ui";
+import { useI18n } from "@/lib/i18n";
 
 const benefits = [
   {
@@ -7,13 +10,11 @@ const benefits = [
   },
   {
     title: "Mobile Service",
-    description:
-      "No need to drive anywhere. Bubbleit comes to your location.",
+    description: "No need to drive anywhere. Bubbleit comes to your location.",
   },
   {
     title: "Booking Management",
-    description:
-      "View your upcoming bookings and service details from the app.",
+    description: "View your upcoming bookings and service details from the app.",
   },
   {
     title: "Secure Payment",
@@ -32,13 +33,14 @@ const benefits = [
 ];
 
 export function Benefits() {
+  const { t } = useI18n();
   return (
     <section id="benefits" className="section-spacing">
       <div className="section-shell">
         <SectionHeader
-          eyebrow="Benefits"
-          title="Why Book With Bubbleit?"
-          description="Built around convenience, clarity, and a cleaner ownership experience."
+          eyebrow={t("Benefits")}
+          title={t("Why Book With Bubbleit?")}
+          description={t("Built around convenience, clarity, and a cleaner ownership experience.")}
           titleId="benefits-title"
         />
 
@@ -53,11 +55,11 @@ export function Benefits() {
                   0{index + 1}
                 </div>
                 <h3 className="text-lg font-bold text-[color:var(--foreground)]">
-                  {benefit.title}
+                  {t(benefit.title)}
                 </h3>
               </div>
               <p className="mt-4 text-base leading-7 text-[color:var(--muted-foreground)]">
-                {benefit.description}
+                {t(benefit.description)}
               </p>
             </article>
           ))}

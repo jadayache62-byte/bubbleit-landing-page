@@ -1,4 +1,7 @@
+"use client";
+
 import { SectionHeader } from "@/components/ui";
+import { useI18n } from "@/lib/i18n";
 
 const steps = [
   {
@@ -22,6 +25,7 @@ const steps = [
 ];
 
 export function HowItWorks() {
+  const { t } = useI18n();
   return (
     <section
       id="how-it-works"
@@ -30,9 +34,9 @@ export function HowItWorks() {
     >
       <div className="section-shell">
         <SectionHeader
-          eyebrow="How It Works"
-          title="How Bubbleit Works"
-          description="A simple booking flow designed to feel fast, clear, and mobile-friendly."
+          eyebrow={t("How It Works")}
+          title={t("How Bubbleit Works")}
+          description={t("A simple booking flow designed to feel fast, clear, and mobile-friendly.")}
           titleId="how-it-works-title"
         />
 
@@ -48,10 +52,10 @@ export function HowItWorks() {
                   {index + 1}
                 </div>
                 <h3 className="mt-5 text-xl font-bold text-[color:var(--foreground)]">
-                  {step.title}
+                  {t(step.title)}
                 </h3>
                 <p className="mt-3 text-base leading-7 text-[color:var(--muted-foreground)]">
-                  {step.description}
+                  {t(step.description)}
                 </p>
               </article>
             ))}
