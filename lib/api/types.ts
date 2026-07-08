@@ -25,12 +25,7 @@ export type AddOn = {
   duration_minutes?: number;
 };
 
-export type VehicleType =
-  | "sedan"
-  | "suv"
-  | "caravan"
-  | "jet_ski"
-  | "jet_boat";
+export type VehicleType = "sedan" | "suv" | "caravan" | "jet_ski" | "jet_boat";
 
 export type WashTarget = "car" | "caravan" | "jet_ski" | "jet_boat";
 
@@ -52,6 +47,8 @@ export type Slot = {
   start: string; // "08:00"
   end: string; // "09:00"
   available: boolean;
+  available_bus_count?: number;
+  has_recommendation?: boolean;
 };
 
 export type Availability = {

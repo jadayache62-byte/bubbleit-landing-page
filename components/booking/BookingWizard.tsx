@@ -27,7 +27,13 @@ import {
   me,
   validatePromo,
 } from "@/lib/api/client";
-import type { Booking, BookingQuote, Service, Slot, VehicleType } from "@/lib/api/types";
+import type {
+  Booking,
+  BookingQuote,
+  Service,
+  Slot,
+  VehicleType,
+} from "@/lib/api/types";
 import { localized, useI18n } from "@/lib/i18n";
 
 const CURRENCY = "QR";
@@ -75,7 +81,13 @@ function priceFor(service: Service, vtype: VehicleType) {
   return vtype === "suv" ? service.price_suv : service.price;
 }
 
-const STEPS = ["Services", "Location", "Schedule", "Payment", "Confirm"] as const;
+const STEPS = [
+  "Services",
+  "Location",
+  "Schedule",
+  "Payment",
+  "Confirm",
+] as const;
 
 const KINDS: { value: WashKind; label: string; icon: string }[] = [
   { value: "car", label: "Car", icon: "🚗" },
@@ -144,7 +156,12 @@ function next7Days(): { date: string; label: string; weekday: string }[] {
     const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     days.push({
       date: iso,
-      label: i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString("en", { month: "short", day: "numeric" }),
+      label:
+        i === 0
+          ? "Today"
+          : i === 1
+            ? "Tomorrow"
+            : d.toLocaleDateString("en", { month: "short", day: "numeric" }),
       weekday: d.toLocaleDateString("en", { weekday: "short" }),
     });
   }
@@ -171,7 +188,9 @@ export function BookingWizard() {
   const [area, setArea] = useState("");
   const [details, setDetails] = useState("");
   const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
-  const [geoState, setGeoState] = useState<"idle" | "locating" | "error">("idle");
+  const [geoState, setGeoState] = useState<"idle" | "locating" | "error">(
+    "idle",
+  );
 
   // Step 3 — schedule
   const days = useMemo(() => next7Days(), []);
@@ -214,7 +233,9 @@ export function BookingWizard() {
   useEffect(() => {
     if (step !== 2) return;
     // Pass the cart's services so slots reflect the real duration (fit + overlap).
-    const ids = cars.map((c) => c.serviceId).filter((x): x is number => x !== null);
+    const ids = cars
+      .map((c) => c.serviceId)
+      .filter((x): x is number => x !== null);
     queueMicrotask(() => loadSlots(date, ids));
   }, [step, date, cars, loadSlots]);
 
@@ -223,15 +244,25 @@ export function BookingWizard() {
       cars.reduce((sum, car) => {
         const service = services.find((s) => s.id === car.serviceId);
         if (!service) return sum;
-        const addOns = service.add_ons.filter((a) => car.addOnIds.includes(a.id));
-        return sum + priceFor(service, car.vtype) + addOns.reduce((s, a) => s + a.price, 0);
+        const addOns = service.add_ons.filter((a) =>
+          car.addOnIds.includes(a.id),
+        );
+        return (
+          sum +
+          priceFor(service, car.vtype) +
+          addOns.reduce((s, a) => s + a.price, 0)
+        );
       }, 0),
     [cars, services],
   );
 
   // Promo code — validated server-side against the cart subtotal + services.
   const [promoInput, setPromoInput] = useState("");
-  const [applied, setApplied] = useState<{ code: string; discount: number; subtotal: number } | null>(null);
+  const [applied, setApplied] = useState<{
+    code: string;
+    discount: number;
+    subtotal: number;
+  } | null>(null);
   const [promoBusy, setPromoBusy] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
 
@@ -241,7 +272,8 @@ export function BookingWizard() {
   const netTotal = Math.max(0, total - discount);
 
   const serviceIds = useMemo(
-    () => cars.map((c) => c.serviceId).filter((id): id is number => id !== null),
+    () =>
+      cars.map((c) => c.serviceId).filter((id): id is number => id !== null),
     [cars],
   );
 
@@ -253,7 +285,11 @@ export function BookingWizard() {
     try {
       const res = await validatePromo(code, total, serviceIds);
       if (res.valid) {
-        setApplied({ code: res.code || code, discount: res.discount_amount, subtotal: total });
+        setApplied({
+          code: res.code || code,
+          discount: res.discount_amount,
+          subtotal: total,
+        });
         setPromoError(null);
       } else {
         setApplied(null);
@@ -261,7 +297,9 @@ export function BookingWizard() {
       }
     } catch (e) {
       setApplied(null);
-      setPromoError(e instanceof ApiError ? e.message : t("Couldn't check that code."));
+      setPromoError(
+        e instanceof ApiError ? e.message : t("Couldn't check that code."),
+      );
     } finally {
       setPromoBusy(false);
     }
@@ -283,13 +321,21 @@ export function BookingWizard() {
     if (step !== 4 || !authed || !slot) return;
     const quoteCars = cars
       .filter((c) => c.serviceId !== null)
-      .map((c) => ({ vehicle_type: c.vtype, service_id: c.serviceId as number, add_on_ids: c.addOnIds }));
+      .map((c) => ({
+        vehicle_type: c.vtype,
+        service_id: c.serviceId as number,
+        add_on_ids: c.addOnIds,
+      }));
     if (quoteCars.length === 0) return;
 
     let cancelled = false;
     // Always price with memberships applied so we can detect eligibility even
     // when the customer has toggled it off; the toggle only decides display.
-    getQuote({ scheduled_at: `${date}T${slot}:00`, cars: quoteCars, use_membership: true })
+    getQuote({
+      scheduled_at: `${date}T${slot}:00`,
+      cars: quoteCars,
+      use_membership: true,
+    })
       .then((q) => {
         if (!cancelled) setQuote(q);
       })
@@ -303,18 +349,21 @@ export function BookingWizard() {
 
   const membershipEligible = quote?.membership_eligible ?? false;
   const applyMembership = membershipEligible && useMembership;
-  const membershipDiscount = applyMembership ? (quote?.membership_discount ?? 0) : 0;
+  const membershipDiscount = applyMembership
+    ? (quote?.membership_discount ?? 0)
+    : 0;
   // Total the customer actually pays: membership-adjusted, or the promo net.
   const dueTotal = applyMembership ? (quote?.total_price ?? 0) : netTotal;
   const paidByMembership = applyMembership && dueTotal <= 0;
   const washesLeftAfter = applyMembership
-    ? quote?.memberships.reduce((min, m) => Math.min(min, m.remaining_after), Infinity)
+    ? quote?.memberships.reduce(
+        (min, m) => Math.min(min, m.remaining_after),
+        Infinity,
+      )
     : undefined;
   const showPromo = authed && !applyMembership && total > 0;
 
-  const carsValid = cars.every(
-    (c) => c.serviceId !== null && c.plate.trim(),
-  );
+  const carsValid = cars.every((c) => c.serviceId !== null && c.plate.trim());
 
   const canContinue =
     (step === 0 && carsValid) ||
@@ -322,8 +371,15 @@ export function BookingWizard() {
     (step === 2 && slot !== null) ||
     step === 3;
 
+  const selectedSlotMeta = useMemo(
+    () => slots?.find((s) => s.start === slot) ?? null,
+    [slot, slots],
+  );
+
   function updateCar(key: number, patch: Partial<CarDraft>) {
-    setCars((prev) => prev.map((c) => (c.key === key ? { ...c, ...patch } : c)));
+    setCars((prev) =>
+      prev.map((c) => (c.key === key ? { ...c, ...patch } : c)),
+    );
   }
 
   // Best-effort reverse geocode to prefill the area (OpenStreetMap Nominatim).
@@ -336,7 +392,13 @@ export function BookingWizard() {
       const json = await res.json();
       const a = json.address ?? {};
       const guess =
-        a.suburb || a.neighbourhood || a.quarter || a.city_district || a.city || a.town || "";
+        a.suburb ||
+        a.neighbourhood ||
+        a.quarter ||
+        a.city_district ||
+        a.city ||
+        a.town ||
+        "";
       if (guess) setArea(guess);
       setDetails((prev) => (a.road && !prev.trim() ? a.road : prev));
     } catch {
@@ -425,7 +487,11 @@ export function BookingWizard() {
         setStep(2);
         loadSlots(date);
       } else {
-        setError(e instanceof ApiError ? e.message : t("Something went wrong. Please try again."));
+        setError(
+          e instanceof ApiError
+            ? e.message
+            : t("Something went wrong. Please try again."),
+        );
       }
     } finally {
       setSubmitting(false);
@@ -435,8 +501,12 @@ export function BookingWizard() {
   if (loadError) {
     return (
       <div className="glass-panel mx-auto max-w-lg rounded-[var(--radius-card)] p-10 text-center">
-        <h2 className="text-xl font-bold">{t("We couldn't load our services")}</h2>
-        <p className="mt-3 text-[color:var(--muted-foreground)]">{t("Please refresh the page or try again shortly.")}</p>
+        <h2 className="text-xl font-bold">
+          {t("We couldn't load our services")}
+        </h2>
+        <p className="mt-3 text-[color:var(--muted-foreground)]">
+          {t("Please refresh the page or try again shortly.")}
+        </p>
       </div>
     );
   }
@@ -448,7 +518,10 @@ export function BookingWizard() {
   return (
     <div ref={topRef} className="mx-auto w-full max-w-3xl scroll-mt-24">
       {/* Progress */}
-      <ol className="mb-8 flex items-center justify-between gap-1 sm:gap-2" aria-label="Booking progress">
+      <ol
+        className="mb-8 flex items-center justify-between gap-1 sm:gap-2"
+        aria-label="Booking progress"
+      >
         {STEPS.map((label, i) => (
           <li key={label} className="flex flex-1 items-center gap-1 sm:gap-2">
             <span
@@ -456,7 +529,8 @@ export function BookingWizard() {
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition",
                 i < step && "bg-[color:var(--blue)] text-white",
                 i === step && "bg-[color:var(--navy)] text-white",
-                i > step && "border border-[color:var(--border)] bg-white text-[color:var(--muted-foreground)]",
+                i > step &&
+                  "border border-[color:var(--border)] bg-white text-[color:var(--muted-foreground)]",
               )}
             >
               {i < step ? "✓" : i + 1}
@@ -464,7 +538,9 @@ export function BookingWizard() {
             <span
               className={clsx(
                 "hidden text-xs font-medium sm:block",
-                i === step ? "text-[color:var(--navy)]" : "text-[color:var(--muted-foreground)]",
+                i === step
+                  ? "text-[color:var(--navy)]"
+                  : "text-[color:var(--muted-foreground)]",
               )}
             >
               {t(label)}
@@ -488,12 +564,17 @@ export function BookingWizard() {
                 emptyCar(Math.max(...prev.map((c) => c.key)) + 1),
               ])
             }
-            onRemove={(key) => setCars((prev) => prev.filter((c) => c.key !== key))}
+            onRemove={(key) =>
+              setCars((prev) => prev.filter((c) => c.key !== key))
+            }
           />
         )}
 
         {step === 1 && (
-          <StepPanel title={t("Where should we come?")} subtitle={t("Our wash bus comes to you — home, office, anywhere.")}>
+          <StepPanel
+            title={t("Where should we come?")}
+            subtitle={t("Our wash bus comes to you — home, office, anywhere.")}
+          >
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -501,7 +582,12 @@ export function BookingWizard() {
                 disabled={geoState === "locating"}
                 onClick={requestLocation}
               >
-                <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true" fill="none">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                  fill="none"
+                >
                   <path
                     d="M12 20s5.25-5.13 5.25-9a5.25 5.25 0 1 0-10.5 0c0 3.87 5.25 9 5.25 9Z"
                     stroke="currentColor"
@@ -510,23 +596,30 @@ export function BookingWizard() {
                   />
                   <circle cx="12" cy="11" r="1.9" fill="currentColor" />
                 </svg>
-                {geoState === "locating" ? t("Locating…") : t("Use my exact location")}
+                {geoState === "locating"
+                  ? t("Locating…")
+                  : t("Use my exact location")}
               </button>
               {geo && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-                  ✓ {t("Location pinned")} ({geo.lat.toFixed(4)}, {geo.lng.toFixed(4)})
+                  ✓ {t("Location pinned")} ({geo.lat.toFixed(4)},{" "}
+                  {geo.lng.toFixed(4)})
                 </span>
               )}
               {geoState === "error" && (
                 <span className="text-xs font-medium text-red-600">
-                  {t("Couldn't get your location — check browser permissions, or type the area below.")}
+                  {t(
+                    "Couldn't get your location — check browser permissions, or type the area below.",
+                  )}
                 </span>
               )}
             </div>
             <div className="space-y-1.5">
               <LocationMap value={geo} onChange={handlePinChange} />
               <p className="text-xs text-slate-500">
-                {t("Tap the map or drag the pin to set your exact spot — the driver navigates straight to it.")}
+                {t(
+                  "Tap the map or drag the pin to set your exact spot — the driver navigates straight to it.",
+                )}
               </p>
             </div>
             <Field label={t("Area / neighborhood")} required>
@@ -549,7 +642,10 @@ export function BookingWizard() {
         )}
 
         {step === 2 && (
-          <StepPanel title={t("Pick your time")} subtitle={t("Choose a day and an available slot.")}>
+          <StepPanel
+            title={t("Pick your time")}
+            subtitle={t("Choose a day and an available slot.")}
+          >
             <div className="flex gap-2 overflow-x-auto pb-2">
               {days.map((d) => (
                 <button
@@ -570,46 +666,73 @@ export function BookingWizard() {
             </div>
 
             {slots === null ? (
-              <p className="py-8 text-center text-sm text-[color:var(--muted-foreground)]">{t("Checking availability…")}</p>
+              <p className="py-8 text-center text-sm text-[color:var(--muted-foreground)]">
+                {t("Checking availability…")}
+              </p>
             ) : (
-              <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {slots.map((s) => {
-                  // A slot on today's date whose start time has already passed
-                  // must not be bookable, even if the backend still lists it.
-                  const isPast =
-                    new Date(`${date}T${s.start}:00`).getTime() <= nowMs;
-                  const selectable = s.available && !isPast;
-                  return (
-                    <button
-                      key={s.start}
-                      type="button"
-                      disabled={!selectable}
-                      onClick={() => setSlot(s.start)}
-                      className={clsx(
-                        "rounded-xl border px-2 py-2.5 text-sm font-semibold transition",
-                        slot === s.start
-                          ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
-                          : selectable
-                            ? "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)] hover:text-[color:var(--blue)]"
-                            : "cursor-not-allowed border-transparent bg-[color:var(--background)] text-[color:var(--muted-foreground)]/50 line-through",
-                      )}
-                    >
-                      {s.start}
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {slots.map((s) => {
+                    // A slot on today's date whose start time has already passed
+                    // must not be bookable, even if the backend still lists it.
+                    const isPast =
+                      new Date(`${date}T${s.start}:00`).getTime() <= nowMs;
+                    const selectable = s.available && !isPast;
+                    return (
+                      <button
+                        key={s.start}
+                        type="button"
+                        disabled={!selectable}
+                        onClick={() => setSlot(s.start)}
+                        className={clsx(
+                          "rounded-xl border px-2 py-2.5 text-sm font-semibold transition",
+                          slot === s.start
+                            ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                            : selectable
+                              ? "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)] hover:text-[color:var(--blue)]"
+                              : "cursor-not-allowed border-transparent bg-[color:var(--background)] text-[color:var(--muted-foreground)]/50 line-through",
+                        )}
+                      >
+                        {s.start}
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedSlotMeta &&
+                  typeof selectedSlotMeta.available_bus_count === "number" && (
+                    <div className="mt-4 rounded-2xl border border-[color:var(--border)] bg-white/70 px-4 py-3 text-sm text-[color:var(--muted-foreground)]">
+                      <p className="font-semibold text-[color:var(--navy)]">
+                        {selectedSlotMeta.available_bus_count} bus
+                        {selectedSlotMeta.available_bus_count === 1
+                          ? ""
+                          : "es"}{" "}
+                        available for this time
+                      </p>
+                      <p className="mt-1">
+                        Final bus assignment is confirmed by our team after
+                        booking.
+                      </p>
+                    </div>
+                  )}
+              </>
             )}
           </StepPanel>
         )}
 
         {step === 3 && (
-          <StepPanel title={t("Payment")} subtitle={t("Secure online payment. You'll be redirected to complete it after confirming.")}>
+          <StepPanel
+            title={t("Payment")}
+            subtitle={t(
+              "Secure online payment. You'll be redirected to complete it after confirming.",
+            )}
+          >
             <PayOption
               active
               onClick={() => {}}
               title={t("Pay online (SkipCash)")}
-              description={t("Secure card payment. We'll take you to the checkout after you confirm.")}
+              description={t(
+                "Secure card payment. We'll take you to the checkout after you confirm.",
+              )}
             />
             <Field label={t("Notes for the team (optional)")}>
               <textarea
@@ -679,7 +802,10 @@ export function BookingWizard() {
         )}
 
         {error && (
-          <p role="alert" className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          <p
+            role="alert"
+            className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
+          >
             {error}
           </p>
         )}
@@ -689,7 +815,10 @@ export function BookingWizard() {
           <div className="text-sm text-[color:var(--muted-foreground)]">
             {step === 4 ? (
               <>
-                {t("Total")} <span className="text-lg font-bold text-[color:var(--navy)]">{fmt(dueTotal)}</span>
+                {t("Total")}{" "}
+                <span className="text-lg font-bold text-[color:var(--navy)]">
+                  {fmt(dueTotal)}
+                </span>
                 {paidByMembership ? (
                   <span className="ms-2 text-xs font-semibold text-emerald-600">
                     ({t("covered by membership")})
@@ -705,7 +834,10 @@ export function BookingWizard() {
             ) : (
               total > 0 && (
                 <>
-                  {t("Total")} <span className="text-lg font-bold text-[color:var(--navy)]">{fmt(netTotal)}</span>
+                  {t("Total")}{" "}
+                  <span className="text-lg font-bold text-[color:var(--navy)]">
+                    {fmt(netTotal)}
+                  </span>
                 </>
               )
             )}
@@ -760,8 +892,12 @@ function StepPanel({
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h2 className="text-2xl font-bold text-[color:var(--foreground)]">{title}</h2>
-        <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{subtitle}</p>
+        <h2 className="text-2xl font-bold text-[color:var(--foreground)]">
+          {title}
+        </h2>
+        <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
+          {subtitle}
+        </p>
       </div>
       {children}
     </div>
@@ -812,11 +948,16 @@ function StepServices({
         {cars.map((car, index) => {
           const subTypes = subTypesFor(car.kind);
           const cats = categoriesFor(car.kind, car.vtype);
-          const visibleServices = services.filter((s) => cats.includes(s.category));
+          const visibleServices = services.filter((s) =>
+            cats.includes(s.category),
+          );
           const selected = services.find((s) => s.id === car.serviceId);
           const isCar = car.kind === "car";
           return (
-            <div key={car.key} className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5">
+            <div
+              key={car.key}
+              className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5"
+            >
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-sm font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">
                   {t(kindLabel(car.kind))} {index + 1}
@@ -861,14 +1002,20 @@ function StepServices({
 
               {subTypes.length > 0 && (
                 <div className="mb-4">
-                  <p className="mb-2 text-sm font-semibold">{t("Vehicle type")}</p>
+                  <p className="mb-2 text-sm font-semibold">
+                    {t("Vehicle type")}
+                  </p>
                   <div className="flex gap-2">
                     {subTypes.map((option) => (
                       <button
                         key={option.value}
                         type="button"
                         onClick={() =>
-                          onUpdate(car.key, { vtype: option.value, serviceId: null, addOnIds: [] })
+                          onUpdate(car.key, {
+                            vtype: option.value,
+                            serviceId: null,
+                            addOnIds: [],
+                          })
                         }
                         className={clsx(
                           "flex-1 rounded-full border px-4 py-2.5 text-sm font-semibold transition sm:flex-none sm:px-6",
@@ -888,50 +1035,67 @@ function StepServices({
                 {visibleServices.map((service) => {
                   const isPopular = service.name === "Deep Bubble";
                   return (
-                  <button
-                    key={service.id}
-                    type="button"
-                    onClick={() => onUpdate(car.key, { serviceId: service.id, addOnIds: [] })}
-                    className={clsx(
-                      "relative flex flex-col items-start rounded-2xl border p-4 text-left transition",
-                      car.serviceId === service.id
-                        ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
-                        : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
-                    )}
-                  >
-                    {isPopular && (
-                      <span className="absolute end-2 top-2 rounded-full bg-[color:var(--cyan)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--navy)]">
-                        {t("Popular")}
-                      </span>
-                    )}
-                    <span className="font-bold">{localized(lang, service.name, service.name_ar)}</span>
-                    <span
+                    <button
+                      key={service.id}
+                      type="button"
+                      onClick={() =>
+                        onUpdate(car.key, {
+                          serviceId: service.id,
+                          addOnIds: [],
+                        })
+                      }
                       className={clsx(
-                        "mt-1 text-xs leading-5",
-                        car.serviceId === service.id ? "text-white/75" : "text-[color:var(--muted-foreground)]",
+                        "relative flex flex-col items-start rounded-2xl border p-4 text-left transition",
+                        car.serviceId === service.id
+                          ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                          : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
                       )}
                     >
-                      {localized(lang, service.description, service.description_ar)}
-                    </span>
-                    <span
-                      className={clsx(
-                        "mt-2 flex items-center gap-2 text-sm font-bold",
-                        car.serviceId === service.id ? "text-[color:var(--cyan)]" : "text-[color:var(--blue)]",
-                      )}
-                    >
-                      {fmt(priceFor(service, car.vtype))}
-                      {service.duration_label && (
-                        <span
-                          className={clsx(
-                            "font-medium",
-                            car.serviceId === service.id ? "text-white/70" : "text-[color:var(--muted-foreground)]",
-                          )}
-                        >
-                          · {service.duration_label}
+                      {isPopular && (
+                        <span className="absolute end-2 top-2 rounded-full bg-[color:var(--cyan)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--navy)]">
+                          {t("Popular")}
                         </span>
                       )}
-                    </span>
-                  </button>
+                      <span className="font-bold">
+                        {localized(lang, service.name, service.name_ar)}
+                      </span>
+                      <span
+                        className={clsx(
+                          "mt-1 text-xs leading-5",
+                          car.serviceId === service.id
+                            ? "text-white/75"
+                            : "text-[color:var(--muted-foreground)]",
+                        )}
+                      >
+                        {localized(
+                          lang,
+                          service.description,
+                          service.description_ar,
+                        )}
+                      </span>
+                      <span
+                        className={clsx(
+                          "mt-2 flex items-center gap-2 text-sm font-bold",
+                          car.serviceId === service.id
+                            ? "text-[color:var(--cyan)]"
+                            : "text-[color:var(--blue)]",
+                        )}
+                      >
+                        {fmt(priceFor(service, car.vtype))}
+                        {service.duration_label && (
+                          <span
+                            className={clsx(
+                              "font-medium",
+                              car.serviceId === service.id
+                                ? "text-white/70"
+                                : "text-[color:var(--muted-foreground)]",
+                            )}
+                          >
+                            · {service.duration_label}
+                          </span>
+                        )}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
@@ -969,12 +1133,17 @@ function StepServices({
               )}
 
               <div className="mt-4">
-                <Field label={isCar ? t("Plate no.") : t("ID / Registration")} required>
+                <Field
+                  label={isCar ? t("Plate no.") : t("ID / Registration")}
+                  required
+                >
                   <input
                     className="wizard-input"
                     placeholder="123456"
                     value={car.plate}
-                    onChange={(e) => onUpdate(car.key, { plate: e.target.value })}
+                    onChange={(e) =>
+                      onUpdate(car.key, { plate: e.target.value })
+                    }
                   />
                 </Field>
               </div>
@@ -1017,7 +1186,12 @@ function PayOption({
       )}
     >
       <span className="font-bold">{title}</span>
-      <span className={clsx("mt-1 text-sm", active ? "text-white/75" : "text-[color:var(--muted-foreground)]")}>
+      <span
+        className={clsx(
+          "mt-1 text-sm",
+          active ? "text-white/75" : "text-[color:var(--muted-foreground)]",
+        )}
+      >
         {description}
       </span>
     </button>
@@ -1062,11 +1236,14 @@ function Summary({
   durationLabel: string | null;
 }) {
   const { lang, t } = useI18n();
-  const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(lang === "ar" ? "ar" : "en", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+  const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(
+    lang === "ar" ? "ar" : "en",
+    {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    },
+  );
   return (
     <div className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5">
       <h3 className="text-sm font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">
@@ -1076,14 +1253,26 @@ function Summary({
         {cars.map((car) => {
           const service = services.find((s) => s.id === car.serviceId);
           if (!service) return null;
-          const addOns = service.add_ons.filter((a) => car.addOnIds.includes(a.id));
-          const subtotal = priceFor(service, car.vtype) + addOns.reduce((s, a) => s + a.price, 0);
+          const addOns = service.add_ons.filter((a) =>
+            car.addOnIds.includes(a.id),
+          );
+          const subtotal =
+            priceFor(service, car.vtype) +
+            addOns.reduce((s, a) => s + a.price, 0);
           return (
-            <li key={car.key} className="flex items-start justify-between gap-4">
+            <li
+              key={car.key}
+              className="flex items-start justify-between gap-4"
+            >
               <span>
-                <span className="font-semibold">{localized(lang, service.name, service.name_ar)}</span>
+                <span className="font-semibold">
+                  {localized(lang, service.name, service.name_ar)}
+                </span>
                 {addOns.length > 0 && (
-                  <span className="text-[color:var(--muted-foreground)]"> + {addOns.map((a) => a.name).join(", ")}</span>
+                  <span className="text-[color:var(--muted-foreground)]">
+                    {" "}
+                    + {addOns.map((a) => a.name).join(", ")}
+                  </span>
                 )}
                 <span className="block text-xs text-[color:var(--muted-foreground)]">
                   {[
@@ -1100,14 +1289,22 @@ function Summary({
           );
         })}
         <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
-          <span className="text-[color:var(--muted-foreground)]">{t("Location")}</span>
+          <span className="text-[color:var(--muted-foreground)]">
+            {t("Location")}
+          </span>
           <span className="max-w-[60%] text-right font-medium">
             {area}
-            {details && <span className="block text-xs text-[color:var(--muted-foreground)]">{details}</span>}
+            {details && (
+              <span className="block text-xs text-[color:var(--muted-foreground)]">
+                {details}
+              </span>
+            )}
           </span>
         </li>
         <li className="flex justify-between">
-          <span className="text-[color:var(--muted-foreground)]">{t("When")}</span>
+          <span className="text-[color:var(--muted-foreground)]">
+            {t("When")}
+          </span>
           <span className="text-right font-medium">
             {dateLabel}
             <span className="block text-xs text-[color:var(--muted-foreground)]">
@@ -1117,7 +1314,9 @@ function Summary({
           </span>
         </li>
         <li className="flex justify-between">
-          <span className="text-[color:var(--muted-foreground)]">{t("Payment")}</span>
+          <span className="text-[color:var(--muted-foreground)]">
+            {t("Payment")}
+          </span>
           <span className="font-medium">
             {paidByMembership ? t("Membership") : t("Pay online (SkipCash)")}
           </span>
@@ -1125,7 +1324,9 @@ function Summary({
         {membershipApplied && membershipDiscount > 0 && (
           <>
             <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
-              <span className="text-[color:var(--muted-foreground)]">{t("Subtotal")}</span>
+              <span className="text-[color:var(--muted-foreground)]">
+                {t("Subtotal")}
+              </span>
               <span className="font-medium">{fmt(total)}</span>
             </li>
             <li className="flex justify-between text-emerald-600">
@@ -1141,13 +1342,17 @@ function Summary({
         {!membershipApplied && discount > 0 && (
           <>
             <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
-              <span className="text-[color:var(--muted-foreground)]">{t("Subtotal")}</span>
+              <span className="text-[color:var(--muted-foreground)]">
+                {t("Subtotal")}
+              </span>
               <span className="font-medium">{fmt(total)}</span>
             </li>
             <li className="flex justify-between text-emerald-600">
               <span>
                 {t("Discount")}
-                {promoCode && <span className="font-semibold"> ({promoCode})</span>}
+                {promoCode && (
+                  <span className="font-semibold"> ({promoCode})</span>
+                )}
               </span>
               <span className="font-semibold">− {fmt(discount)}</span>
             </li>
@@ -1157,11 +1362,13 @@ function Summary({
           <span>{t("Total")}</span>
           <span>{fmt(membershipApplied ? dueTotal : netTotal)}</span>
         </li>
-        {paidByMembership && washesLeftAfter !== undefined && Number.isFinite(washesLeftAfter) && (
-          <li className="flex justify-end text-xs text-[color:var(--muted-foreground)]">
-            {t("Washes left after booking")}: {washesLeftAfter}
-          </li>
-        )}
+        {paidByMembership &&
+          washesLeftAfter !== undefined &&
+          Number.isFinite(washesLeftAfter) && (
+            <li className="flex justify-end text-xs text-[color:var(--muted-foreground)]">
+              {t("Washes left after booking")}: {washesLeftAfter}
+            </li>
+          )}
       </ul>
     </div>
   );
@@ -1182,7 +1389,9 @@ function MembershipToggle({
   return (
     <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
       <div className="text-sm">
-        <span className="font-semibold text-emerald-800">{t("Use membership")}</span>
+        <span className="font-semibold text-emerald-800">
+          {t("Use membership")}
+        </span>
         <span className="block text-xs text-emerald-700">
           {name}
           {on && remainingAfter !== undefined && Number.isFinite(remainingAfter)
@@ -1233,7 +1442,8 @@ function PromoField({
     return (
       <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
         <span className="text-sm font-semibold text-emerald-700">
-          ✓ {t("Code")} {applied.code} {t("applied")} — {t("you save")} {fmt(applied.discount)}
+          ✓ {t("Code")} {applied.code} {t("applied")} — {t("you save")}{" "}
+          {fmt(applied.discount)}
         </span>
         <button
           type="button"
@@ -1273,20 +1483,25 @@ function PromoField({
           {busy ? t("Checking…") : t("Apply")}
         </button>
       </div>
-      {error && <p className="mt-1 text-xs font-medium text-red-600">{error}</p>}
+      {error && (
+        <p className="mt-1 text-xs font-medium text-red-600">{error}</p>
+      )}
     </div>
   );
 }
 
 function SuccessPanel({ booking }: { booking: Booking }) {
   const { lang, t } = useI18n();
-  const when = new Date(booking.scheduled_at).toLocaleString(lang === "ar" ? "ar" : "en", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const when = new Date(booking.scheduled_at).toLocaleString(
+    lang === "ar" ? "ar" : "en",
+    {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+  );
   return (
     <div className="glass-panel mx-auto max-w-lg rounded-[var(--radius-card)] p-8 text-center sm:p-12">
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl">
@@ -1294,7 +1509,10 @@ function SuccessPanel({ booking }: { booking: Booking }) {
       </div>
       <h2 className="mt-6 text-2xl font-bold">{t("Booking confirmed!")}</h2>
       <p className="mt-2 text-[color:var(--muted-foreground)]">
-        {t("Reference")} <span className="font-bold text-[color:var(--navy)]">{booking.reference}</span>
+        {t("Reference")}{" "}
+        <span className="font-bold text-[color:var(--navy)]">
+          {booking.reference}
+        </span>
       </p>
       <p className="mt-4 text-sm leading-7 text-[color:var(--muted-foreground)]">
         {when}
