@@ -85,8 +85,13 @@ export function getServices() {
   return request<Paginated<Service>>("/services", { auth: false }).then((r) => r.data);
 }
 
-export function getAvailability(date: string, window: "standard" | "midnight" = "standard") {
-  return request<Availability>(`/availability?date=${date}&window=${window}`, { auth: false });
+export function getAvailability(
+  date: string,
+  window: "standard" | "midnight" = "standard",
+  serviceIds: number[] = [],
+) {
+  const ids = serviceIds.map((id) => `&service_ids[]=${id}`).join("");
+  return request<Availability>(`/availability?date=${date}&window=${window}${ids}`, { auth: false });
 }
 
 export function getMembershipPlans() {

@@ -134,6 +134,11 @@ export type Booking = {
   status: BookingStatus;
   status_label: string;
   scheduled_at: string; // ISO
+  scheduled_end_at?: string;
+  duration_minutes?: number;
+  duration_label?: string;
+  time_range_label?: string | null;
+  membership_applied?: boolean;
   payment_method: PaymentMethod;
   total: number;
   address_area: string;

@@ -202,18 +202,21 @@ export function BookingWizard() {
   // Reference "now" captured when slots load, used to hide today's past slots.
   const [nowMs, setNowMs] = useState(0);
 
-  const loadSlots = useCallback((d: string) => {
+  const loadSlots = useCallback((d: string, ids: number[] = []) => {
     setSlots(null);
     setSlot(null);
     setNowMs(Date.now());
-    getAvailability(d)
+    getAvailability(d, "standard", ids)
       .then((a) => setSlots(a.slots))
       .catch(() => setSlots([]));
   }, []);
 
   useEffect(() => {
-    if (step === 2) queueMicrotask(() => loadSlots(date));
-  }, [step, date, loadSlots]);
+    if (step !== 2) return;
+    // Pass the cart's services so slots reflect the real duration (fit + overlap).
+    const ids = cars.map((c) => c.serviceId).filter((x): x is number => x !== null);
+    queueMicrotask(() => loadSlots(date, ids));
+  }, [step, date, cars, loadSlots]);
 
   const total = useMemo(
     () =>

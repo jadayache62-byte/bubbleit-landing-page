@@ -154,13 +154,29 @@ async function handle(req: NextRequest, segments: string[]) {
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
     const grid = req.nextUrl.searchParams.get("window") === "midnight" ? MIDNIGHT_SLOT_GRID : SLOT_GRID;
+    // Duration-aware: fit within working hours + interval overlap.
+    const serviceIds = req.nextUrl.searchParams.getAll("service_ids[]").map(Number);
+    const duration = serviceIds.length
+      ? serviceIds.reduce((sum, id) => sum + (SERVICES.find((s) => s.id === id)?.duration_minutes ?? 0), 0) || 60
+      : 60;
+    const toMin = (hm: string) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
+    const closing = toMin(grid[grid.length - 1]) + 60;
+    const existing = store.bookings
+      .filter((b) => b.scheduled_at.slice(0, 10) === date && !["cancelled_by_customer", "cancelled_by_admin"].includes(b.status))
+      .map((b) => {
+        const s = toMin(b.scheduled_at.slice(11, 16));
+        return [s, s + (b.duration_minutes ?? 60)] as const;
+      });
     const slots = grid.map((start) => {
-      const end = `${String(Number(start.slice(0, 2)) + 1).padStart(2, "0")}:00`;
+      const s = toMin(start);
+      const e = s + duration;
+      const endHm = `${String(Math.floor(e / 60)).padStart(2, "0")}:${String(e % 60).padStart(2, "0")}`;
       const isPast = date < todayStr || (date === todayStr && start <= now.toTimeString().slice(0, 5));
-      const full = slotTakenCount(`${date}T${start}:00`) >= FLEET_CAPACITY;
-      return { start, end, available: !isPast && !full };
+      const overlaps = existing.filter(([es, ee]) => es < e && ee > s).length;
+      const available = !isPast && e <= closing && overlaps < FLEET_CAPACITY;
+      return { start, end: endHm, available };
     });
-    return envelope({ date, slots });
+    return envelope({ date, duration_minutes: duration, slots });
   }
 
   // ── Auth ──
