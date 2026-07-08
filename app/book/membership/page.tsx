@@ -45,8 +45,6 @@ function RedeemInner() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehicleId, setVehicleId] = useState<number | null>(null);
   const [addVehicle, setAddVehicle] = useState(false);
-  const [make, setMake] = useState("");
-  const [model, setModel] = useState("");
   const [plate, setPlate] = useState("");
   const [vtype, setVtype] = useState<"sedan" | "suv">("sedan");
 
@@ -106,8 +104,8 @@ function RedeemInner() {
       let vid = vehicleId;
       if (addVehicle || vid === null) {
         const vehicle = await createVehicle({
-          make: make.trim(),
-          model: model.trim(),
+          make: "",
+          model: "",
           year: null,
           color: "",
           plate_number: plate.trim(),
@@ -199,7 +197,9 @@ function RedeemInner() {
               )}
             >
               <span className="font-semibold">
-                {v.make} {v.model} · {v.plate_number}
+                {[v.make, v.model].filter(Boolean).join(" ")}
+                {[v.make, v.model].filter(Boolean).length > 0 && " · "}
+                {v.plate_number}
               </span>
               <span className={clsx("text-xs", vehicleId === v.id ? "text-white/70" : "text-[color:var(--muted-foreground)]")}>
                 {v.type === "suv" ? t("SUV / 4-Wheel") : t("Salon / Sedan")}
@@ -217,10 +217,8 @@ function RedeemInner() {
           </button>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-4">
-          <input className="wizard-input" placeholder={t("Make")} value={make} onChange={(e) => setMake(e.target.value)} />
-          <input className="wizard-input" placeholder={t("Model")} value={model} onChange={(e) => setModel(e.target.value)} />
-          <input className="wizard-input" placeholder={t("Plate no.")} value={plate} onChange={(e) => setPlate(e.target.value)} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <input className="wizard-input" placeholder={t("ID / Registration")} value={plate} onChange={(e) => setPlate(e.target.value)} />
           {planVtype ? (
             // Locked to the membership's vehicle type.
             <div className="wizard-input flex items-center justify-between text-[color:var(--muted-foreground)]">

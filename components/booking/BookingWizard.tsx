@@ -965,31 +965,7 @@ function StepServices({
                 </div>
               )}
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-4">
-                <Field label={t("Make")}>
-                  <input
-                    className="wizard-input"
-                    placeholder="Toyota"
-                    value={car.make}
-                    onChange={(e) => onUpdate(car.key, { make: e.target.value })}
-                  />
-                </Field>
-                <Field label={t("Model")}>
-                  <input
-                    className="wizard-input"
-                    placeholder="Land Cruiser"
-                    value={car.model}
-                    onChange={(e) => onUpdate(car.key, { model: e.target.value })}
-                  />
-                </Field>
-                <Field label={t("Color")}>
-                  <input
-                    className="wizard-input"
-                    placeholder="White"
-                    value={car.color}
-                    onChange={(e) => onUpdate(car.key, { color: e.target.value })}
-                  />
-                </Field>
+              <div className="mt-4">
                 <Field label={isCar ? t("Plate no.") : t("ID / Registration")} required>
                   <input
                     className="wizard-input"
