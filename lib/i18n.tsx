@@ -137,6 +137,14 @@ const AR: Record<string, string> = {
   "Location pinned": "تم تثبيت الموقع",
   "Couldn't get your location — check browser permissions, or type the area below.":
     "تعذّر تحديد موقعك — تحقق من أذونات المتصفح أو اكتب المنطقة أدناه.",
+  "Tap the map or drag the pin to set your exact spot — the driver navigates straight to it.":
+    "اضغط على الخريطة أو حرّك الدبوس لتحديد موقعك بدقة — سيتوجّه السائق إليه مباشرة.",
+  "Use membership": "استخدام الاشتراك",
+  "your membership": "اشتراكك",
+  "Membership": "اشتراك",
+  "Covered by membership": "مغطّى بالاشتراك",
+  "covered by membership": "مغطّى بالاشتراك",
+  "Washes left after booking": "الغسلات المتبقية بعد الحجز",
   "Area / neighborhood": "المنطقة / الحي",
   "e.g. West Bay, The Pearl…": "مثال: الخليج الغربي، اللؤلؤة…",
   "Building, street, parking details": "تفاصيل المبنى والشارع والمواقف",

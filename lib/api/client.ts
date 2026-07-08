@@ -4,6 +4,7 @@ import type {
   Address,
   Availability,
   Booking,
+  BookingQuote,
   CreateBookingPayload,
   Customer,
   CustomerMembership,
@@ -11,6 +12,7 @@ import type {
   MembershipPlan,
   Paginated,
   PromoValidation,
+  QuoteCar,
   Service,
   Vehicle,
   VerifyOtpResult,
@@ -201,6 +203,16 @@ export function validatePromo(code: string, subtotal: number, serviceIds: number
 
 export function createBooking(payload: CreateBookingPayload) {
   return request<Booking>("/bookings", { method: "POST", body: payload });
+}
+
+// Server-side price preview: applies the customer's eligible memberships to the
+// cart and returns the authoritative total. Requires auth.
+export function getQuote(payload: {
+  scheduled_at: string;
+  cars: QuoteCar[];
+  use_membership?: boolean;
+}) {
+  return request<BookingQuote>("/bookings/quote", { method: "POST", body: payload });
 }
 
 export function listBookings() {

@@ -62,6 +62,68 @@ function slotTakenCount(dateTime: string) {
 // Mock fleet capacity: 2 buses → a slot is unavailable once 2 active bookings hold it.
 const FLEET_CAPACITY = 2;
 
+// Which services each membership scope redeems (mirrors the backend's
+// plan.service_id link). Only Standard Bubble (id 1) is seeded as a full wash.
+const SCOPE_SERVICES: Record<string, number[]> = {
+  full_wash: [1],
+  exterior: [],
+  midnight_exterior: [],
+};
+
+type MockMembership = ReturnType<typeof db>["memberships"][number];
+
+function membershipCoversCar(
+  m: MockMembership,
+  serviceId: number,
+  vehicleType: string,
+  scheduledAt: string,
+): boolean {
+  if (m.status !== "active" || m.washes_remaining <= 0) return false;
+  if (m.expires_at && new Date(m.expires_at) < new Date()) return false;
+
+  const vt = m.plan.vehicle_type;
+  const vehicleOk =
+    vt === null ||
+    (vt === "sedan" && ["sedan", "other"].includes(vehicleType)) ||
+    (vt === "suv" && ["suv", "truck", "van"].includes(vehicleType));
+  if (!vehicleOk) return false;
+
+  if (!(SCOPE_SERVICES[m.plan.scope] ?? []).includes(serviceId)) return false;
+
+  if (m.plan.window_start && m.plan.window_end) {
+    const t = scheduledAt.slice(11, 16);
+    if (!(t >= m.plan.window_start && t < m.plan.window_end)) return false;
+  }
+  return true;
+}
+
+// Greedily assign each car to the best eligible membership, spending the most
+// perishable credit first. `cars` carry a `type` + `service_id`. Returns a map
+// of [carIndex => membership]. Read-only unless the caller mutates.
+function allocateMemberships(
+  memberships: MockMembership[],
+  cars: { service_id: number; type: string }[],
+  scheduledAt: string,
+): Record<number, MockMembership> {
+  const budget = new Map(memberships.map((m) => [m.id, m.washes_remaining]));
+  const alloc: Record<number, MockMembership> = {};
+  cars.forEach((car, i) => {
+    const candidates = memberships.filter(
+      (m) => (budget.get(m.id) ?? 0) > 0 && membershipCoversCar(m, car.service_id, car.type, scheduledAt),
+    );
+    if (candidates.length === 0) return;
+    candidates.sort((a, b) => {
+      const ae = a.expires_at ? new Date(a.expires_at).getTime() : Infinity;
+      const be = b.expires_at ? new Date(b.expires_at).getTime() : Infinity;
+      return ae !== be ? ae - be : (budget.get(a.id) ?? 0) - (budget.get(b.id) ?? 0);
+    });
+    const best = candidates[0];
+    alloc[i] = best;
+    budget.set(best.id, (budget.get(best.id) ?? 0) - 1);
+  });
+  return alloc;
+}
+
 async function handle(req: NextRequest, segments: string[]) {
   const store = db();
   const path = segments.join("/");
@@ -256,7 +318,7 @@ async function handle(req: NextRequest, segments: string[]) {
   }
 
   // ── Memberships ──
-  if (method === "GET" && path === "memberships") {
+  if (method === "GET" && (path === "memberships" || path === "memberships/my")) {
     const mine = store.memberships
       .filter((m) => m.customer_id === customer.id)
       .map(({ customer_id: _c, ...pub }) => pub);
@@ -294,6 +356,60 @@ async function handle(req: NextRequest, segments: string[]) {
       .sort((a, b) => b.id - a.id)
       .map(({ customer_id: _c, ...pub }) => pub);
     return envelope(paginated(mine));
+  }
+
+  // Server-side price preview with membership coverage applied.
+  if (method === "POST" && path === "bookings/quote") {
+    const scheduledAt = String(body.scheduled_at ?? "");
+    const quoteCars = Array.isArray(body.cars) ? body.cars : [];
+    const useMembership = body.use_membership !== false;
+
+    // Match the backend: auto-apply only for a single, add-on-free car.
+    const singleAddonFree =
+      quoteCars.length === 1 && (quoteCars[0].add_on_ids?.length ?? 0) === 0;
+    const mine = useMembership && singleAddonFree
+      ? store.memberships.filter((m) => m.customer_id === customer.id)
+      : [];
+    const norm = quoteCars.map((c: { service_id: number; vehicle_type: string }) => ({
+      service_id: Number(c.service_id),
+      type: String(c.vehicle_type ?? "sedan"),
+    }));
+    const alloc = allocateMemberships(mine, norm, scheduledAt);
+
+    let serviceTotal = 0;
+    let membershipDiscount = 0;
+    const summary = new Map<number, { m: MockMembership; applied: number }>();
+    const carsOut = norm.map((c: { service_id: number; type: string }, i: number) => {
+      const service = SERVICES.find((s) => s.id === c.service_id);
+      const base = service ? (c.type === "suv" ? service.price_suv : service.price) : 0;
+      serviceTotal += base;
+      const m = alloc[i];
+      if (m) {
+        membershipDiscount += base;
+        const s = summary.get(m.id) ?? { m, applied: 0 };
+        s.applied += 1;
+        summary.set(m.id, s);
+      }
+      return { index: i, service_id: c.service_id, subtotal: base, covered: !!m, membership_id: m?.id ?? null };
+    });
+
+    const total = Math.max(0, serviceTotal - membershipDiscount);
+    return envelope({
+      service_total: serviceTotal,
+      membership_eligible: membershipDiscount > 0,
+      membership_discount: membershipDiscount,
+      total_price: total,
+      payment_required: total > 0,
+      payment_method: total <= 0 && membershipDiscount > 0 ? "membership" : "online",
+      cars: carsOut,
+      memberships: [...summary.values()].map(({ m, applied }) => ({
+        id: m.id,
+        name: m.plan.name,
+        remaining_washes: m.washes_remaining,
+        washes_applied: applied,
+        remaining_after: Math.max(0, m.washes_remaining - applied),
+      })),
+    });
   }
 
   if (method === "POST" && path === "promo-codes/validate") {
@@ -385,6 +501,33 @@ async function handle(req: NextRequest, segments: string[]) {
       });
     }
 
+    // Auto-apply a membership only for a single, add-on-free car (matches the
+    // backend's dedicated-bus redemption model).
+    const useMembership = body.use_membership !== false;
+    const singleAddonFree =
+      cars.length === 1 && (cars[0].add_on_ids?.length ?? 0) === 0;
+    const mineActive = useMembership && singleAddonFree
+      ? store.memberships.filter((m) => m.customer_id === customer.id)
+      : [];
+    const bookingAlloc = allocateMemberships(
+      mineActive,
+      bookingCars.map((c) => ({ service_id: c.service.id, type: c.vehicle.type as string })),
+      scheduledAt,
+    );
+    let coveredCount = 0;
+    bookingCars.forEach((c, i) => {
+      const m = bookingAlloc[i];
+      if (!m) return;
+      coveredCount += 1;
+      c.service = { ...c.service, price: 0 };
+      c.add_ons = [];
+      c.subtotal = 0;
+      m.washes_used += 1;
+      m.washes_remaining -= 1;
+      if (m.washes_remaining === 0) m.status = "exhausted" as never;
+    });
+    const fullyCovered = coveredCount > 0 && bookingCars.every((c) => c.subtotal === 0);
+
     let addressArea = String(body.address_area ?? "").trim();
     if (body.address_id) {
       const address = customer.addresses.find((a) => a.id === body.address_id);
@@ -415,10 +558,10 @@ async function handle(req: NextRequest, segments: string[]) {
       id,
       customer_id: customer.id,
       reference,
-      status: "pending_payment",
-      status_label: STATUS_LABELS.pending_payment,
+      status: fullyCovered ? "paid" : "pending_payment",
+      status_label: fullyCovered ? STATUS_LABELS.paid : STATUS_LABELS.pending_payment,
       scheduled_at: scheduledAt,
-      payment_method: paymentMethod,
+      payment_method: fullyCovered ? "membership" : paymentMethod,
       total: Math.max(0, subtotal - discount),
       address_area: addressArea,
       notes: String(body.notes ?? "").trim(),

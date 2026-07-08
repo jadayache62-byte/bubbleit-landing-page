@@ -157,8 +157,41 @@ export type CreateBookingPayload = {
   latitude?: number;
   longitude?: number;
   payment_method?: PaymentMethod;
+  use_membership?: boolean;
   notes?: string;
   promo_code?: string;
+};
+
+// Server-side price preview. The confirm page renders this instead of computing
+// a total locally — the server applies eligible memberships and is the source
+// of truth for the amount charged.
+export type QuoteCar = {
+  vehicle_type: VehicleType;
+  service_id: number;
+  add_on_ids: number[];
+};
+
+export type BookingQuote = {
+  service_total: number;
+  membership_eligible: boolean;
+  membership_discount: number;
+  total_price: number;
+  payment_required: boolean;
+  payment_method: PaymentMethod;
+  cars: {
+    index: number;
+    service_id: number;
+    subtotal: number;
+    covered: boolean;
+    membership_id: number | null;
+  }[];
+  memberships: {
+    id: number;
+    name: string;
+    remaining_washes: number;
+    washes_applied: number;
+    remaining_after: number;
+  }[];
 };
 
 // Result of validating a promo code against the current cart. All rule

@@ -3,19 +3,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { AuthPanel } from "@/components/booking/AuthPanel";
+
+// Leaflet touches `window` at import time, so load the map client-side only.
+const LocationMap = dynamic(() => import("@/components/booking/LocationMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="grid h-[260px] w-full place-items-center rounded-2xl bg-slate-100 text-sm text-slate-400">
+      Loading map…
+    </div>
+  ),
+});
 import {
   ApiError,
   createAddress,
   createBooking,
   createVehicle,
   getAvailability,
+  getQuote,
   getServices,
   getToken,
   me,
   validatePromo,
 } from "@/lib/api/client";
-import type { Booking, Service, Slot, VehicleType } from "@/lib/api/types";
+import type { Booking, BookingQuote, Service, Slot, VehicleType } from "@/lib/api/types";
 import { localized, useI18n } from "@/lib/i18n";
 
 const CURRENCY = "QR";
@@ -187,9 +199,13 @@ export function BookingWizard() {
     }
   }, []);
 
+  // Reference "now" captured when slots load, used to hide today's past slots.
+  const [nowMs, setNowMs] = useState(0);
+
   const loadSlots = useCallback((d: string) => {
     setSlots(null);
     setSlot(null);
+    setNowMs(Date.now());
     getAvailability(d)
       .then((a) => setSlots(a.slots))
       .catch(() => setSlots([]));
@@ -254,6 +270,45 @@ export function BookingWizard() {
     setPromoError(null);
   }
 
+  // Membership pricing — the server is the source of truth. On the confirm
+  // step we ask the backend to price the cart with the customer's eligible
+  // memberships applied; the toggle lets them pay instead and keep the wash.
+  const [quote, setQuote] = useState<BookingQuote | null>(null);
+  const [useMembership, setUseMembership] = useState(true);
+
+  useEffect(() => {
+    if (step !== 4 || !authed || !slot) return;
+    const quoteCars = cars
+      .filter((c) => c.serviceId !== null)
+      .map((c) => ({ vehicle_type: c.vtype, service_id: c.serviceId as number, add_on_ids: c.addOnIds }));
+    if (quoteCars.length === 0) return;
+
+    let cancelled = false;
+    // Always price with memberships applied so we can detect eligibility even
+    // when the customer has toggled it off; the toggle only decides display.
+    getQuote({ scheduled_at: `${date}T${slot}:00`, cars: quoteCars, use_membership: true })
+      .then((q) => {
+        if (!cancelled) setQuote(q);
+      })
+      .catch(() => {
+        if (!cancelled) setQuote(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step, authed, slot, date, cars]);
+
+  const membershipEligible = quote?.membership_eligible ?? false;
+  const applyMembership = membershipEligible && useMembership;
+  const membershipDiscount = applyMembership ? (quote?.membership_discount ?? 0) : 0;
+  // Total the customer actually pays: membership-adjusted, or the promo net.
+  const dueTotal = applyMembership ? (quote?.total_price ?? 0) : netTotal;
+  const paidByMembership = applyMembership && dueTotal <= 0;
+  const washesLeftAfter = applyMembership
+    ? quote?.memberships.reduce((min, m) => Math.min(min, m.remaining_after), Infinity)
+    : undefined;
+  const showPromo = authed && !applyMembership && total > 0;
+
   const carsValid = cars.every(
     (c) => c.serviceId !== null && c.plate.trim(),
   );
@@ -268,6 +323,34 @@ export function BookingWizard() {
     setCars((prev) => prev.map((c) => (c.key === key ? { ...c, ...patch } : c)));
   }
 
+  // Best-effort reverse geocode to prefill the area (OpenStreetMap Nominatim).
+  const reverseGeocode = useCallback(async (lat: number, lng: number) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+        { headers: { Accept: "application/json" } },
+      );
+      const json = await res.json();
+      const a = json.address ?? {};
+      const guess =
+        a.suburb || a.neighbourhood || a.quarter || a.city_district || a.city || a.town || "";
+      if (guess) setArea(guess);
+      setDetails((prev) => (a.road && !prev.trim() ? a.road : prev));
+    } catch {
+      // Coordinates are captured either way; the user can type the area.
+    }
+  }, []);
+
+  // Fired when the user drags/clicks the pin on the map.
+  const handlePinChange = useCallback(
+    (v: { lat: number; lng: number }) => {
+      setGeo(v);
+      setGeoState("idle");
+      reverseGeocode(v.lat, v.lng);
+    },
+    [reverseGeocode],
+  );
+
   function requestLocation() {
     if (!("geolocation" in navigator)) {
       setGeoState("error");
@@ -275,25 +358,11 @@ export function BookingWizard() {
     }
     setGeoState("locating");
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      (pos) => {
         const { latitude, longitude } = pos.coords;
         setGeo({ lat: latitude, lng: longitude });
         setGeoState("idle");
-        // Best-effort reverse geocode to prefill the area (OpenStreetMap Nominatim).
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
-            { headers: { Accept: "application/json" } },
-          );
-          const json = await res.json();
-          const a = json.address ?? {};
-          const guess =
-            a.suburb || a.neighbourhood || a.quarter || a.city_district || a.city || a.town || "";
-          if (guess) setArea(guess);
-          if (a.road && !details.trim()) setDetails(a.road);
-        } catch {
-          // Coordinates are captured either way; the user can type the area.
-        }
+        reverseGeocode(latitude, longitude);
       },
       () => setGeoState("error"),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
@@ -334,8 +403,11 @@ export function BookingWizard() {
         cars: carPayloads,
         address_id: address.id,
         payment_method: "online",
+        // Server re-prices and applies memberships; false lets the customer
+        // pay and keep the wash. Promo only applies when paying.
+        use_membership: useMembership,
         notes: notes.trim() || undefined,
-        promo_code: promoActive ? applied.code : undefined,
+        promo_code: !applyMembership && promoActive ? applied.code : undefined,
       });
 
       // Online-only: hand off to the SkipCash hosted checkout.
@@ -448,6 +520,12 @@ export function BookingWizard() {
                 </span>
               )}
             </div>
+            <div className="space-y-1.5">
+              <LocationMap value={geo} onChange={handlePinChange} />
+              <p className="text-xs text-slate-500">
+                {t("Tap the map or drag the pin to set your exact spot — the driver navigates straight to it.")}
+              </p>
+            </div>
             <Field label={t("Area / neighborhood")} required>
               <input
                 className="wizard-input"
@@ -492,24 +570,31 @@ export function BookingWizard() {
               <p className="py-8 text-center text-sm text-[color:var(--muted-foreground)]">{t("Checking availability…")}</p>
             ) : (
               <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {slots.map((s) => (
-                  <button
-                    key={s.start}
-                    type="button"
-                    disabled={!s.available}
-                    onClick={() => setSlot(s.start)}
-                    className={clsx(
-                      "rounded-xl border px-2 py-2.5 text-sm font-semibold transition",
-                      slot === s.start
-                        ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
-                        : s.available
-                          ? "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)] hover:text-[color:var(--blue)]"
-                          : "cursor-not-allowed border-transparent bg-[color:var(--background)] text-[color:var(--muted-foreground)]/50 line-through",
-                    )}
-                  >
-                    {s.start}
-                  </button>
-                ))}
+                {slots.map((s) => {
+                  // A slot on today's date whose start time has already passed
+                  // must not be bookable, even if the backend still lists it.
+                  const isPast =
+                    new Date(`${date}T${s.start}:00`).getTime() <= nowMs;
+                  const selectable = s.available && !isPast;
+                  return (
+                    <button
+                      key={s.start}
+                      type="button"
+                      disabled={!selectable}
+                      onClick={() => setSlot(s.start)}
+                      className={clsx(
+                        "rounded-xl border px-2 py-2.5 text-sm font-semibold transition",
+                        slot === s.start
+                          ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                          : selectable
+                            ? "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)] hover:text-[color:var(--blue)]"
+                            : "cursor-not-allowed border-transparent bg-[color:var(--background)] text-[color:var(--muted-foreground)]/50 line-through",
+                      )}
+                    >
+                      {s.start}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </StepPanel>
@@ -547,7 +632,16 @@ export function BookingWizard() {
               />
             )}
 
-            {authed && total > 0 && (
+            {membershipEligible && (
+              <MembershipToggle
+                on={useMembership}
+                onToggle={() => setUseMembership((v) => !v)}
+                name={quote?.memberships[0]?.name ?? t("your membership")}
+                remainingAfter={washesLeftAfter}
+              />
+            )}
+
+            {showPromo && (
               <PromoField
                 applied={promoActive ? applied : null}
                 value={promoInput}
@@ -570,6 +664,11 @@ export function BookingWizard() {
               discount={discount}
               netTotal={netTotal}
               promoCode={promoActive ? applied.code : null}
+              membershipApplied={applyMembership}
+              membershipDiscount={membershipDiscount}
+              dueTotal={dueTotal}
+              paidByMembership={paidByMembership}
+              washesLeftAfter={washesLeftAfter}
             />
           </StepPanel>
         )}
@@ -583,15 +682,27 @@ export function BookingWizard() {
         {/* Footer nav */}
         <div className="mt-8 flex flex-col gap-4 border-t border-[color:var(--border)] pt-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-[color:var(--muted-foreground)]">
-            {total > 0 && (
+            {step === 4 ? (
               <>
-                {t("Total")} <span className="text-lg font-bold text-[color:var(--navy)]">{fmt(netTotal)}</span>
-                {discount > 0 && (
-                  <span className="ms-2 text-xs font-medium text-emerald-600">
-                    ({t("saved")} {fmt(discount)})
+                {t("Total")} <span className="text-lg font-bold text-[color:var(--navy)]">{fmt(dueTotal)}</span>
+                {paidByMembership ? (
+                  <span className="ms-2 text-xs font-semibold text-emerald-600">
+                    ({t("covered by membership")})
                   </span>
+                ) : (
+                  discount > 0 && (
+                    <span className="ms-2 text-xs font-medium text-emerald-600">
+                      ({t("saved")} {fmt(discount)})
+                    </span>
+                  )
                 )}
               </>
+            ) : (
+              total > 0 && (
+                <>
+                  {t("Total")} <span className="text-lg font-bold text-[color:var(--navy)]">{fmt(netTotal)}</span>
+                </>
+              )
             )}
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
@@ -933,6 +1044,11 @@ function Summary({
   discount,
   netTotal,
   promoCode,
+  membershipApplied,
+  membershipDiscount,
+  dueTotal,
+  paidByMembership,
+  washesLeftAfter,
 }: {
   cars: CarDraft[];
   services: Service[];
@@ -944,6 +1060,11 @@ function Summary({
   discount: number;
   netTotal: number;
   promoCode: string | null;
+  membershipApplied: boolean;
+  membershipDiscount: number;
+  dueTotal: number;
+  paidByMembership: boolean;
+  washesLeftAfter?: number;
 }) {
   const { lang, t } = useI18n();
   const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(lang === "ar" ? "ar" : "en", {
@@ -998,9 +1119,27 @@ function Summary({
         </li>
         <li className="flex justify-between">
           <span className="text-[color:var(--muted-foreground)]">{t("Payment")}</span>
-          <span className="font-medium">{t("Pay online (SkipCash)")}</span>
+          <span className="font-medium">
+            {paidByMembership ? t("Membership") : t("Pay online (SkipCash)")}
+          </span>
         </li>
-        {discount > 0 && (
+        {membershipApplied && membershipDiscount > 0 && (
+          <>
+            <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
+              <span className="text-[color:var(--muted-foreground)]">{t("Subtotal")}</span>
+              <span className="font-medium">{fmt(total)}</span>
+            </li>
+            <li className="flex justify-between text-emerald-600">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                  {t("Covered by membership")}
+                </span>
+              </span>
+              <span className="font-semibold">− {fmt(membershipDiscount)}</span>
+            </li>
+          </>
+        )}
+        {!membershipApplied && discount > 0 && (
           <>
             <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
               <span className="text-[color:var(--muted-foreground)]">{t("Subtotal")}</span>
@@ -1017,9 +1156,58 @@ function Summary({
         )}
         <li className="flex justify-between border-t border-[color:var(--border)] pt-2 text-base font-bold">
           <span>{t("Total")}</span>
-          <span>{fmt(netTotal)}</span>
+          <span>{fmt(membershipApplied ? dueTotal : netTotal)}</span>
         </li>
+        {paidByMembership && washesLeftAfter !== undefined && Number.isFinite(washesLeftAfter) && (
+          <li className="flex justify-end text-xs text-[color:var(--muted-foreground)]">
+            {t("Washes left after booking")}: {washesLeftAfter}
+          </li>
+        )}
       </ul>
+    </div>
+  );
+}
+
+function MembershipToggle({
+  on,
+  onToggle,
+  name,
+  remainingAfter,
+}: {
+  on: boolean;
+  onToggle: () => void;
+  name: string;
+  remainingAfter?: number;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+      <div className="text-sm">
+        <span className="font-semibold text-emerald-800">{t("Use membership")}</span>
+        <span className="block text-xs text-emerald-700">
+          {name}
+          {on && remainingAfter !== undefined && Number.isFinite(remainingAfter)
+            ? ` · ${t("Washes left after booking")}: ${remainingAfter}`
+            : ""}
+        </span>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        onClick={onToggle}
+        className={clsx(
+          "relative h-6 w-11 shrink-0 rounded-full transition",
+          on ? "bg-emerald-600" : "bg-slate-300",
+        )}
+      >
+        <span
+          className={clsx(
+            "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all",
+            on ? "start-[1.375rem]" : "start-0.5",
+          )}
+        />
+      </button>
     </div>
   );
 }
