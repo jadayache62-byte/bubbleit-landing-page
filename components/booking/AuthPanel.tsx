@@ -18,7 +18,19 @@ import {
 import type { Customer } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
 
-type Stage = "phone" | "password" | "register" | "register_code" | "forgot";
+type Stage = "phone" | "password" | "claim" | "register" | "register_code" | "forgot";
+
+function normalizeQatarPhone(value: string) {
+  let digits = value.replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("974") && digits.length === 11) {
+    return `+${digits}`;
+  }
+  if (digits.length === 8) {
+    return `+974${digits}`;
+  }
+  return value.trim().replace(/\s+/g, "");
+}
 
 export function AuthPanel({
   title,
@@ -50,8 +62,10 @@ export function AuthPanel({
     setBusy(true);
     setError(null);
     try {
-      const { registered } = await checkPhone(phone.trim());
-      setStage(registered ? "password" : "register");
+      const normalizedPhone = normalizeQatarPhone(phone);
+      setPhone(normalizedPhone);
+      const { registered, has_password: hasPassword } = await checkPhone(normalizedPhone);
+      setStage(registered ? (hasPassword ? "password" : "claim") : "register");
     } catch (e) {
       fail(e);
     } finally {
@@ -63,7 +77,7 @@ export function AuthPanel({
     setBusy(true);
     setError(null);
     try {
-      const result = await loginWithPassword(phone.trim(), password);
+      const result = await loginWithPassword(normalizeQatarPhone(phone), password);
       onAuthed(result.customer);
     } catch (e) {
       fail(e);
@@ -76,7 +90,7 @@ export function AuthPanel({
     setBusy(true);
     setError(null);
     try {
-      await requestOtp(phone.trim());
+      await requestOtp(normalizeQatarPhone(phone));
       setStage("register_code");
     } catch (e) {
       fail(e);
@@ -90,7 +104,7 @@ export function AuthPanel({
     setError(null);
     try {
       const result = await register({
-        phone: phone.trim(),
+        phone: normalizeQatarPhone(phone),
         name: name.trim(),
         password,
         code: code.trim(),
@@ -107,7 +121,7 @@ export function AuthPanel({
     setBusy(true);
     setError(null);
     try {
-      await requestOtp(phone.trim());
+      await requestOtp(normalizeQatarPhone(phone));
       setCode("");
       setStage("forgot");
     } catch (e) {
@@ -121,7 +135,7 @@ export function AuthPanel({
     setBusy(true);
     setError(null);
     try {
-      const result = await verifyOtp(phone.trim(), code.trim());
+      const result = await verifyOtp(normalizeQatarPhone(phone), code.trim());
       if (newPassword.length >= 6) {
         await updateProfile({ name: result.customer.name || "-", password: newPassword });
       }
@@ -220,11 +234,13 @@ export function AuthPanel({
           </>
         )}
 
-        {stage === "register" && (
+        {(stage === "register" || stage === "claim") && (
           <>
             {phoneChip}
             <p className="text-sm font-semibold text-[color:var(--blue)]">
-              {t("New number — let's set up your account.")}
+              {stage === "claim"
+                ? "Existing booking account — add a password to continue."
+                : t("New number — let's set up your account.")}
             </p>
             <input
               className="wizard-input"

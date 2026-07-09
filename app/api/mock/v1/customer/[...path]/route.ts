@@ -3,7 +3,14 @@
 // the frontend swaps to the real Laravel backend via NEXT_PUBLIC_API_BASE only.
 
 import { NextRequest, NextResponse } from "next/server";
-import type { Booking, BookingStatus, PaymentMethod, Vehicle } from "@/lib/api/types";
+import type {
+  Booking,
+  BookingStatus,
+  PaymentMethod,
+  StoreOrder,
+  StoreOrderLine,
+  Vehicle,
+} from "@/lib/api/types";
 import {
   MEMBERSHIP_PLANS,
   MIDNIGHT_SLOT_GRID,
@@ -143,6 +150,101 @@ async function handle(req: NextRequest, segments: string[]) {
   }
   if (method === "GET" && path === "service-categories") {
     return envelope(paginated([...new Set(SERVICES.map((s) => s.category))].map((name, i) => ({ id: i + 1, name }))));
+  }
+
+  // ── Store inventory ──
+  if (method === "GET" && path === "store/products") {
+    return envelope(paginated(store.storeProducts));
+  }
+
+  if (method === "POST" && path === "store/orders") {
+    const linkedCustomer = authCustomer(req);
+    const linesInput = Array.isArray(body.lines) ? body.lines : [];
+    const customerName = String(body.customer_name ?? linkedCustomer?.name ?? "").trim();
+    const customerPhone = String(body.customer_phone ?? linkedCustomer?.phone ?? "").trim();
+    const deliveryArea = String(body.delivery_area ?? "").trim();
+    const deliveryDetails = String(body.delivery_details ?? "").trim();
+
+    if (!customerName || !customerPhone || !deliveryArea || linesInput.length === 0) {
+      return fail(422, "Validation failed.", {
+        ...(customerName ? {} : { customer_name: ["The customer name field is required."] }),
+        ...(customerPhone ? {} : { customer_phone: ["The customer phone field is required."] }),
+        ...(deliveryArea ? {} : { delivery_area: ["The delivery area field is required."] }),
+        ...(linesInput.length ? {} : { lines: ["At least one product is required."] }),
+      });
+    }
+
+    const orderLines: StoreOrderLine[] = [];
+    for (const input of linesInput) {
+      const product = store.storeProducts.find((item) => item.id === String(input.product_id));
+      const quantity = Number(input.quantity ?? 0);
+      if (!product || !Number.isInteger(quantity) || quantity < 1) {
+        return fail(422, "Validation failed.", { lines: ["Invalid product or quantity."] });
+      }
+      if (product.stock_quantity < quantity) {
+        return fail(409, `${product.name} has only ${product.stock_quantity} left in stock.`);
+      }
+      orderLines.push({
+        product_id: product.id,
+        sku: product.sku,
+        name: product.name,
+        quantity,
+        unit_price: product.price,
+        line_total: product.price * quantity,
+        accounting_code: product.accounting_code,
+      });
+    }
+
+    for (const line of orderLines) {
+      const product = store.storeProducts.find((item) => item.id === line.product_id);
+      if (!product) continue;
+      product.stock_quantity -= line.quantity;
+      product.sold_quantity += line.quantity;
+    }
+
+    const id = store.nextId++;
+    const subtotal = orderLines.reduce((sum, line) => sum + line.line_total, 0);
+    const order: StoreOrder = {
+      id,
+      customer_id: linkedCustomer?.id ?? null,
+      reference: `SO-${String(id).padStart(5, "0")}`,
+      status: "received",
+      accounting_status: "pending_sync" as const,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      delivery_area: deliveryArea,
+      delivery_details: deliveryDetails,
+      latitude: typeof body.latitude === "number" ? body.latitude : null,
+      longitude: typeof body.longitude === "number" ? body.longitude : null,
+      subtotal,
+      total: subtotal,
+      lines: orderLines,
+      created_at: new Date().toISOString(),
+    };
+    store.storeOrders.push(order);
+
+    return envelope(order, { status: 201, message: "Store order received." });
+  }
+
+  const storePayMatch = path.match(/^store\/orders\/(\d+)\/pay$/);
+  if (method === "POST" && storePayMatch) {
+    const linkedCustomer = authCustomer(req);
+    if (!linkedCustomer) return fail(401, "Unauthenticated.");
+
+    const order = store.storeOrders.find((item) => item.id === Number(storePayMatch[1]));
+    if (!order || order.customer_id !== linkedCustomer.id) {
+      return fail(404, "Store order not found.");
+    }
+
+    if (order.status === "cancelled") {
+      return fail(422, "This store order cannot be paid.");
+    }
+
+    order.status = "confirmed";
+    return envelope({
+      checkout_url: null,
+      payment_reference: `MOCK-PAY-${order.id}`,
+    });
   }
 
   // ── Availability ──

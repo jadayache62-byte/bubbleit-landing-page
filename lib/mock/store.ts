@@ -10,8 +10,11 @@ import type {
   MembershipPlan,
   PaymentMethod,
   Service,
+  StoreOrder,
+  StoreProductInventory,
   Vehicle,
 } from "@/lib/api/types";
+import { STORE_PRODUCTS } from "@/lib/store/products";
 
 export const MOCK_OTP = "123456";
 
@@ -45,6 +48,8 @@ export type MockDB = {
   tokens: Map<string, number>; // token -> customer id
   otps: Map<string, string>; // phone -> code
   bookings: (Booking & { customer_id: number })[];
+  storeProducts: StoreProductInventory[];
+  storeOrders: StoreOrder[];
   promoCodes: MockPromoCode[];
   redemptions: MockPromoRedemption[];
   nextId: number;
@@ -143,6 +148,20 @@ function seed(): MockDB {
     tokens: new Map(),
     otps: new Map(),
     bookings: [],
+    storeProducts: STORE_PRODUCTS.map((product) => ({
+      id: product.id,
+      sku: product.sku,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      imageSrc: product.imageSrc,
+      imageAlt: product.imageAlt,
+      stock_quantity: product.initialStock,
+      sold_quantity: 0,
+      reserved_quantity: 0,
+      accounting_code: product.accountingCode,
+    })),
+    storeOrders: [],
     promoCodes: [
       {
         id: 1,

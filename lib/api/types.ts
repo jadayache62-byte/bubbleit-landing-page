@@ -223,3 +223,77 @@ export type PromoValidation = {
   final_total: number;
   message: string | null;
 };
+
+export type StoreProductInventory = {
+  id: string | number;
+  sku: string;
+  name: string;
+  description: string | null;
+  price: number;
+  imageSrc: string | null;
+  imageAlt?: string;
+  stock_quantity: number;
+  sold_quantity: number;
+  reserved_quantity: number;
+  available_quantity?: number;
+  accounting_code: string | null;
+  is_available?: boolean;
+};
+
+export type StoreOrderLine = {
+  id?: number;
+  product_id: string | number;
+  inventory_item_id?: number;
+  sku: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  accounting_code: string | null;
+};
+
+export type StoreOrder = {
+  id: number;
+  customer_id: number | null;
+  reference: string;
+  status:
+    | "pending_payment"
+    | "paid"
+    | "confirmed"
+    | "preparing"
+    | "out_for_delivery"
+    | "delivered"
+    | "cancelled"
+    | "refunded"
+    | "received"
+    | "fulfilled";
+  payment_status?: "unpaid" | "pending" | "paid" | "failed" | "refunded";
+  payment_method?: string;
+  accounting_status: "pending_sync" | "synced" | "sync_failed" | "not_required" | "failed";
+  customer_name: string;
+  customer_phone: string;
+  delivery_area: string;
+  delivery_details: string;
+  latitude: number | null;
+  longitude: number | null;
+  subtotal: number;
+  total: number;
+  lines: StoreOrderLine[];
+  created_at: string;
+};
+
+export type CreateStoreOrderPayload = {
+  customer_name?: string;
+  customer_phone?: string;
+  delivery_area: string;
+  delivery_details: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  notes?: string;
+  lines: { product_id: string | number; inventory_item_id?: number; quantity: number }[];
+};
+
+export type StoreOrderPayment = {
+  checkout_url: string | null;
+  payment_reference?: string;
+};

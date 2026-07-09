@@ -17,8 +17,7 @@ const LANG_KEY = "bubbleit.lang";
 const AR: Record<string, string> = {
   // Navbar / footer
   "Services": "الخدمات",
-  "How It Works": "كيف تعمل",
-  "Benefits": "المميزات",
+  "Store": "المتجر",
   "Download": "التطبيق",
   "Memberships": "الاشتراكات",
   "My Bookings": "حجوزاتي",
@@ -40,7 +39,6 @@ const AR: Record<string, string> = {
   "Booked in Minutes": "احجزه في دقائق",
   "Bubbleit lets you book a professional car wash from your phone. Choose your service, pick your time, confirm your location, and we'll come to you.":
     "ببلت تتيح لك حجز غسيل احترافي لسيارتك من هاتفك. اختر الخدمة والوقت وأكّد موقعك، ونحن نصل إليك.",
-  "How it Works": "كيف تعمل",
   "Car Wash Services at Your Doorstep": "خدمات غسيل السيارات حتى باب منزلك",
   "Choose the service you need and book directly from the app.":
     "اختر الخدمة التي تحتاجها واحجز مباشرة.",
@@ -61,41 +59,6 @@ const AR: Record<string, string> = {
   "Full interior polish and deep detailing.": "تلميع داخلي كامل وتنظيف عميق.",
   "Full exterior polish and paint care.": "تلميع خارجي كامل والعناية بالطلاء.",
   "The complete package — interior & exterior polish.": "الباقة الكاملة — تلميع داخلي وخارجي.",
-  // Benefits section
-  "Why Book With Bubbleit?": "لماذا تحجز مع ببلت؟",
-  "Built around convenience, clarity, and a cleaner ownership experience.":
-    "مصمّمة حول الراحة والوضوح وتجربة امتلاك أنظف.",
-  "Easy Booking": "حجز سهل",
-  "Book your car wash in just a few taps.": "احجز غسيل سيارتك بلمسات قليلة.",
-  "Mobile Service": "خدمة متنقلة",
-  "No need to drive anywhere. Bubbleit comes to your location.":
-    "لا حاجة للقيادة إلى أي مكان. ببلت تأتي إليك.",
-  "Booking Management": "إدارة الحجوزات",
-  "View your upcoming bookings and service details from the app.":
-    "اطّلع على حجوزاتك القادمة وتفاصيل الخدمة من التطبيق.",
-  "Secure Payment": "دفع آمن",
-  "Membership checkout is online today; regular bookings can be paid later when our team confirms or arrives.":
-    "دفع الاشتراكات إلكتروني الآن؛ ويمكن دفع الحجوزات العادية لاحقاً عند تأكيد فريقنا أو وصوله.",
-  "Customer Support": "دعم العملاء",
-  "Get updates and support for your booking when needed.":
-    "احصل على التحديثات والدعم لحجزك عند الحاجة.",
-  "Arabic & English Ready": "يدعم العربية والإنجليزية",
-  "Built to support customers in both Arabic and English when enabled.":
-    "مبني لدعم العملاء بالعربية والإنجليزية عند التفعيل.",
-  // How it works section
-  "How Bubbleit Works": "كيف تعمل ببلت",
-  "A simple booking flow designed to feel fast, clear, and mobile-friendly.":
-    "تدفّق حجز بسيط مصمّم ليكون سريعاً وواضحاً وملائماً للهاتف.",
-  "Choose Your Service": "اختر خدمتك",
-  "Select the car wash package that fits your needs.": "اختر باقة الغسيل التي تناسب احتياجك.",
-  "Pick Time & Location": "اختر الوقت والموقع",
-  "Choose your booking time and add your location directly in the app.":
-    "اختر وقت الحجز وأضف موقعك مباشرة في التطبيق.",
-  "Confirm Your Booking": "أكّد حجزك",
-  "Review your details and confirm your booking.": "راجع تفاصيلك وأكّد حجزك.",
-  "We Come to You": "نأتي إليك",
-  "Our team arrives at your location and completes the service.":
-    "يصل فريقنا إلى موقعك وينجز الخدمة.",
 
   // Booking wizard
   "Book a Wash | Bubbleit": "احجز غسلة | ببلت",
@@ -104,6 +67,11 @@ const AR: Record<string, string> = {
   "Schedule": "الموعد",
   "Payment": "الدفع",
   "Confirm": "التأكيد",
+  "Pay & Confirm": "ادفع وأكّد",
+  "Pay online and confirm your booking in one final step.":
+    "ادفع أونلاين وأكّد حجزك في خطوة أخيرة واحدة.",
+  "Secure card payment. We'll take you to checkout and confirm your booking after payment.":
+    "دفع آمن بالبطاقة. سننقلك إلى صفحة الدفع ونؤكّد حجزك بعد الدفع.",
   "What are we washing?": "ماذا نغسل؟",
   "Pick what you'd like us to wash.": "اختر ما تريد غسله.",
   "Car": "سيارة",

@@ -5,6 +5,7 @@ import type {
   Availability,
   Booking,
   BookingQuote,
+  CreateStoreOrderPayload,
   CreateBookingPayload,
   Customer,
   CustomerMembership,
@@ -14,6 +15,9 @@ import type {
   PromoValidation,
   QuoteCar,
   Service,
+  StoreOrder,
+  StoreOrderPayment,
+  StoreProductInventory,
   Vehicle,
   VerifyOtpResult,
 } from "@/lib/api/types";
@@ -98,10 +102,32 @@ export function getMembershipPlans() {
   return request<Paginated<MembershipPlan>>("/membership-plans", { auth: false }).then((r) => r.data);
 }
 
+export function listStoreProducts() {
+  return request<Paginated<StoreProductInventory>>("/store/products", { auth: false }).then((r) =>
+    r.data.map((product) => ({
+      ...product,
+      imageAlt: product.imageAlt ?? product.name,
+    })),
+  );
+}
+
+export function createStoreOrder(payload: CreateStoreOrderPayload) {
+  return request<StoreOrder>("/store/orders", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function payStoreOrder(orderId: number) {
+  return request<StoreOrderPayment>(`/store/orders/${orderId}/pay`, {
+    method: "POST",
+  });
+}
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 export function checkPhone(phone: string) {
-  return request<{ registered: boolean }>("/auth/check-phone", {
+  return request<{ registered: boolean; has_password?: boolean }>("/auth/check-phone", {
     method: "POST",
     body: { phone },
     auth: false,

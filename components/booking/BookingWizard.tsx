@@ -104,8 +104,7 @@ const STEPS = [
   "Services",
   "Location",
   "Schedule",
-  "Payment",
-  "Confirm",
+  "Pay & Confirm",
 ] as const;
 
 const KINDS: { value: WashKind; label: string; icon: string }[] = [
@@ -209,6 +208,15 @@ export function BookingWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Booking | null>(null);
+
+  useEffect(() => {
+    if (!confirmed) return;
+
+    requestAnimationFrame(() => {
+      topRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
+      window.scrollTo({ top: 0, behavior: "auto" });
+    });
+  }, [confirmed]);
 
   useEffect(() => {
     getServices()
@@ -336,7 +344,7 @@ export function BookingWizard() {
   const [useMembership, setUseMembership] = useState(true);
 
   useEffect(() => {
-    if (step !== 4 || !authed || !slot) return;
+    if (step !== 3 || !authed || !slot) return;
     const quoteCars = cars
       .filter((c) => c.serviceId !== null)
       .map((c) => ({
@@ -386,8 +394,7 @@ export function BookingWizard() {
   const canContinue =
     (step === 0 && carsValid) ||
     (step === 1 && area.trim().length > 1) ||
-    (step === 2 && slot !== null) ||
-    step === 3;
+    (step === 2 && slot !== null);
 
   const selectedSlotMeta = useMemo(
     () => slots?.find((s) => s.start === slot) ?? null,
@@ -538,7 +545,11 @@ export function BookingWizard() {
   }
 
   if (confirmed) {
-    return <SuccessPanel booking={confirmed} />;
+    return (
+      <div ref={topRef} className="mx-auto w-full max-w-3xl scroll-mt-24">
+        <SuccessPanel booking={confirmed} />
+      </div>
+    );
   }
 
   return (
@@ -748,34 +759,10 @@ export function BookingWizard() {
 
         {step === 3 && (
           <StepPanel
-            title={t("Payment")}
+            title={t("Pay & Confirm")}
             subtitle={t(
-              "Secure online payment. You'll be redirected to complete it after confirming.",
+              "Pay online and confirm your booking in one final step.",
             )}
-          >
-            <PayOption
-              active
-              onClick={() => {}}
-              title={t("Pay online (SkipCash)")}
-              description={t(
-                "Secure card payment. We'll take you to the checkout after you confirm.",
-              )}
-            />
-            <Field label={t("Notes for the team (optional)")}>
-              <textarea
-                className="wizard-input min-h-20 resize-y"
-                placeholder={t("Gate code, preferred parking spot…")}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </Field>
-          </StepPanel>
-        )}
-
-        {step === 4 && (
-          <StepPanel
-            title={t("Review & confirm")}
-            subtitle={t("Everything look right?")}
           >
             {!authed && (
               <AuthPanel
@@ -784,6 +771,15 @@ export function BookingWizard() {
                 onAuthed={() => setAuthed(true)}
               />
             )}
+
+            <PayOption
+              active
+              onClick={() => {}}
+              title={t("Pay online (SkipCash)")}
+              description={t(
+                "Secure card payment. We'll take you to checkout and confirm your booking after payment.",
+              )}
+            />
 
             {membershipEligible && (
               <MembershipToggle
@@ -805,6 +801,15 @@ export function BookingWizard() {
                 onClear={clearPromo}
               />
             )}
+
+            <Field label={t("Notes for the team (optional)")}>
+              <textarea
+                className="wizard-input min-h-20 resize-y"
+                placeholder={t("Gate code, preferred parking spot…")}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </Field>
 
             <Summary
               cars={cars}
@@ -840,7 +845,7 @@ export function BookingWizard() {
         {/* Footer nav */}
         <div className="mt-8 flex flex-col gap-4 border-t border-[color:var(--border)] pt-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-[color:var(--muted-foreground)]">
-            {step === 4 ? (
+            {step === 3 ? (
               <>
                 {t("Total")}{" "}
                 <span className="text-lg font-bold text-[color:var(--navy)]">
@@ -879,7 +884,7 @@ export function BookingWizard() {
                 {t("Back")}
               </button>
             )}
-            {step < 4 ? (
+            {step < STEPS.length - 1 ? (
               <button
                 type="button"
                 className="primary-button w-full disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
@@ -895,7 +900,7 @@ export function BookingWizard() {
                 disabled={submitting || !authed}
                 onClick={submit}
               >
-                {submitting ? t("Confirming…") : t("Confirm Booking")}
+                {submitting ? t("Confirming…") : t("Confirm & Pay")}
               </button>
             )}
           </div>

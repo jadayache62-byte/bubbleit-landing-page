@@ -9,9 +9,10 @@ import { useI18n } from "@/lib/i18n";
 
 // Absolute paths so the links work from /book and /account too.
 const navItems = [
+  { label: "My Bookings", href: "/account" },
+  { label: "Memberships", href: "/memberships" },
+  { label: "Store", href: "/store" },
   { label: "Services", href: "/#services" },
-  { label: "How It Works", href: "/#how-it-works" },
-  { label: "Benefits", href: "/#benefits" },
   { label: "Download", href: "/#download" },
 ];
 
@@ -57,18 +58,6 @@ export function Navbar() {
           </nav>
 
           <div className="hidden items-center gap-3 lg:flex">
-            <a
-              href="/memberships"
-              className="text-sm font-medium text-[color:var(--muted-foreground)] transition hover:text-[color:var(--navy)]"
-            >
-              {t("Memberships")}
-            </a>
-            <a
-              href="/account"
-              className="text-sm font-medium text-[color:var(--muted-foreground)] transition hover:text-[color:var(--navy)]"
-            >
-              {t("My Bookings")}
-            </a>
             <button
               type="button"
               onClick={() => setLang(lang === "en" ? "ar" : "en")}
@@ -135,20 +124,6 @@ export function Navbar() {
                   {t(item.label)}
                 </a>
               ))}
-              <a
-                href="/memberships"
-                className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] transition hover:bg-[color:var(--background)]"
-                onClick={() => setIsOpen(false)}
-              >
-                {t("Memberships")}
-              </a>
-              <a
-                href="/account"
-                className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] transition hover:bg-[color:var(--background)]"
-                onClick={() => setIsOpen(false)}
-              >
-                {t("My Bookings")}
-              </a>
               <button
                 type="button"
                 onClick={() => setLang(lang === "en" ? "ar" : "en")}
