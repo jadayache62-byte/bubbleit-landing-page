@@ -13,7 +13,11 @@ import {
   me,
   payStoreOrder,
 } from "@/lib/api/client";
-import type { Customer, StoreProductInventory } from "@/lib/api/types";
+import type {
+  Customer,
+  StoreOrder,
+  StoreProductInventory,
+} from "@/lib/api/types";
 import { STORE_PRODUCTS, formatStorePrice } from "@/lib/store/products";
 
 const LocationMap = dynamic(() => import("@/components/booking/LocationMap"), {
@@ -26,8 +30,24 @@ const LocationMap = dynamic(() => import("@/components/booking/LocationMap"), {
 });
 
 const CART_KEY = "bubbleit.store.cart";
+const PENDING_CHECKOUT_KEY = "bubbleit.store.pending-checkout";
 
 type Cart = Record<string, number>;
+type PendingCheckout = {
+  order: StoreOrder;
+  cart: Cart;
+};
+
+const COMPLETED_ORDER_STATUSES = new Set<StoreOrder["status"]>([
+  // Some supported order APIs return a completed order instead of a payment URL.
+  "received",
+  "paid",
+  "confirmed",
+  "preparing",
+  "out_for_delivery",
+  "delivered",
+  "fulfilled",
+]);
 
 function fallbackProducts(): StoreProductInventory[] {
   return STORE_PRODUCTS.map((product) => ({
@@ -69,9 +89,51 @@ function writeCart(cart: Cart) {
   window.localStorage.setItem(CART_KEY, JSON.stringify(cart));
 }
 
+function readPendingCheckout(): PendingCheckout | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PENDING_CHECKOUT_KEY);
+    if (!raw) return null;
+
+    const pending = JSON.parse(raw) as Partial<PendingCheckout>;
+    if (
+      !pending ||
+      typeof pending !== "object" ||
+      !pending.order ||
+      typeof pending.order.id !== "number" ||
+      typeof pending.order.reference !== "string" ||
+      !pending.cart ||
+      typeof pending.cart !== "object"
+    ) {
+      return null;
+    }
+
+    return pending as PendingCheckout;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingCheckout(pending: PendingCheckout) {
+  try {
+    window.localStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pending));
+  } catch {
+    // The in-memory checkout state still prevents a duplicate order this visit.
+  }
+}
+
+function isCompletedOrder(order: StoreOrder) {
+  return COMPLETED_ORDER_STATUSES.has(order.status);
+}
+
 export function StoreCheckoutClient() {
   const topRef = useRef<HTMLDivElement | null>(null);
-  const [cart, setCart] = useState<Cart>(() => readCart());
+  const checkoutInFlightRef = useRef(false);
+  // Keep the server and first browser render identical. Browser storage is
+  // restored after hydration below so saved carts do not cause a mismatch.
+  const [cart, setCart] = useState<Cart>({});
+  const [pendingCheckout, setPendingCheckout] =
+    useState<PendingCheckout | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [area, setArea] = useState("");
   const [addressDetails, setAddressDetails] = useState("");
@@ -85,12 +147,43 @@ export function StoreCheckoutClient() {
   >("idle");
   const [error, setError] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
-  const [orderReference, setOrderReference] = useState<string | null>(null);
+  const [completedOrder, setCompletedOrder] = useState<StoreOrder | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [authChecked, setAuthChecked] = useState(() => !getToken());
+  const [authChecked, setAuthChecked] = useState(false);
   const [products, setProducts] = useState<StoreProductInventory[]>(() =>
     fallbackProducts(),
   );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Storage is available only after hydration. Deferring the restore also
+    // keeps the server and first client render in sync.
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      const pending = readPendingCheckout();
+      if (!pending) {
+        setCart(readCart());
+        return;
+      }
+
+      setPendingCheckout(pending);
+      setCart(pending.cart);
+      setArea(pending.order.delivery_area);
+      setAddressDetails(pending.order.delivery_details);
+      if (
+        typeof pending.order.latitude === "number" &&
+        typeof pending.order.longitude === "number"
+      ) {
+        setGeo({ lat: pending.order.latitude, lng: pending.order.longitude });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,10 +198,18 @@ export function StoreCheckoutClient() {
   }, []);
 
   useEffect(() => {
-    if (!getToken()) {
-      return;
-    }
     let cancelled = false;
+
+    if (!getToken()) {
+      queueMicrotask(() => {
+        if (!cancelled) setAuthChecked(true);
+      });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
     me()
       .then((current) => {
         if (!cancelled) setCustomer(current);
@@ -152,6 +253,8 @@ export function StoreCheckoutClient() {
   );
 
   function updateQuantity(id: string, quantity: number) {
+    if (pendingCheckout) return;
+
     const product = products.find((item) => String(item.id) === id);
     const max = product ? availableFor(product) : quantity;
     const next = { ...cart };
@@ -190,12 +293,16 @@ export function StoreCheckoutClient() {
   }
 
   function handlePinChange(value: { lat: number; lng: number }) {
+    if (pendingCheckout) return;
+
     setGeo(value);
     setGeoState("idle");
     reverseGeocode(value.lat, value.lng);
   }
 
   function requestLocation() {
+    if (pendingCheckout) return;
+
     if (!("geolocation" in navigator)) {
       setGeoState("error");
       return;
@@ -216,12 +323,93 @@ export function StoreCheckoutClient() {
     );
   }
 
+  function savePendingCheckout(order: StoreOrder) {
+    const next = { order, cart };
+    setPendingCheckout(next);
+    writePendingCheckout(next);
+    return next;
+  }
+
+  function clearCheckoutCart() {
+    try {
+      window.localStorage.removeItem(CART_KEY);
+      window.localStorage.removeItem(PENDING_CHECKOUT_KEY);
+    } catch {
+      // Navigation can still continue when browser storage is unavailable.
+    }
+    setCart({});
+    setPendingCheckout(null);
+  }
+
+  function completeOrder(order: StoreOrder) {
+    clearCheckoutCart();
+    setCompletedOrder(order);
+    setPaymentNotice(null);
+    setSubmitted(true);
+  }
+
+  async function initializePayment(checkout: PendingCheckout) {
+    if (isCompletedOrder(checkout.order)) {
+      completeOrder(checkout.order);
+      return;
+    }
+
+    setSubmitPhase("initializing_payment");
+    setError(null);
+    setPaymentNotice(null);
+
+    try {
+      const payment = await payStoreOrder(checkout.order.id);
+      if (payment.checkout_url) {
+        setSubmitPhase("redirecting");
+        window.location.href = payment.checkout_url;
+        clearCheckoutCart();
+        return;
+      }
+
+      setPaymentNotice(
+        "Payment could not start because no checkout link was returned. Please retry payment.",
+      );
+    } catch (caught) {
+      setPaymentNotice(
+        caught instanceof ApiError
+          ? `Payment could not start: ${caught.message}`
+          : "Payment could not start. Your order is saved; please retry payment.",
+      );
+    }
+  }
+
+  async function retryPayment() {
+    if (checkoutInFlightRef.current || !pendingCheckout) return;
+    if (!customer) {
+      setError("Sign in before continuing payment.");
+      return;
+    }
+
+    checkoutInFlightRef.current = true;
+    setSubmitting(true);
+    try {
+      await initializePayment(pendingCheckout);
+    } finally {
+      setSubmitting(false);
+      setSubmitPhase("idle");
+      checkoutInFlightRef.current = false;
+    }
+  }
+
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pendingCheckout) {
+      await retryPayment();
+      return;
+    }
+    if (checkoutInFlightRef.current) return;
     if (!customer) {
       setError("Sign in before placing your store order.");
       return;
     }
+
+    checkoutInFlightRef.current = true;
     setSubmitting(true);
     setSubmitPhase("creating");
     setError(null);
@@ -241,31 +429,14 @@ export function StoreCheckoutClient() {
           quantity,
         })),
       });
-      setOrderReference(order.reference);
+      const checkout = savePendingCheckout(order);
 
-      try {
-        setSubmitPhase("initializing_payment");
-        const payment = await payStoreOrder(order.id);
-        window.localStorage.removeItem(CART_KEY);
-        setCart({});
-
-        if (payment.checkout_url) {
-          setSubmitPhase("redirecting");
-          window.location.href = payment.checkout_url;
-          return;
-        }
-
-        setSubmitted(true);
-      } catch (paymentError) {
-        window.localStorage.removeItem(CART_KEY);
-        setCart({});
-        setPaymentNotice(
-          paymentError instanceof ApiError
-            ? `Payment could not start: ${paymentError.message}`
-            : "Payment could not start. The team will follow up with your order reference.",
-        );
-        setSubmitted(true);
+      if (isCompletedOrder(order)) {
+        completeOrder(order);
+        return;
       }
+
+      await initializePayment(checkout);
     } catch (caught) {
       setError(
         caught instanceof ApiError
@@ -275,6 +446,7 @@ export function StoreCheckoutClient() {
     } finally {
       setSubmitting(false);
       setSubmitPhase("idle");
+      checkoutInFlightRef.current = false;
     }
   }
 
@@ -285,7 +457,10 @@ export function StoreCheckoutClient() {
         ? "Starting payment..."
         : submitPhase === "redirecting"
           ? "Redirecting..."
-          : "Place order";
+          : pendingCheckout
+            ? "Retry payment"
+            : "Place order";
+  const checkoutLocked = Boolean(pendingCheckout);
 
   if (submitted) {
     return (
@@ -302,14 +477,9 @@ export function StoreCheckoutClient() {
             Your Bubbleit store order has been captured. The team will contact
             you to confirm delivery and payment details.
           </p>
-          {orderReference && (
+          {completedOrder && (
             <p className="mt-4 text-sm font-bold text-[color:var(--blue)]">
-              Reference {orderReference}
-            </p>
-          )}
-          {paymentNotice && (
-            <p className="mx-auto mt-4 max-w-md rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-              {paymentNotice}
+              Reference {completedOrder.reference}
             </p>
           )}
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
@@ -380,7 +550,7 @@ export function StoreCheckoutClient() {
                 <button
                   type="button"
                   className="secondary-button gap-2"
-                  disabled={geoState === "locating"}
+                  disabled={geoState === "locating" || checkoutLocked}
                   onClick={requestLocation}
                 >
                   <svg
@@ -410,7 +580,13 @@ export function StoreCheckoutClient() {
                     set the pin manually.
                   </p>
                 )}
-                <div className="space-y-1.5">
+                <div
+                  className={
+                    checkoutLocked
+                      ? "pointer-events-none space-y-1.5 opacity-60"
+                      : "space-y-1.5"
+                  }
+                >
                   <LocationMap value={geo} onChange={handlePinChange} />
                   <p className="text-xs text-slate-500">
                     Tap the map or drag the pin to set the exact delivery spot.
@@ -424,6 +600,7 @@ export function StoreCheckoutClient() {
                   className="wizard-input mt-2"
                   placeholder="e.g. West Bay, The Pearl"
                   value={area}
+                  disabled={checkoutLocked}
                   onChange={(event) => setArea(event.target.value)}
                 />
               </label>
@@ -434,6 +611,7 @@ export function StoreCheckoutClient() {
                   className="wizard-input mt-2 min-h-24 resize-y"
                   placeholder="Building, street, parking or delivery notes"
                   value={addressDetails}
+                  disabled={checkoutLocked}
                   onChange={(event) => setAddressDetails(event.target.value)}
                 />
               </label>
@@ -467,6 +645,7 @@ export function StoreCheckoutClient() {
                     <button
                       type="button"
                       className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--border)] text-lg font-bold text-[color:var(--navy)]"
+                      disabled={checkoutLocked}
                       onClick={() => updateQuantity(String(product.id), quantity - 1)}
                       aria-label={`Decrease ${product.name} quantity`}
                     >
@@ -478,7 +657,7 @@ export function StoreCheckoutClient() {
                     <button
                       type="button"
                       className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--border)] text-lg font-bold text-[color:var(--navy)]"
-                      disabled={quantity >= availableFor(product)}
+                      disabled={checkoutLocked || quantity >= availableFor(product)}
                       onClick={() => updateQuantity(String(product.id), quantity + 1)}
                       aria-label={`Increase ${product.name} quantity`}
                     >
@@ -503,8 +682,16 @@ export function StoreCheckoutClient() {
                 className="primary-button mt-6 w-full disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={submitting || !customer}
               >
-                {submitting ? submitLabel : "Place order"}
+                {submitLabel}
               </button>
+              {pendingCheckout && (
+                <p
+                  role={paymentNotice ? "alert" : "status"}
+                  className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800"
+                >
+                  Order {pendingCheckout.order.reference} is saved. {paymentNotice ?? "Retry payment to continue checkout."}
+                </p>
+              )}
               {error && (
                 <p role="alert" className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
                   {error}

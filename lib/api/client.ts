@@ -89,13 +89,31 @@ export function getServices() {
   return request<Paginated<Service>>("/services", { auth: false }).then((r) => r.data);
 }
 
+export type AvailabilityCar = {
+  service_id: number;
+  add_on_ids?: number[];
+};
+
 export function getAvailability(
   date: string,
   window: "standard" | "midnight" = "standard",
-  serviceIds: number[] = [],
+  cartOrServiceIds: AvailabilityCar[] | number[] = [],
 ) {
-  const ids = serviceIds.map((id) => `&service_ids[]=${id}`).join("");
-  return request<Availability>(`/availability?date=${date}&window=${window}${ids}`, { auth: false });
+  const params = new URLSearchParams({ date, window });
+  if (cartOrServiceIds.every((value) => typeof value === "number")) {
+    (cartOrServiceIds as number[]).forEach((serviceId) => {
+      params.append("service_ids[]", String(serviceId));
+    });
+  } else {
+    (cartOrServiceIds as AvailabilityCar[]).forEach((car, index) => {
+      params.append(`cars[${index}][service_id]`, String(car.service_id));
+      car.add_on_ids?.forEach((addOnId) => {
+        params.append(`cars[${index}][add_on_ids][]`, String(addOnId));
+      });
+    });
+  }
+
+  return request<Availability>(`/availability?${params.toString()}`, { auth: false });
 }
 
 export function getMembershipPlans() {

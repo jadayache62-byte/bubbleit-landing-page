@@ -1,23 +1,38 @@
 // Bubble It operates only in Doha, Qatar (UTC+3, no DST). Booking times are
-// Qatar wall-clock everywhere: the backend stores `scheduled_at` as Qatar
-// wall-clock serialized with a `+00:00` offset, so it must never be converted
-// to the viewer's browser time zone.
+// Qatar wall-clock everywhere: API responses may label the wall-clock digits
+// with `+00:00`, while the local mock returns them without an offset. Neither
+// representation should be converted to the viewer's browser time zone.
 
 export const QATAR_UTC_OFFSET = "+03:00";
 
 const QATAR_OFFSET_MS = 3 * 60 * 60 * 1000;
+const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/;
+
+/**
+ * Serialize a Qatar wall-clock booking slot for the customer API. The API
+ * contract intentionally uses a timezone-naive string: YYYY-MM-DDTHH:mm:ss.
+ */
+export function serializeQatarBookingDateTime(date: string, time: string): string {
+  return `${date}T${time}:00`;
+}
 
 /**
  * Format a booking datetime from the API as Qatar wall-clock, regardless of
- * the viewer's time zone. The API labels Qatar wall-clock digits as +00:00,
- * so rendering in the UTC time zone reproduces them verbatim.
+ * the viewer's time zone. The API normally labels Qatar wall-clock digits as
+ * +00:00, while the local mock returns the same digits without an offset. A
+ * naive value is therefore anchored to UTC before rendering so its digits are
+ * preserved instead of being interpreted in the viewer's local time zone.
  */
 export function formatQatarDateTime(
   iso: string,
   locale: string,
   options: Intl.DateTimeFormatOptions,
 ): string {
-  return new Date(iso).toLocaleString(locale, { ...options, timeZone: "UTC" });
+  const normalized = iso.trim().replace(" ", "T");
+  const date = new Date(
+    NAIVE_DATETIME.test(normalized) ? `${normalized}Z` : normalized,
+  );
+  return date.toLocaleString(locale, { ...options, timeZone: "UTC" });
 }
 
 /**

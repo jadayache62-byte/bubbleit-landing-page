@@ -40,6 +40,7 @@ import {
   formatQatarDateTime,
   nextQatarDays,
   qatarSlotMs,
+  serializeQatarBookingDateTime,
 } from "@/lib/datetime";
 import { localized, useI18n } from "@/lib/i18n";
 
@@ -53,6 +54,7 @@ type CarDraft = {
   key: number;
   kind: WashKind;
   vtype: VehicleType;
+  vehicleId: number | null;
   serviceId: number | null;
   addOnIds: number[];
   make: string;
@@ -76,6 +78,7 @@ const emptyCar = (key: number, kind: WashKind = "car"): CarDraft => ({
   key,
   kind,
   vtype: defaultVtype(kind),
+  vehicleId: null,
   serviceId: null,
   addOnIds: [],
   make: "",
@@ -185,6 +188,20 @@ export function BookingWizard() {
 
   // Step 1 — cars & services
   const [cars, setCars] = useState<CarDraft[]>([emptyCar(1)]);
+  const serviceIds = useMemo(
+    () =>
+      cars.map((c) => c.serviceId).filter((id): id is number => id !== null),
+    [cars],
+  );
+  const availabilityCars = useMemo(
+    () =>
+      cars.flatMap((car) =>
+        car.serviceId === null
+          ? []
+          : [{ service_id: car.serviceId, add_on_ids: car.addOnIds }],
+      ),
+    [cars],
+  );
 
   // Step 2 — location
   const [area, setArea] = useState("");
@@ -246,24 +263,38 @@ export function BookingWizard() {
 
   // Reference "now" captured when slots load, used to hide today's past slots.
   const [nowMs, setNowMs] = useState(0);
+  const slotRequestRef = useRef(0);
 
-  const loadSlots = useCallback((d: string, ids: number[] = []) => {
+  const loadSlots = useCallback((
+    d: string,
+    cart: { service_id: number; add_on_ids: number[] }[] = [],
+    requestId = ++slotRequestRef.current,
+  ) => {
     setSlots(null);
     setSlot(null);
     setNowMs(Date.now());
-    getAvailability(d, "standard", ids)
-      .then((a) => setSlots(a.slots))
-      .catch(() => setSlots([]));
+    getAvailability(d, "standard", cart)
+      .then((a) => {
+        if (slotRequestRef.current === requestId) setSlots(a.slots);
+      })
+      .catch(() => {
+        if (slotRequestRef.current === requestId) setSlots([]);
+      });
   }, []);
 
   useEffect(() => {
     if (step !== 2) return;
-    // Pass the cart's services so slots reflect the real duration (fit + overlap).
-    const ids = cars
-      .map((c) => c.serviceId)
-      .filter((x): x is number => x !== null);
-    queueMicrotask(() => loadSlots(date, ids));
-  }, [step, date, cars, loadSlots]);
+    // Pass the selected cart so slots reflect its full service and add-on duration.
+    const requestId = ++slotRequestRef.current;
+    queueMicrotask(() => {
+      if (slotRequestRef.current === requestId) {
+        loadSlots(date, availabilityCars, requestId);
+      }
+    });
+    return () => {
+      if (slotRequestRef.current === requestId) slotRequestRef.current += 1;
+    };
+  }, [step, date, availabilityCars, loadSlots]);
 
   const total = useMemo(
     () =>
@@ -296,12 +327,6 @@ export function BookingWizard() {
   const promoActive = applied !== null && applied.subtotal === total;
   const discount = promoActive ? applied.discount : 0;
   const netTotal = Math.max(0, total - discount);
-
-  const serviceIds = useMemo(
-    () =>
-      cars.map((c) => c.serviceId).filter((id): id is number => id !== null),
-    [cars],
-  );
 
   const applyPromo = useCallback(async () => {
     const code = promoInput.trim().toUpperCase();
@@ -358,7 +383,7 @@ export function BookingWizard() {
     // Always price with memberships applied so we can detect eligibility even
     // when the customer has toggled it off; the toggle only decides display.
     getQuote({
-      scheduled_at: `${date}T${slot}:00`,
+      scheduled_at: serializeQatarBookingDateTime(date, slot),
       cars: quoteCars,
       use_membership: true,
     })
@@ -402,8 +427,19 @@ export function BookingWizard() {
   );
 
   function updateCar(key: number, patch: Partial<CarDraft>) {
+    const editsVehicle =
+      patch.vehicleId === undefined &&
+      (patch.make !== undefined ||
+        patch.model !== undefined ||
+        patch.color !== undefined ||
+        patch.plate !== undefined ||
+        patch.vtype !== undefined);
     setCars((prev) =>
-      prev.map((c) => (c.key === key ? { ...c, ...patch } : c)),
+      prev.map((c) =>
+        c.key === key
+          ? { ...c, ...patch, ...(editsVehicle ? { vehicleId: null } : {}) }
+          : c,
+      ),
     );
   }
 
@@ -460,6 +496,7 @@ export function BookingWizard() {
   }
 
   async function submit() {
+    if (!slot) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -473,23 +510,27 @@ export function BookingWizard() {
 
       const carPayloads = [];
       for (const car of cars) {
-        const vehicle = await createVehicle({
-          make: car.make.trim(),
-          model: car.model.trim(),
-          year: null,
-          color: car.color.trim(),
-          plate_number: car.plate.trim(),
-          type: car.vtype,
-        });
+        let vehicleId = car.vehicleId;
+        if (vehicleId === null) {
+          const vehicle = await createVehicle({
+            make: car.make.trim(),
+            model: car.model.trim(),
+            year: null,
+            color: car.color.trim(),
+            plate_number: car.plate.trim(),
+            type: car.vtype,
+          });
+          vehicleId = vehicle.id;
+        }
         carPayloads.push({
-          vehicle_id: vehicle.id,
+          vehicle_id: vehicleId,
           service_id: car.serviceId as number,
           add_on_ids: car.addOnIds,
         });
       }
 
       const booking = await createBooking({
-        scheduled_at: `${date}T${slot}:00`,
+        scheduled_at: serializeQatarBookingDateTime(date, slot),
         cars: carPayloads,
         address_id: address.id,
         payment_method: "online",
@@ -518,7 +559,7 @@ export function BookingWizard() {
             : t("That slot was just taken. Please pick another time."),
         );
         setStep(2);
-        loadSlots(date);
+        loadSlots(date, availabilityCars);
       } else {
         setError(
           e instanceof ApiError
@@ -1017,6 +1058,7 @@ function StepServices({
                       onUpdate(car.key, {
                         kind: option.value,
                         vtype: defaultVtype(option.value),
+                        vehicleId: null,
                         serviceId: null,
                         addOnIds: [],
                       })
@@ -1047,6 +1089,7 @@ function StepServices({
                         onClick={() =>
                           onUpdate(car.key, {
                             vtype: option.value,
+                            vehicleId: null,
                             serviceId: null,
                             addOnIds: [],
                           })
@@ -1179,13 +1222,14 @@ function StepServices({
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {saved.map((v) => {
-                          const active = car.plate === v.plate_number;
+                          const active = car.vehicleId === v.id;
                           return (
                             <button
                               key={v.id}
                               type="button"
                               onClick={() =>
                                 onUpdate(car.key, {
+                                  vehicleId: v.id,
                                   plate: v.plate_number,
                                   vtype: v.type,
                                   make: v.make ?? "",

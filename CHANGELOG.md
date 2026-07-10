@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-07-10] — Booking reliability
+
+### Fixed
+- **Booking times now stay on the selected Qatar wall-clock hour** — shared datetime formatting recognizes the timezone-naive timestamps returned by the local mock as Qatar wall-clock values, so confirmations and account cards no longer shift them by the viewer's timezone. Booking and membership payloads now use one shared serializer for the customer API's `YYYY-MM-DDTHH:mm:ss` contract.
+- **Saved cars are reused when booking** — selecting a saved-car chip now retains its vehicle ID and sends that existing vehicle in the booking payload instead of creating a duplicate saved car. Editing a vehicle field switches the draft back to a new vehicle safely.
+- **Slot availability stays current** — late availability responses from a previously selected day are ignored, and a capacity-conflict retry now reloads availability with the selected services so duration-aware slots remain accurate.
+- **Availability now reflects the complete wash cart** — selected add-ons are included when finding a slot, so the times shown match the duration the booking service will reserve.
+- **Store payment failures are recoverable** — a created store order and cart are retained when payment setup fails, letting the customer retry payment without creating a duplicate order.
+
+---
+
 ## [2026-07-09] — Saved cars: chips in booking, My Cars tab, 6-digit plates
 
 ### Added

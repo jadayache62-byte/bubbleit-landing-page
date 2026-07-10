@@ -20,7 +20,11 @@ import {
   listVehicles,
 } from "@/lib/api/client";
 import type { Booking, CustomerMembership, Slot, Vehicle } from "@/lib/api/types";
-import { nextQatarDays, qatarSlotMs } from "@/lib/datetime";
+import {
+  nextQatarDays,
+  qatarSlotMs,
+  serializeQatarBookingDateTime,
+} from "@/lib/datetime";
 import { localized, useI18n } from "@/lib/i18n";
 
 function next7Days() {
@@ -109,7 +113,7 @@ function RedeemInner() {
         vid = vehicle.id;
       }
       const booking = await createBooking({
-        scheduled_at: `${date}T${slot}:00`,
+        scheduled_at: serializeQatarBookingDateTime(date, slot),
         membership_id: membership.id,
         vehicle_id: vid,
         address_area: `${area.trim()}${details.trim() ? ` — ${details.trim()}` : ""}`,

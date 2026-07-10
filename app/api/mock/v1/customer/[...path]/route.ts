@@ -256,11 +256,32 @@ async function handle(req: NextRequest, segments: string[]) {
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
     const grid = req.nextUrl.searchParams.get("window") === "midnight" ? MIDNIGHT_SLOT_GRID : SLOT_GRID;
-    // Duration-aware: fit within working hours + interval overlap.
+    // Match the live endpoint's structured cart query. Keep service_ids[] as
+    // a legacy fallback for membership and older clients.
+    const cartCars = Array.from(req.nextUrl.searchParams.entries()).flatMap(([key, value]) => {
+      const match = key.match(/^cars\[(\d+)\]\[service_id\]$/);
+      if (!match) return [];
+
+      return [{
+        serviceId: Number(value),
+        addOnIds: req.nextUrl.searchParams
+          .getAll(`cars[${match[1]}][add_on_ids][]`)
+          .map(Number),
+      }];
+    });
     const serviceIds = req.nextUrl.searchParams.getAll("service_ids[]").map(Number);
-    const duration = serviceIds.length
-      ? serviceIds.reduce((sum, id) => sum + (SERVICES.find((s) => s.id === id)?.duration_minutes ?? 0), 0) || 60
-      : 60;
+    const duration = cartCars.length
+      ? cartCars.reduce((sum, car) => {
+          const service = SERVICES.find((candidate) => candidate.id === car.serviceId);
+          if (!service) return sum;
+
+          return sum + service.duration_minutes + service.add_ons
+            .filter((addOn) => car.addOnIds.includes(addOn.id))
+            .reduce((addOnTotal, addOn) => addOnTotal + (addOn.duration_minutes ?? 0), 0);
+        }, 0) || 60
+      : serviceIds.length
+        ? serviceIds.reduce((sum, id) => sum + (SERVICES.find((s) => s.id === id)?.duration_minutes ?? 0), 0) || 60
+        : 60;
     const toMin = (hm: string) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
     const closing = toMin(grid[grid.length - 1]) + 60;
     const existing = store.bookings
