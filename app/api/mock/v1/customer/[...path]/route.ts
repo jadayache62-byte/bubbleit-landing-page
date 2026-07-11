@@ -673,6 +673,33 @@ async function handle(req: NextRequest, segments: string[]) {
       });
     }
 
+    const productInput = Array.isArray(body.product_lines) ? body.product_lines : [];
+    const bookingProducts: NonNullable<Booking["products"]> = [];
+    const requestedProductQuantities: Record<string, number> = {};
+    let productTotal = 0;
+    for (const input of productInput) {
+      const product = store.storeProducts.find((item) => String(item.id) === String(input.product_id));
+      const quantity = Number(input.quantity ?? 0);
+      const available = product
+        ? Math.max(0, product.stock_quantity - product.reserved_quantity)
+        : 0;
+      const requested = (requestedProductQuantities[String(product?.id)] ?? 0) + quantity;
+      if (!product || !Number.isInteger(quantity) || quantity < 1 || requested > available) {
+        return fail(422, "One or more booking products are unavailable.");
+      }
+      requestedProductQuantities[String(product.id)] = requested;
+      const lineTotal = product.price * quantity;
+      bookingProducts.push({
+        product_id: product.id,
+        sku: product.sku,
+        name: product.name,
+        quantity,
+        unit_price: product.price,
+        line_total: lineTotal,
+      });
+      productTotal += lineTotal;
+    }
+
     const bookingDuration = bookingCars.reduce(
       (sum, car) => sum + (SERVICES.find((service) => service.id === car.service.id)?.duration_minutes ?? 0) + car.add_ons.reduce((addOnTotal, addOn) => addOnTotal + (addOn.duration_minutes ?? 0), 0),
       0,
@@ -706,7 +733,7 @@ async function handle(req: NextRequest, segments: string[]) {
       m.washes_remaining -= 1;
       if (m.washes_remaining === 0) m.status = "exhausted" as never;
     });
-    const fullyCovered = coveredCount > 0 && bookingCars.every((c) => c.subtotal === 0);
+    const fullyCovered = coveredCount > 0 && bookingCars.every((c) => c.subtotal === 0) && bookingProducts.length === 0;
 
     let addressArea = String(body.address_area ?? "").trim();
     if (body.address_id) {
@@ -744,13 +771,19 @@ async function handle(req: NextRequest, segments: string[]) {
       scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (bookingDuration * 60_000)).toISOString(),
       duration_minutes: bookingDuration,
       payment_method: fullyCovered ? "membership" : paymentMethod,
-      total: Math.max(0, subtotal - discount),
+      total: Math.max(0, subtotal - discount + productTotal),
+      product_total: productTotal,
       address_area: addressArea,
       notes: String(body.notes ?? "").trim(),
       cars: bookingCars,
+      products: bookingProducts,
       created_at: new Date().toISOString(),
     };
     store.bookings.push(booking);
+    for (const line of bookingProducts) {
+      const product = store.storeProducts.find((item) => item.id === line.product_id);
+      if (product) product.reserved_quantity += line.quantity;
+    }
 
     // Record the redemption — this is the row the admin dashboard reads back.
     if (appliedCode && discount > 0) {
@@ -788,6 +821,10 @@ async function handle(req: NextRequest, segments: string[]) {
       }
       booking.status = "cancelled_by_customer";
       booking.status_label = STATUS_LABELS.cancelled_by_customer;
+      for (const line of booking.products ?? []) {
+        const product = store.storeProducts.find((item) => item.id === line.product_id);
+        if (product) product.reserved_quantity = Math.max(0, product.reserved_quantity - line.quantity);
+      }
       const { customer_id: _c, ...pub } = booking;
       return envelope(pub, { message: "Booking cancelled." });
     }
@@ -807,6 +844,13 @@ async function handle(req: NextRequest, segments: string[]) {
       }
       booking.status = "paid";
       booking.status_label = STATUS_LABELS.paid;
+      for (const line of booking.products ?? []) {
+        const product = store.storeProducts.find((item) => item.id === line.product_id);
+        if (!product) continue;
+        product.reserved_quantity = Math.max(0, product.reserved_quantity - line.quantity);
+        product.stock_quantity -= line.quantity;
+        product.sold_quantity += line.quantity;
+      }
       const { customer_id: _c, ...pub } = booking;
       return envelope(pub, { message: "Payment confirmed." });
     }
