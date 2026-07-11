@@ -113,22 +113,14 @@ export const MEMBERSHIP_PLANS: MembershipPlan[] = [
     plan(17 + i, `Midnight Membership — ${w} washes`, `اشتراك ميدنايت — ${w} غسلات`, "midnight_exterior", null, w, p, ["00:00", "05:00"])),
 ];
 
-export const MIDNIGHT_SLOT_GRID = ["00:00", "01:00", "02:00", "03:00", "04:00"];
+const quarterHourGrid = (fromMinutes: number, toMinutes: number) =>
+  Array.from({ length: ((toMinutes - fromMinutes) / 15) + 1 }, (_, index) => {
+    const minutes = fromMinutes + (index * 15);
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  });
 
-export const SLOT_GRID = [
-  "08:00",
-  "09:00",
-  "10:00",
-  "11:00",
-  "12:00",
-  "13:00",
-  "14:00",
-  "15:00",
-  "16:00",
-  "17:00",
-  "18:00",
-  "19:00",
-];
+export const MIDNIGHT_SLOT_GRID = quarterHourGrid(0, (4 * 60) + 45);
+export const SLOT_GRID = quarterHourGrid(8 * 60, (19 * 60) + 45);
 
 export const STATUS_LABELS: Record<BookingStatus, string> = {
   pending_payment: "Pending Payment",

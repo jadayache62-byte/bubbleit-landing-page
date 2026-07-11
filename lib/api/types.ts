@@ -138,6 +138,15 @@ export type Booking = {
   membership_applied?: boolean;
   payment_method: PaymentMethod;
   total: number;
+  product_total?: number;
+  products?: {
+    product_id: string | number;
+    sku: string;
+    name: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }[];
   address_area: string;
   notes: string;
   cars: BookingCar[];
@@ -165,6 +174,7 @@ export type CreateBookingPayload = {
   use_membership?: boolean;
   notes?: string;
   promo_code?: string;
+  product_lines?: { product_id: string | number; quantity: number }[];
 };
 
 // Server-side price preview. The confirm page renders this instead of computing

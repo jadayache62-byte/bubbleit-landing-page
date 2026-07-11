@@ -59,16 +59,27 @@ function authCustomer(req: NextRequest) {
   return db().customers.find((c) => c.id === customerId) ?? null;
 }
 
-function slotTakenCount(dateTime: string) {
-  return db().bookings.filter(
-    (b) =>
-      b.scheduled_at === dateTime &&
-      !["cancelled_by_customer", "cancelled_by_admin"].includes(b.status),
-  ).length;
-}
-
 // Mock fleet capacity: 2 buses → a slot is unavailable once 2 active bookings hold it.
 const FLEET_CAPACITY = 2;
+const POST_BOOKING_BUFFER_MINUTES = 30;
+
+function toMinutes(hm: string) {
+  return Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
+}
+
+function hasFleetCapacity(dateTime: string, durationMinutes: number) {
+  const date = dateTime.slice(0, 10);
+  const start = toMinutes(dateTime.slice(11, 16));
+  const end = start + durationMinutes + POST_BOOKING_BUFFER_MINUTES;
+  const overlaps = db().bookings.filter((booking) => {
+    if (booking.scheduled_at.slice(0, 10) !== date) return false;
+    if (["cancelled_by_customer", "cancelled_by_admin"].includes(booking.status)) return false;
+    const bookingStart = toMinutes(booking.scheduled_at.slice(11, 16));
+    const bookingEnd = bookingStart + (booking.duration_minutes ?? 60) + POST_BOOKING_BUFFER_MINUTES;
+    return bookingStart < end && bookingEnd > start;
+  }).length;
+  return overlaps < FLEET_CAPACITY;
+}
 
 // Which services each membership scope redeems (mirrors the backend's
 // plan.service_id link). Only Standard Bubble (id 1) is seeded as a full wash.
@@ -282,21 +293,21 @@ async function handle(req: NextRequest, segments: string[]) {
       : serviceIds.length
         ? serviceIds.reduce((sum, id) => sum + (SERVICES.find((s) => s.id === id)?.duration_minutes ?? 0), 0) || 60
         : 60;
-    const toMin = (hm: string) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
-    const closing = toMin(grid[grid.length - 1]) + 60;
+    const closing = toMinutes(grid[grid.length - 1]) + 15;
     const existing = store.bookings
       .filter((b) => b.scheduled_at.slice(0, 10) === date && !["cancelled_by_customer", "cancelled_by_admin"].includes(b.status))
       .map((b) => {
-        const s = toMin(b.scheduled_at.slice(11, 16));
-        return [s, s + (b.duration_minutes ?? 60)] as const;
+        const s = toMinutes(b.scheduled_at.slice(11, 16));
+        return [s, s + (b.duration_minutes ?? 60) + POST_BOOKING_BUFFER_MINUTES] as const;
       });
     const slots = grid.map((start) => {
-      const s = toMin(start);
-      const e = s + duration;
-      const endHm = `${String(Math.floor(e / 60)).padStart(2, "0")}:${String(e % 60).padStart(2, "0")}`;
+      const s = toMinutes(start);
+      const serviceEnd = s + duration;
+      const occupancyEnd = serviceEnd + POST_BOOKING_BUFFER_MINUTES;
+      const endHm = `${String(Math.floor(serviceEnd / 60)).padStart(2, "0")}:${String(serviceEnd % 60).padStart(2, "0")}`;
       const isPast = date < todayStr || (date === todayStr && start <= now.toTimeString().slice(0, 5));
-      const overlaps = existing.filter(([es, ee]) => es < e && ee > s).length;
-      const available = !isPast && e <= closing && overlaps < FLEET_CAPACITY;
+      const overlaps = existing.filter(([es, ee]) => es < occupancyEnd && ee > s).length;
+      const available = !isPast && occupancyEnd <= closing && overlaps < FLEET_CAPACITY;
       return { start, end: endHm, available };
     });
     return envelope({ date, duration_minutes: duration, slots });
@@ -601,10 +612,10 @@ async function handle(req: NextRequest, segments: string[]) {
       if (membership.status !== "active" || membership.washes_remaining <= 0) {
         return fail(422, "This membership is not active or has no washes remaining.");
       }
-      if (slotTakenCount(scheduledAt) >= FLEET_CAPACITY) {
+      const planService = SERVICES.find((sv) => sv.id === (membership.plan.scope === "full_wash" ? 1 : 1)) ?? SERVICES[0];
+      if (!hasFleetCapacity(scheduledAt, planService.duration_minutes)) {
         return fail(409, "This time slot is no longer available. Please pick another slot.");
       }
-      const planService = SERVICES.find((sv) => sv.id === (membership.plan.scope === "full_wash" ? 1 : 1)) ?? SERVICES[0];
       membership.washes_used += 1;
       membership.washes_remaining -= 1;
       if (membership.washes_remaining === 0) membership.status = "exhausted" as never;
@@ -616,6 +627,8 @@ async function handle(req: NextRequest, segments: string[]) {
         status: "paid",
         status_label: STATUS_LABELS.paid,
         scheduled_at: scheduledAt,
+        scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (planService.duration_minutes * 60_000)).toISOString(),
+        duration_minutes: planService.duration_minutes,
         payment_method: "membership",
         total: 0,
         address_area: String(body.address_area ?? "").trim(),
@@ -642,10 +655,6 @@ async function handle(req: NextRequest, segments: string[]) {
         ...(cars.length ? {} : { cars: ["At least one car is required."] }),
       });
     }
-    if (slotTakenCount(scheduledAt) >= FLEET_CAPACITY) {
-      return fail(409, "This time slot is no longer available. Please pick another slot.");
-    }
-
     const bookingCars = [];
     for (const car of cars) {
       const vehicle = customer.vehicles.find((v) => v.id === car.vehicle_id);
@@ -662,6 +671,41 @@ async function handle(req: NextRequest, segments: string[]) {
         add_ons: addOns,
         subtotal: basePrice + addOns.reduce((sum, a) => sum + a.price, 0),
       });
+    }
+
+    const productInput = Array.isArray(body.product_lines) ? body.product_lines : [];
+    const bookingProducts: NonNullable<Booking["products"]> = [];
+    const requestedProductQuantities: Record<string, number> = {};
+    let productTotal = 0;
+    for (const input of productInput) {
+      const product = store.storeProducts.find((item) => String(item.id) === String(input.product_id));
+      const quantity = Number(input.quantity ?? 0);
+      const available = product
+        ? Math.max(0, product.stock_quantity - product.reserved_quantity)
+        : 0;
+      const requested = (requestedProductQuantities[String(product?.id)] ?? 0) + quantity;
+      if (!product || !Number.isInteger(quantity) || quantity < 1 || requested > available) {
+        return fail(422, "One or more booking products are unavailable.");
+      }
+      requestedProductQuantities[String(product.id)] = requested;
+      const lineTotal = product.price * quantity;
+      bookingProducts.push({
+        product_id: product.id,
+        sku: product.sku,
+        name: product.name,
+        quantity,
+        unit_price: product.price,
+        line_total: lineTotal,
+      });
+      productTotal += lineTotal;
+    }
+
+    const bookingDuration = bookingCars.reduce(
+      (sum, car) => sum + (SERVICES.find((service) => service.id === car.service.id)?.duration_minutes ?? 0) + car.add_ons.reduce((addOnTotal, addOn) => addOnTotal + (addOn.duration_minutes ?? 0), 0),
+      0,
+    ) || 60;
+    if (!hasFleetCapacity(scheduledAt, bookingDuration)) {
+      return fail(409, "This time slot is no longer available. Please pick another slot.");
     }
 
     // Auto-apply a membership only for a single, add-on-free car (matches the
@@ -689,7 +733,7 @@ async function handle(req: NextRequest, segments: string[]) {
       m.washes_remaining -= 1;
       if (m.washes_remaining === 0) m.status = "exhausted" as never;
     });
-    const fullyCovered = coveredCount > 0 && bookingCars.every((c) => c.subtotal === 0);
+    const fullyCovered = coveredCount > 0 && bookingCars.every((c) => c.subtotal === 0) && bookingProducts.length === 0;
 
     let addressArea = String(body.address_area ?? "").trim();
     if (body.address_id) {
@@ -724,14 +768,22 @@ async function handle(req: NextRequest, segments: string[]) {
       status: fullyCovered ? "paid" : "pending_payment",
       status_label: fullyCovered ? STATUS_LABELS.paid : STATUS_LABELS.pending_payment,
       scheduled_at: scheduledAt,
+      scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (bookingDuration * 60_000)).toISOString(),
+      duration_minutes: bookingDuration,
       payment_method: fullyCovered ? "membership" : paymentMethod,
-      total: Math.max(0, subtotal - discount),
+      total: Math.max(0, subtotal - discount + productTotal),
+      product_total: productTotal,
       address_area: addressArea,
       notes: String(body.notes ?? "").trim(),
       cars: bookingCars,
+      products: bookingProducts,
       created_at: new Date().toISOString(),
     };
     store.bookings.push(booking);
+    for (const line of bookingProducts) {
+      const product = store.storeProducts.find((item) => item.id === line.product_id);
+      if (product) product.reserved_quantity += line.quantity;
+    }
 
     // Record the redemption — this is the row the admin dashboard reads back.
     if (appliedCode && discount > 0) {
@@ -769,6 +821,10 @@ async function handle(req: NextRequest, segments: string[]) {
       }
       booking.status = "cancelled_by_customer";
       booking.status_label = STATUS_LABELS.cancelled_by_customer;
+      for (const line of booking.products ?? []) {
+        const product = store.storeProducts.find((item) => item.id === line.product_id);
+        if (product) product.reserved_quantity = Math.max(0, product.reserved_quantity - line.quantity);
+      }
       const { customer_id: _c, ...pub } = booking;
       return envelope(pub, { message: "Booking cancelled." });
     }
@@ -788,6 +844,13 @@ async function handle(req: NextRequest, segments: string[]) {
       }
       booking.status = "paid";
       booking.status_label = STATUS_LABELS.paid;
+      for (const line of booking.products ?? []) {
+        const product = store.storeProducts.find((item) => item.id === line.product_id);
+        if (!product) continue;
+        product.reserved_quantity = Math.max(0, product.reserved_quantity - line.quantity);
+        product.stock_quantity -= line.quantity;
+        product.sold_quantity += line.quantity;
+      }
       const { customer_id: _c, ...pub } = booking;
       return envelope(pub, { message: "Payment confirmed." });
     }

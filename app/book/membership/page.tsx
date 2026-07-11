@@ -10,6 +10,7 @@ import { useSearchParams } from "next/navigation";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
+import { HourSlotPicker } from "@/components/booking/HourSlotPicker";
 import {
   ApiError,
   createBooking,
@@ -22,7 +23,6 @@ import {
 import type { Booking, CustomerMembership, Slot, Vehicle } from "@/lib/api/types";
 import {
   nextQatarDays,
-  qatarSlotMs,
   serializeQatarBookingDateTime,
 } from "@/lib/datetime";
 import { localized, useI18n } from "@/lib/i18n";
@@ -266,33 +266,13 @@ function RedeemInner() {
       {slots === null ? (
         <p className="py-6 text-center text-sm text-[color:var(--muted-foreground)]">{t("Checking availability…")}</p>
       ) : (
-        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-          {slots.map((s) => {
-            // A slot on today's date whose start time has already passed
-            // (in Qatar) must not be bookable, even if the backend still
-            // lists it.
-            const isPast = qatarSlotMs(date, s.start) <= nowMs;
-            const selectable = s.available && !isPast;
-            return (
-              <button
-                key={s.start}
-                type="button"
-                disabled={!selectable}
-                onClick={() => setSlot(s.start)}
-                className={clsx(
-                  "rounded-xl border px-2 py-2.5 text-sm font-semibold transition",
-                  slot === s.start
-                    ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
-                    : selectable
-                      ? "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]"
-                      : "cursor-not-allowed border-transparent bg-[color:var(--background)] text-[color:var(--muted-foreground)]/50 line-through",
-                )}
-              >
-                {s.start}
-              </button>
-            );
-          })}
-        </div>
+        <HourSlotPicker
+          date={date}
+          slots={slots}
+          selectedSlot={slot}
+          nowMs={nowMs}
+          onSelect={setSlot}
+        />
       )}
 
       {/* Location */}
