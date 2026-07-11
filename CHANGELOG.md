@@ -8,6 +8,9 @@
 - **Products in the booking checkout** — customers can add in-stock physical products on the booking confirmation step. Selected products are delivered with the service and included in the booking's single SkipCash payment.
 - **Mock parity** — the local customer API reserves selected booking products, releases them on cancellation, and deducts them on mock payment completion.
 
+### Documentation
+- `CLAUDE.md` now requires implementation tasks to refresh durable documentation before commit, then verify, push, merge into `main`, and push the target branch.
+
 ---
 
 ## [2026-07-11] — Quarter-hour picker fallback

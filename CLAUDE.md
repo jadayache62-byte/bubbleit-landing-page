@@ -34,3 +34,4 @@ Repository notes for agents working on the Bubble It marketing site and customer
 ## Change Log Requirement
 
 - Keep `CHANGELOG.md` updated for each implementation session that changes user-visible site behavior or booking-flow behavior.
+- Before committing an implementation task, update this `CLAUDE.md` too when it introduces durable behavior, workflow, or operational knowledge future agents need. Then commit, push the feature branch, merge into `main` after verification passes, and push `main`.
