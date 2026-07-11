@@ -26,6 +26,7 @@ import {
   getQuote,
   getServices,
   getToken,
+  listStoreProducts,
   me,
   validatePromo,
 } from "@/lib/api/client";
@@ -34,6 +35,7 @@ import type {
   BookingQuote,
   Service,
   Slot,
+  StoreProductInventory,
   Vehicle,
   VehicleType,
 } from "@/lib/api/types";
@@ -219,6 +221,8 @@ export function BookingWizard() {
 
   // Step 4 — payment
   const [notes, setNotes] = useState("");
+  const [bookingProducts, setBookingProducts] = useState<StoreProductInventory[]>([]);
+  const [productQuantities, setProductQuantities] = useState<Record<string, number>>({});
 
   // Step 5 — identity + confirm
   const [authed, setAuthed] = useState(false);
@@ -239,6 +243,7 @@ export function BookingWizard() {
     getServices()
       .then(setServices)
       .catch(() => setLoadError(true));
+    listStoreProducts().then(setBookingProducts).catch(() => {});
     if (getToken()) {
       me()
         .then(() => setAuthed(true))
@@ -311,6 +316,13 @@ export function BookingWizard() {
         );
       }, 0),
     [cars, services],
+  );
+  const productTotal = useMemo(
+    () => bookingProducts.reduce(
+      (sum, product) => sum + product.price * (productQuantities[String(product.id)] ?? 0),
+      0,
+    ),
+    [bookingProducts, productQuantities],
   );
 
   // Promo code — validated server-side against the cart subtotal + services.
@@ -404,7 +416,8 @@ export function BookingWizard() {
     ? (quote?.membership_discount ?? 0)
     : 0;
   // Total the customer actually pays: membership-adjusted, or the promo net.
-  const dueTotal = applyMembership ? (quote?.total_price ?? 0) : netTotal;
+  const activeProductTotal = applyMembership ? 0 : productTotal;
+  const dueTotal = (applyMembership ? (quote?.total_price ?? 0) : netTotal) + activeProductTotal;
   const paidByMembership = applyMembership && dueTotal <= 0;
   const washesLeftAfter = applyMembership
     ? quote?.memberships.reduce(
@@ -539,6 +552,9 @@ export function BookingWizard() {
         use_membership: useMembership,
         notes: notes.trim() || undefined,
         promo_code: !applyMembership && promoActive ? applied.code : undefined,
+        product_lines: (!applyMembership ? Object.entries(productQuantities) : [])
+          .filter(([, quantity]) => quantity > 0)
+          .map(([product_id, quantity]) => ({ product_id, quantity })),
       });
 
       // Online-only: hand off to the SkipCash hosted checkout.
@@ -823,6 +839,17 @@ export function BookingWizard() {
               />
             )}
 
+            {!applyMembership && (
+              <BookingProductPicker
+                products={bookingProducts}
+                quantities={productQuantities}
+                onChange={(id, quantity) => setProductQuantities((current) => ({
+                  ...current,
+                  [id]: quantity,
+                }))}
+              />
+            )}
+
             <Field label={t("Notes for the team (optional)")}>
               <textarea
                 className="wizard-input min-h-20 resize-y"
@@ -850,6 +877,9 @@ export function BookingWizard() {
               washesLeftAfter={washesLeftAfter}
               timeRangeLabel={quote?.time_range_label ?? null}
               durationLabel={quote?.duration_label ?? null}
+              products={applyMembership ? [] : bookingProducts}
+              productQuantities={productQuantities}
+              productTotal={activeProductTotal}
             />
           </StepPanel>
         )}
@@ -1306,6 +1336,59 @@ function PayOption({
   );
 }
 
+function BookingProductPicker({
+  products,
+  quantities,
+  onChange,
+}: {
+  products: StoreProductInventory[];
+  quantities: Record<string, number>;
+  onChange: (id: string, quantity: number) => void;
+}) {
+  const { t } = useI18n();
+  const availableFor = (product: StoreProductInventory) => Math.max(
+    0,
+    product.available_quantity ?? product.stock_quantity - product.reserved_quantity,
+  );
+
+  if (products.length === 0) return null;
+
+  return (
+    <section className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5">
+      <div>
+        <h3 className="font-semibold text-[color:var(--navy)]">{t("Add products to your booking")}</h3>
+        <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
+          {t("We’ll bring these with your service and include them in this payment.")}
+        </p>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {products.map((product) => {
+          const id = String(product.id);
+          const quantity = quantities[id] ?? 0;
+          const available = availableFor(product);
+          return (
+            <div key={id} className="flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--border)] p-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{product.name}</p>
+                <p className="text-xs text-[color:var(--muted-foreground)]">{fmt(product.price)}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button type="button" aria-label={t("Remove one")} disabled={quantity === 0}
+                  onClick={() => onChange(id, Math.max(0, quantity - 1))}
+                  className="grid h-8 w-8 place-items-center rounded-full border border-[color:var(--border)] disabled:opacity-40">−</button>
+                <span className="w-4 text-center text-sm font-semibold">{quantity}</span>
+                <button type="button" aria-label={t("Add one")} disabled={quantity >= available}
+                  onClick={() => onChange(id, quantity + 1)}
+                  className="grid h-8 w-8 place-items-center rounded-full bg-[color:var(--navy)] text-white disabled:opacity-40">+</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function Summary({
   cars,
   services,
@@ -1324,6 +1407,9 @@ function Summary({
   washesLeftAfter,
   timeRangeLabel,
   durationLabel,
+  products,
+  productQuantities,
+  productTotal,
 }: {
   cars: CarDraft[];
   services: Service[];
@@ -1342,6 +1428,9 @@ function Summary({
   washesLeftAfter?: number;
   timeRangeLabel: string | null;
   durationLabel: string | null;
+  products: StoreProductInventory[];
+  productQuantities: Record<string, number>;
+  productTotal: number;
 }) {
   const { lang, t } = useI18n();
   const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(
@@ -1393,6 +1482,19 @@ function Summary({
                 </span>
               </span>
               <span className="font-semibold">{fmt(subtotal)}</span>
+            </li>
+          );
+        })}
+        {products.map((product) => {
+          const quantity = productQuantities[String(product.id)] ?? 0;
+          if (quantity === 0) return null;
+          return (
+            <li key={product.id} className="flex items-start justify-between gap-4">
+              <span>
+                <span className="font-semibold">{product.name}</span>
+                <span className="block text-xs text-[color:var(--muted-foreground)]">{quantity} × {fmt(product.price)}</span>
+              </span>
+              <span className="font-semibold">{fmt(product.price * quantity)}</span>
             </li>
           );
         })}
@@ -1465,6 +1567,12 @@ function Summary({
               <span className="font-semibold">− {fmt(discount)}</span>
             </li>
           </>
+        )}
+        {productTotal > 0 && (
+          <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
+            <span className="text-[color:var(--muted-foreground)]">{t("Booking products")}</span>
+            <span className="font-medium">{fmt(productTotal)}</span>
+          </li>
         )}
         <li className="flex justify-between border-t border-[color:var(--border)] pt-2 text-base font-bold">
           <span>{t("Total")}</span>

@@ -22,6 +22,7 @@ Repository notes for agents working on the Bubble It marketing site and customer
   - a note that final bus assignment is confirmed by the Bubble It team
 - Do not expose bus numbers, plate numbers, or driver names to customers in the website flow.
 - Do not change the booking creation payload shape just to support manager-side dispatch assistance.
+- Physical products selected in the booking confirmation step use `product_lines` and belong to the booking's single payment. They are distinct from service add-ons and from standalone `/store` orders, which retain their own checkout.
 
 ## Timezone Convention
 
