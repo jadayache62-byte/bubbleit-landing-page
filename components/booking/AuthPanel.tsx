@@ -65,7 +65,10 @@ export function AuthPanel({
       const normalizedPhone = normalizeQatarPhone(phone);
       setPhone(normalizedPhone);
       const { registered, has_password: hasPassword } = await checkPhone(normalizedPhone);
-      setStage(registered ? (hasPassword ? "password" : "claim") : "register");
+      // Older customer APIs returned only `registered`. Treat a missing
+      // has_password flag as a normal returning account; only an explicit
+      // false means this is a manager-created account that still needs claiming.
+      setStage(registered ? (hasPassword === false ? "claim" : "password") : "register");
     } catch (e) {
       fail(e);
     } finally {

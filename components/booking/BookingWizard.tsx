@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
+import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { createPortal } from "react-dom";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import { HourSlotPicker } from "@/components/booking/HourSlotPicker";
 
@@ -123,8 +125,8 @@ function subTypesFor(kind: WashKind): { value: VehicleType; label: string }[] {
   switch (kind) {
     case "car":
       return [
-        { value: "sedan", label: "Salon / Sedan" },
         { value: "suv", label: "SUV / 4-Wheel" },
+        { value: "sedan", label: "Salon / Sedan" },
       ];
     case "jet":
       return [
@@ -171,6 +173,48 @@ function fmt(amount: number) {
   return `${CURRENCY} ${amount}`;
 }
 
+let activeScrollFrame: number | null = null;
+
+function scrollWindowTo(
+  getTargetY: number | (() => number),
+  reducedMotion: boolean,
+  duration = 700,
+  onComplete?: () => void,
+) {
+  if (activeScrollFrame !== null) {
+    cancelAnimationFrame(activeScrollFrame);
+    activeScrollFrame = null;
+  }
+  const resolveTarget = () =>
+    typeof getTargetY === "function" ? getTargetY() : getTargetY;
+  if (reducedMotion) {
+    window.scrollTo({ top: resolveTarget(), behavior: "auto" });
+    onComplete?.();
+    return;
+  }
+  const startY = window.scrollY;
+  const startedAt = performance.now();
+  // Ease out immediately follows the customer's tap, then settles gently at
+  // the destination instead of pausing first and accelerating late.
+  const easeInOut = (progress: number) => 1 - (1 - progress) * (1 - progress);
+  const frame = (now: number) => {
+    const progress = Math.min(1, (now - startedAt) / duration);
+    const distance = resolveTarget() - startY;
+    window.scrollTo(0, startY + distance * easeInOut(progress));
+    if (progress < 1) {
+      activeScrollFrame = requestAnimationFrame(frame);
+    } else {
+      activeScrollFrame = null;
+      onComplete?.();
+    }
+  };
+  activeScrollFrame = requestAnimationFrame(frame);
+}
+
+function Skeleton({ className }: { className: string }) {
+  return <span aria-hidden="true" className={`block animate-pulse rounded-xl bg-slate-200/80 ${className}`} />;
+}
+
 function next7Days(): { date: string; label: string; weekday: string }[] {
   return nextQatarDays(7);
 }
@@ -180,12 +224,16 @@ export function BookingWizard() {
   const [step, setStep] = useState(0);
   const topRef = useRef<HTMLDivElement>(null);
   const [services, setServices] = useState<Service[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(true);
+  const [productsLoading, setProductsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
   // On every step change, bring the top of the wizard into view (mobile
   // otherwise lands at the bottom of the freshly rendered step).
   useEffect(() => {
-    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!topRef.current) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    scrollWindowTo(window.scrollY + topRef.current.getBoundingClientRect().top - 96, reduceMotion);
   }, [step]);
 
   // Step 1 — cars & services
@@ -242,8 +290,12 @@ export function BookingWizard() {
   useEffect(() => {
     getServices()
       .then(setServices)
-      .catch(() => setLoadError(true));
-    listStoreProducts().then(setBookingProducts).catch(() => {});
+      .catch(() => setLoadError(true))
+      .finally(() => setServicesLoading(false));
+    listStoreProducts()
+      .then(setBookingProducts)
+      .catch(() => {})
+      .finally(() => setProductsLoading(false));
     if (getToken()) {
       me()
         .then(() => setAuthed(true))
@@ -434,11 +486,6 @@ export function BookingWizard() {
     (step === 1 && area.trim().length > 1) ||
     (step === 2 && slot !== null);
 
-  const selectedSlotMeta = useMemo(
-    () => slots?.find((s) => s.start === slot) ?? null,
-    [slot, slots],
-  );
-
   function updateCar(key: number, patch: Partial<CarDraft>) {
     const editsVehicle =
       patch.vehicleId === undefined &&
@@ -610,7 +657,10 @@ export function BookingWizard() {
   }
 
   return (
-    <div ref={topRef} className="mx-auto w-full max-w-3xl scroll-mt-24">
+    <div
+      ref={topRef}
+      className="mx-auto w-full max-w-3xl scroll-mt-24 pb-[calc(13rem+env(safe-area-inset-bottom))]"
+    >
       {/* Progress */}
       <ol
         className="mb-8 flex items-center justify-between gap-1 sm:gap-2"
@@ -646,10 +696,11 @@ export function BookingWizard() {
         ))}
       </ol>
 
-      <div className="glass-panel rounded-[var(--radius-card)] p-6 sm:p-10">
+      <div className="glass-panel rounded-[var(--radius-card)] p-4 sm:p-10">
         {step === 0 && (
           <StepServices
             services={services}
+            loading={servicesLoading}
             cars={cars}
             savedVehicles={myVehicles}
             onUpdate={updateCar}
@@ -761,35 +812,19 @@ export function BookingWizard() {
             </div>
 
             {slots === null ? (
-              <p className="py-8 text-center text-sm text-[color:var(--muted-foreground)]">
-                {t("Checking availability…")}
-              </p>
+              <div aria-label={t("Checking availability…")} className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {Array.from({ length: 12 }, (_, index) => (
+                  <Skeleton key={index} className="h-11 w-full" />
+                ))}
+              </div>
             ) : (
-              <>
-                <HourSlotPicker
-                  date={date}
-                  slots={slots}
-                  selectedSlot={slot}
-                  nowMs={nowMs}
-                  onSelect={setSlot}
-                />
-                {selectedSlotMeta &&
-                  typeof selectedSlotMeta.available_bus_count === "number" && (
-                    <div className="mt-4 rounded-2xl border border-[color:var(--border)] bg-white/70 px-4 py-3 text-sm text-[color:var(--muted-foreground)]">
-                      <p className="font-semibold text-[color:var(--navy)]">
-                        {selectedSlotMeta.available_bus_count} bus
-                        {selectedSlotMeta.available_bus_count === 1
-                          ? ""
-                          : "es"}{" "}
-                        available for this time
-                      </p>
-                      <p className="mt-1">
-                        Final bus assignment is confirmed by our team after
-                        booking.
-                      </p>
-                    </div>
-                  )}
-              </>
+              <HourSlotPicker
+                date={date}
+                slots={slots}
+                selectedSlot={slot}
+                nowMs={nowMs}
+                onSelect={setSlot}
+              />
             )}
           </StepPanel>
         )}
@@ -813,9 +848,6 @@ export function BookingWizard() {
               active
               onClick={() => {}}
               title={t("Pay online (SkipCash)")}
-              description={t(
-                "Secure card payment. We'll take you to checkout and confirm your booking after payment.",
-              )}
             />
 
             {membershipEligible && (
@@ -842,6 +874,7 @@ export function BookingWizard() {
             {!applyMembership && (
               <BookingProductPicker
                 products={bookingProducts}
+                loading={productsLoading}
                 quantities={productQuantities}
                 onChange={(id, quantity) => setProductQuantities((current) => ({
                   ...current,
@@ -868,7 +901,6 @@ export function BookingWizard() {
               slot={slot}
               total={total}
               discount={discount}
-              netTotal={netTotal}
               promoCode={promoActive ? applied.code : null}
               membershipApplied={applyMembership}
               membershipDiscount={membershipDiscount}
@@ -892,14 +924,16 @@ export function BookingWizard() {
             {error}
           </p>
         )}
+      </div>
 
-        {/* Footer nav */}
-        <div className="mt-8 flex flex-col gap-4 border-t border-[color:var(--border)] pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-[color:var(--muted-foreground)]">
+        {/* Persistent booking actions */}
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[color:var(--border)] bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_32px_rgba(15,23,42,0.12)] backdrop-blur-xl">
+          <div className="mx-auto flex w-full max-w-3xl items-center gap-3">
+          <div className="min-w-0 flex-1 text-xs text-[color:var(--muted-foreground)] sm:text-sm">
             {step === 3 ? (
               <>
                 {t("Total")}{" "}
-                <span className="text-lg font-bold text-[color:var(--navy)]">
+                <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
                   {fmt(dueTotal)}
                 </span>
                 {paidByMembership ? (
@@ -918,18 +952,18 @@ export function BookingWizard() {
               total > 0 && (
                 <>
                   {t("Total")}{" "}
-                  <span className="text-lg font-bold text-[color:var(--navy)]">
+                  <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
                     {fmt(netTotal)}
                   </span>
                 </>
               )
             )}
           </div>
-          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+          <div className="flex min-w-0 flex-[1.35] items-center justify-end gap-2 sm:flex-none">
             {step > 0 && (
               <button
                 type="button"
-                className="secondary-button w-full sm:w-auto"
+                className="secondary-button min-w-0 shrink px-4 sm:w-auto"
                 onClick={() => setStep(step - 1)}
               >
                 {t("Back")}
@@ -938,7 +972,7 @@ export function BookingWizard() {
             {step < STEPS.length - 1 ? (
               <button
                 type="button"
-                className="primary-button w-full disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+                className="primary-button min-w-0 flex-1 px-5 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
                 disabled={!canContinue}
                 onClick={() => setStep(step + 1)}
               >
@@ -947,7 +981,7 @@ export function BookingWizard() {
             ) : (
               <button
                 type="button"
-                className="primary-button w-full disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+                className="primary-button min-w-0 flex-1 px-5 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
                 disabled={submitting || !authed}
                 onClick={submit}
               >
@@ -955,8 +989,8 @@ export function BookingWizard() {
               </button>
             )}
           </div>
+          </div>
         </div>
-      </div>
     </div>
   );
 }
@@ -1009,6 +1043,7 @@ function Field({
 
 function StepServices({
   services,
+  loading,
   cars,
   savedVehicles,
   onUpdate,
@@ -1016,6 +1051,7 @@ function StepServices({
   onRemove,
 }: {
   services: Service[];
+  loading: boolean;
   cars: CarDraft[];
   savedVehicles: Vehicle[];
   onUpdate: (key: number, patch: Partial<CarDraft>) => void;
@@ -1023,6 +1059,32 @@ function StepServices({
   onRemove: (key: number) => void;
 }) {
   const { lang, t } = useI18n();
+  const contextRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const guideSequence = useRef(0);
+  const [attentionKey, setAttentionKey] = useState<number | null>(null);
+
+  function guideToVehicle(key: number, needsVehicle: boolean) {
+    setAttentionKey(needsVehicle ? key : null);
+    const sequence = ++guideSequence.current;
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    // Wait for React to commit the selected service and any add-ons before
+    // measuring. Two frames avoids animating toward stale card geometry.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (sequence !== guideSequence.current) return;
+      const target = contextRefs.current[key];
+      if (!target) return;
+      if (activeScrollFrame !== null) {
+        cancelAnimationFrame(activeScrollFrame);
+        activeScrollFrame = null;
+      }
+      target.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "end",
+      });
+    }));
+  }
 
   return (
     <StepPanel
@@ -1038,10 +1100,13 @@ function StepServices({
           );
           const selected = services.find((s) => s.id === car.serviceId);
           const isCar = car.kind === "car";
+          const saved = savedVehicles.filter((v) =>
+            typesForKind(car.kind).includes(v.type),
+          );
           return (
             <div
               key={car.key}
-              className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5"
+              className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-3.5 sm:p-5"
             >
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-sm font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">
@@ -1118,21 +1183,30 @@ function StepServices({
                 </div>
               )}
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                {visibleServices.map((service) => {
+              <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-3">
+                {loading && Array.from({ length: 6 }, (_, index) => (
+                  <div key={index} className="flex min-h-40 flex-col rounded-2xl border border-[color:var(--border)] bg-white p-3 sm:p-4">
+                    <Skeleton className="h-5 w-3/4" />
+                    <Skeleton className="mt-3 h-3 w-full" />
+                    <Skeleton className="mt-2 h-3 w-5/6" />
+                    <Skeleton className="mt-auto h-5 w-2/3" />
+                  </div>
+                ))}
+                {!loading && visibleServices.map((service) => {
                   const isPopular = service.name === "Deep Bubble";
                   return (
                     <button
                       key={service.id}
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
                         onUpdate(car.key, {
                           serviceId: service.id,
                           addOnIds: [],
-                        })
-                      }
+                        });
+                        guideToVehicle(car.key, !car.plate.trim());
+                      }}
                       className={clsx(
-                        "relative flex flex-col items-start rounded-2xl border p-4 text-left transition",
+                        "relative flex min-h-40 cursor-pointer flex-col items-start rounded-2xl border p-3 text-start transition duration-200 sm:min-h-44 sm:p-4",
                         car.serviceId === service.id
                           ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
                           : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
@@ -1143,12 +1217,12 @@ function StepServices({
                           {t("Popular")}
                         </span>
                       )}
-                      <span className="font-bold">
+                      <span className={clsx("text-sm font-bold leading-5 sm:text-base", isPopular && "pe-12")}>
                         {localized(lang, service.name, service.name_ar)}
                       </span>
                       <span
                         className={clsx(
-                          "mt-1 text-xs leading-5",
+                          "mt-1 line-clamp-3 text-xs leading-4 sm:leading-5",
                           car.serviceId === service.id
                             ? "text-white/75"
                             : "text-[color:var(--muted-foreground)]",
@@ -1162,7 +1236,7 @@ function StepServices({
                       </span>
                       <span
                         className={clsx(
-                          "mt-2 flex items-center gap-2 text-sm font-bold",
+                          "mt-auto flex items-center gap-2 pt-2 text-sm font-bold",
                           car.serviceId === service.id
                             ? "text-[color:var(--cyan)]"
                             : "text-[color:var(--blue)]",
@@ -1187,10 +1261,16 @@ function StepServices({
                 })}
               </div>
 
+              <div
+                ref={(node) => {
+                  contextRefs.current[car.key] = node;
+                }}
+                className="scroll-mt-28 scroll-mb-32"
+              >
               {selected && selected.add_ons.length > 0 && (
                 <div className="mt-4">
                   <p className="mb-2 text-sm font-semibold">{t("Add-ons")}</p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {selected.add_ons.map((addOn) => {
                       const active = car.addOnIds.includes(addOn.id);
                       return (
@@ -1205,7 +1285,7 @@ function StepServices({
                             })
                           }
                           className={clsx(
-                            "rounded-full border px-4 py-2 text-xs font-semibold transition",
+                            "min-h-11 min-w-0 cursor-pointer rounded-xl border px-3 py-2 text-xs font-semibold leading-4 transition duration-200",
                             active
                               ? "border-[color:var(--blue)] bg-[color:var(--blue)] text-white"
                               : "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)]",
@@ -1219,13 +1299,21 @@ function StepServices({
                 </div>
               )}
 
-              <div className="mt-4">
-                {(() => {
-                  const saved = savedVehicles.filter((v) =>
-                    typesForKind(car.kind).includes(v.type),
-                  );
-                  if (saved.length === 0) return null;
-                  return (
+              <div
+                className={clsx(
+                  "mt-4 rounded-2xl border border-transparent p-2 transition-colors duration-300",
+                  attentionKey === car.key &&
+                    "border-sky-300 bg-sky-50/80 ring-2 ring-sky-200/70",
+                )}
+              >
+                {attentionKey === car.key && (
+                  <p className="mb-2 text-xs font-semibold text-[color:var(--blue)]" role="status">
+                    {saved.length > 0
+                      ? t("Next: select a saved car or enter the plate number.")
+                      : t("Next: enter the plate number.")}
+                  </p>
+                )}
+                {saved.length > 0 && (
                     <div className="mb-3">
                       <p className="mb-2 text-sm font-semibold">
                         {t("Your saved cars")}
@@ -1237,7 +1325,8 @@ function StepServices({
                             <button
                               key={v.id}
                               type="button"
-                              onClick={() =>
+                              onClick={() => {
+                                setAttentionKey(null);
                                 onUpdate(car.key, {
                                   vehicleId: v.id,
                                   plate: v.plate_number,
@@ -1245,8 +1334,8 @@ function StepServices({
                                   make: v.make ?? "",
                                   model: v.model ?? "",
                                   color: v.color ?? "",
-                                })
-                              }
+                                });
+                              }}
                               className={clsx(
                                 "rounded-full border px-4 py-2 text-xs font-semibold transition",
                                 active
@@ -1262,8 +1351,7 @@ function StepServices({
                         })}
                       </div>
                     </div>
-                  );
-                })()}
+                )}
                 <Field
                   label={isCar ? t("Plate no.") : t("ID / Registration")}
                   required
@@ -1274,16 +1362,18 @@ function StepServices({
                     inputMode={isCar ? "numeric" : undefined}
                     maxLength={isCar ? 6 : undefined}
                     value={car.plate}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      setAttentionKey(null);
                       onUpdate(car.key, {
                         // Qatar plates: digits only, at most 6.
                         plate: isCar
                           ? e.target.value.replace(/\D/g, "").slice(0, 6)
                           : e.target.value,
-                      })
-                    }
+                      });
+                    }}
                   />
                 </Field>
+              </div>
               </div>
             </div>
           );
@@ -1295,7 +1385,7 @@ function StepServices({
         className="secondary-button self-start"
         onClick={onAdd}
       >
-        {t("+ Add vehicle")}
+        {t("+ Add another vehicle")}
       </button>
     </StepPanel>
   );
@@ -1305,12 +1395,10 @@ function PayOption({
   active,
   onClick,
   title,
-  description,
 }: {
   active: boolean;
   onClick: () => void;
   title: string;
-  description: string;
 }) {
   return (
     <button
@@ -1324,68 +1412,213 @@ function PayOption({
       )}
     >
       <span className="font-bold">{title}</span>
-      <span
-        className={clsx(
-          "mt-1 text-sm",
-          active ? "text-white/75" : "text-[color:var(--muted-foreground)]",
-        )}
-      >
-        {description}
-      </span>
     </button>
   );
 }
 
 function BookingProductPicker({
   products,
+  loading,
   quantities,
   onChange,
 }: {
   products: StoreProductInventory[];
+  loading: boolean;
   quantities: Record<string, number>;
   onChange: (id: string, quantity: number) => void;
 }) {
   const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const modalRef = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const availableFor = (product: StoreProductInventory) => Math.max(
     0,
     product.available_quantity ?? product.stock_quantity - product.reserved_quantity,
   );
 
+  useEffect(() => {
+    if (!open) return;
+    const body = document.body;
+    const trigger = triggerRef.current;
+    const scrollY = window.scrollY;
+    const previous = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      width: body.style.width,
+    };
+    // Freeze the page behind the portal. Keeping its exact scroll offset avoids
+    // the modal moving when a quantity update rerenders the booking wizard.
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !modalRef.current) return;
+      const focusable = [...modalRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    requestAnimationFrame(() => closeButtonRef.current?.focus());
+    return () => {
+      body.style.overflow = previous.overflow;
+      body.style.position = previous.position;
+      body.style.top = previous.top;
+      body.style.width = previous.width;
+      window.scrollTo({ top: scrollY, behavior: "auto" });
+      document.removeEventListener("keydown", closeOnEscape);
+      trigger?.focus({ preventScroll: true });
+    };
+  }, [open]);
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-[color:var(--border)] bg-white/70 p-4">
+        <Skeleton className="h-5 w-40" />
+        <Skeleton className="mt-2 h-4 w-64 max-w-full" />
+      </div>
+    );
+  }
+
   if (products.length === 0) return null;
 
+  const selectedCount = Object.values(quantities).reduce((sum, quantity) => sum + quantity, 0);
+  const selectedTotal = products.reduce(
+    (sum, product) => sum + product.price * (quantities[String(product.id)] ?? 0),
+    0,
+  );
+
   return (
-    <section className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5">
-      <div>
-        <h3 className="font-semibold text-[color:var(--navy)]">{t("Add products to your booking")}</h3>
-        <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-          {t("We’ll bring these with your service and include them in this payment.")}
-        </p>
-      </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen(true)}
+        className={clsx(
+          "group relative flex min-h-20 w-full cursor-pointer items-center gap-3 overflow-hidden rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-white to-cyan-50 px-4 py-3 text-start shadow-sm transition-colors duration-200 hover:border-[color:var(--blue)] focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-2 sm:gap-4 sm:px-5",
+          selectedCount === 0 && "booking-products-nudge",
+        )}
+      >
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[color:var(--navy)] text-white shadow-md shadow-sky-200/80" aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none"><path d="M6.5 8.5h11l1 11h-13l1-11Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M9 9V6.5a3 3 0 0 1 6 0V9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="mb-1 flex flex-wrap items-center gap-2">
+            <span className="font-bold text-[color:var(--navy)]">{t("Enhance your booking")}</span>
+            {selectedCount === 0 && (
+              <span className="rounded-full bg-[color:var(--cyan)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--navy)]">
+                {t("Recommended")}
+              </span>
+            )}
+          </span>
+          <span className="block text-xs leading-4 text-[color:var(--muted-foreground)] sm:text-sm">
+            {selectedCount > 0
+              ? `${selectedCount} ${t("selected")} · ${fmt(selectedTotal)}`
+              : t("Add car-care essentials and we’ll bring them with your wash.")}
+          </span>
+        </span>
+        <span className="hidden shrink-0 items-center gap-1 text-xs font-bold text-[color:var(--blue)] sm:flex">
+          {t("View products")}
+          <svg viewBox="0 0 20 20" className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" fill="none" aria-hidden="true"><path d="m7 4 6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </span>
+      </button>
+
+      {open && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="booking-products-title"
+          className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setOpen(false);
+          }}
+        >
+          <section ref={modalRef} className="flex h-[min(88dvh,52rem)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_32px_100px_rgba(15,23,42,0.32)]">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[color:var(--border)] bg-white px-4 py-4 sm:px-7 sm:py-6">
+              <div>
+                <span className="mb-1 block text-xs font-bold uppercase tracking-[0.16em] text-[color:var(--blue)]">{t("Optional add-ons")}</span>
+                <h3 id="booking-products-title" className="text-xl font-bold text-[color:var(--navy)] sm:text-2xl">{t("Complete your wash")}</h3>
+                <p className="mt-1 max-w-xl text-sm text-[color:var(--muted-foreground)]">
+                  {t("We’ll bring these with your service and include them in this payment.")}
+                </p>
+              </div>
+              <button ref={closeButtonRef} type="button" aria-label={t("Close")} onClick={() => setOpen(false)} className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-full border border-[color:var(--border)] text-[color:var(--navy)] transition-colors hover:border-[color:var(--navy)] hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-[color:var(--blue)]">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+              </button>
+            </div>
+            <div className="grid min-h-0 flex-1 auto-rows-max grid-cols-1 gap-3 overflow-y-auto overscroll-contain bg-slate-50/80 p-4 sm:grid-cols-2 sm:p-6 lg:gap-4 lg:p-7">
         {products.map((product) => {
           const id = String(product.id);
           const quantity = quantities[id] ?? 0;
           const available = availableFor(product);
           return (
-            <div key={id} className="flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--border)] p-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{product.name}</p>
-                <p className="text-xs text-[color:var(--muted-foreground)]">{fmt(product.price)}</p>
+            <div
+              key={id}
+              className={clsx(
+                "flex min-h-28 min-w-0 items-center gap-3 rounded-2xl border bg-white p-3 shadow-sm transition-colors duration-200 sm:gap-4 sm:p-4",
+                quantity > 0 ? "border-sky-300 ring-1 ring-sky-200" : "border-[color:var(--border)] hover:border-slate-300",
+                available === 0 && "opacity-60",
+              )}
+            >
+              <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-[color:var(--background)] sm:h-24 sm:w-24">
+                <Image
+                  src={product.imageSrc ?? "/assets/store/product-5.jpg"}
+                  alt={product.imageAlt ?? product.name}
+                  fill
+                  sizes="96px"
+                  className="object-cover"
+                />
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-sm font-bold leading-5 text-[color:var(--navy)]">{product.name}</p>
+                <p className="mt-1 text-sm font-bold text-[color:var(--blue)]">{fmt(product.price)}</p>
+                {available === 0 && <p className="mt-1 text-xs font-semibold text-red-600">{t("Out of stock")}</p>}
+              </div>
+              <div className="ms-auto flex shrink-0 items-center gap-1 rounded-full border border-[color:var(--border)] bg-slate-50 p-1">
                 <button type="button" aria-label={t("Remove one")} disabled={quantity === 0}
                   onClick={() => onChange(id, Math.max(0, quantity - 1))}
-                  className="grid h-8 w-8 place-items-center rounded-full border border-[color:var(--border)] disabled:opacity-40">−</button>
-                <span className="w-4 text-center text-sm font-semibold">{quantity}</span>
+                  className="grid h-10 w-10 cursor-pointer place-items-center rounded-full bg-white text-lg font-semibold shadow-sm transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] disabled:cursor-not-allowed disabled:opacity-35">−</button>
+                <span className="w-6 text-center text-sm font-bold" aria-live="polite">{quantity}</span>
                 <button type="button" aria-label={t("Add one")} disabled={quantity >= available}
                   onClick={() => onChange(id, quantity + 1)}
-                  className="grid h-8 w-8 place-items-center rounded-full bg-[color:var(--navy)] text-white disabled:opacity-40">+</button>
+                  className="grid h-10 w-10 cursor-pointer place-items-center rounded-full bg-[color:var(--navy)] text-lg font-semibold text-white transition-colors hover:bg-[color:var(--blue)] focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-35">+</button>
               </div>
             </div>
           );
         })}
-      </div>
-    </section>
+            </div>
+            <div className="flex shrink-0 items-center gap-3 border-t border-[color:var(--border)] bg-white px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-7 sm:py-5">
+              <div className="min-w-0 flex-1">
+                <span className="block text-xs font-medium text-[color:var(--muted-foreground)]">
+                  {selectedCount > 0 ? `${selectedCount} ${t("selected")}` : t("No products selected")}
+                </span>
+                <span className="block text-lg font-bold text-[color:var(--navy)]">{fmt(selectedTotal)}</span>
+              </div>
+              <button type="button" onClick={() => setOpen(false)} className="primary-button min-w-36 px-6 sm:min-w-48">
+                {t("Add to booking")}
+              </button>
+            </div>
+          </section>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -1398,7 +1631,6 @@ function Summary({
   slot,
   total,
   discount,
-  netTotal,
   promoCode,
   membershipApplied,
   membershipDiscount,
@@ -1419,7 +1651,6 @@ function Summary({
   slot: string | null;
   total: number;
   discount: number;
-  netTotal: number;
   promoCode: string | null;
   membershipApplied: boolean;
   membershipDiscount: number;
@@ -1576,7 +1807,7 @@ function Summary({
         )}
         <li className="flex justify-between border-t border-[color:var(--border)] pt-2 text-base font-bold">
           <span>{t("Total")}</span>
-          <span>{fmt(membershipApplied ? dueTotal : netTotal)}</span>
+              <span>{fmt(dueTotal)}</span>
         </li>
         {paidByMembership &&
           washesLeftAfter !== undefined &&

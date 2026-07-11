@@ -17,12 +17,17 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Availability slots are quarter-hour starts grouped into hour pills. Each hour pill opens the connected `HourSlotPicker` popover for `:00`, `:15`, `:30`, and `:45`; keep disabled/past choices visible but unselectable.
 - The backend keeps fleet capacity occupied for the configured post-booking buffer after `scheduled_end_at`. The website should continue to display the actual service end only.
 - The local mock API must mirror production slot generation and buffer-aware conflict behavior so booking demos cannot overbook a bus/driver pair.
-- If the backend returns dispatch-aware slot metadata, the UI may show lightweight operational feedback only:
-  - available bus count for the selected time
-  - a note that final bus assignment is confirmed by the Bubble It team
+- Keep dispatch metadata operational: do not show bus availability or assignment cards in customer booking flows.
 - Do not expose bus numbers, plate numbers, or driver names to customers in the website flow.
 - Do not change the booking creation payload shape just to support manager-side dispatch assistance.
 - Physical products selected in the booking confirmation step use `product_lines` and belong to the booking's single payment. They are distinct from service add-ons and from standalone `/store` orders, which retain their own checkout.
+- Standard and membership booking actions stay visible in a fixed, safe-area-aware footer. Active forms must reserve enough bottom space that fields, errors, and time popovers are never hidden behind it.
+- Service selection is mobile-first: two compact service cards per row, SUV / 4-Wheel first, and a reduced-motion-aware guided scroll to the vehicle/add-ons section.
+- Preserve space for server-backed booking content with responsive skeletons; do not replace service, product, membership, or availability regions with blank space or unstructured loading text.
+- Keep optional physical booking products behind the compact confirmation-step trigger so notes and the summary remain visible. The product picker must be a centered document-level modal portal—not a bottom drawer or a fixed element nested inside the glass wizard—and must freeze the background scroll while quantities change.
+- Make the confirmation-step product trigger visually distinct and easy to notice, but keep attention animation finite and disable it through the global reduced-motion rule; never use a continuous decorative animation at checkout.
+- Customer totals must include service add-ons and selected booking products. A selected quarter-hour must remain visible on its hour pill.
+- Customer phone lookup must distinguish `registered` from `has_password`: registered customers sign in, while only an explicit `has_password: false` enters the legacy/manager-created account-claim flow. Keep the local mock response aligned with this contract.
 
 ## Timezone Convention
 

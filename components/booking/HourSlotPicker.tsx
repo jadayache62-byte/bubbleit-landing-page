@@ -83,7 +83,7 @@ export function HourSlotPicker({
         const enabled = selectable.length > 0;
         const selectedInHour = selectedSlot?.startsWith(`${hour}:`) ?? false;
         return (
-          <div key={hour} className="relative">
+          <div key={hour} className="relative scroll-mb-32">
             <button
               type="button"
               disabled={!enabled}
@@ -99,13 +99,13 @@ export function HourSlotPicker({
                     : "cursor-not-allowed border-transparent bg-[color:var(--background)] text-[color:var(--muted-foreground)]/50 line-through",
               )}
             >
-              {hour}:00
+              {selectedInHour ? selectedSlot : `${hour}:00`}
             </button>
             {openHour === hour && (
               <div
                 role="listbox"
                 aria-label={`${hour}:00 time options`}
-                className="absolute z-20 mt-2 grid w-[13rem] grid-cols-2 gap-1 rounded-2xl border border-[color:var(--border)] bg-white p-2 shadow-xl"
+                className="absolute z-50 mt-2 grid w-[13rem] max-w-[calc(100vw-2rem)] grid-cols-2 gap-1 rounded-2xl border border-[color:var(--border)] bg-white p-2 shadow-xl"
               >
                 {options.map((option) => {
                   const optionEnabled = option.isApiSlot && option.available && qatarSlotMs(date, option.start) > nowMs;

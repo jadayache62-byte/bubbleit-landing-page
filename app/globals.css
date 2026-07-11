@@ -98,11 +98,11 @@ img {
 }
 
 .primary-button {
-  @apply inline-flex min-h-11 items-center justify-center rounded-full bg-[color:var(--navy)] px-6 py-3 text-sm font-semibold text-white transition duration-200 ease-out hover:-translate-y-0.5 hover:bg-[color:var(--deep-blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--navy)];
+  @apply inline-flex min-h-11 cursor-pointer items-center justify-center rounded-full bg-[color:var(--navy)] px-6 py-3 text-sm font-semibold text-white transition-colors duration-200 ease-out hover:bg-[color:var(--deep-blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--navy)];
 }
 
 .secondary-button {
-  @apply inline-flex min-h-11 items-center justify-center rounded-full border border-[color:var(--border)] bg-white px-6 py-3 text-sm font-semibold text-[color:var(--navy)] transition duration-200 ease-out hover:-translate-y-0.5 hover:border-[color:var(--blue)] hover:text-[color:var(--blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)];
+  @apply inline-flex min-h-11 cursor-pointer items-center justify-center rounded-full border border-[color:var(--border)] bg-white px-6 py-3 text-sm font-semibold text-[color:var(--navy)] transition-colors duration-200 ease-out hover:border-[color:var(--blue)] hover:text-[color:var(--blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)];
 }
 
 .card-grid {
@@ -115,4 +115,30 @@ img {
 
 .pattern-fade {
   mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.95), transparent);
+}
+
+@keyframes booking-products-attention {
+  0%, 100% {
+    border-color: rgb(186 230 253);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  }
+  45% {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 5px rgba(0, 164, 255, 0.12), 0 10px 24px rgba(0, 164, 255, 0.12);
+  }
+}
+
+.booking-products-nudge {
+  animation: booking-products-attention 900ms ease-out 450ms 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

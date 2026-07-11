@@ -45,7 +45,7 @@ function RedeemInner() {
   const [vehicleId, setVehicleId] = useState<number | null>(null);
   const [addVehicle, setAddVehicle] = useState(false);
   const [plate, setPlate] = useState("");
-  const [vtype, setVtype] = useState<"sedan" | "suv">("sedan");
+  const [vtype, setVtype] = useState<"sedan" | "suv">("suv");
 
   const days = useMemo(() => next7Days(), []);
   const [date, setDate] = useState(days[0].date);
@@ -157,15 +157,31 @@ function RedeemInner() {
   }
 
   if (!membership) {
+    if (authed === null) {
+      return (
+        <div aria-label={t("Loading membership…")} className="glass-panel mx-auto max-w-2xl space-y-5 rounded-[var(--radius-card)] p-4 sm:p-10">
+          <span aria-hidden="true" className="block h-20 animate-pulse rounded-2xl bg-slate-200/80" />
+          <span aria-hidden="true" className="block h-6 w-44 animate-pulse rounded-lg bg-slate-200/80" />
+          <span aria-hidden="true" className="block h-14 animate-pulse rounded-2xl bg-slate-200/80" />
+          <span aria-hidden="true" className="block h-6 w-36 animate-pulse rounded-lg bg-slate-200/80" />
+          <div className="grid grid-cols-3 gap-2">
+            {Array.from({ length: 6 }, (_, index) => (
+              <span key={index} aria-hidden="true" className="block h-11 animate-pulse rounded-xl bg-slate-200/80" />
+            ))}
+          </div>
+        </div>
+      );
+    }
     return (
       <p className="py-16 text-center text-sm text-[color:var(--muted-foreground)]">
-        {authed === null ? "…" : t("We couldn't load our services")}
+        {t("We couldn't load our services")}
       </p>
     );
   }
 
   return (
-    <div className="glass-panel mx-auto max-w-2xl rounded-[var(--radius-card)] p-6 sm:p-10">
+    <div className="mx-auto max-w-2xl pb-[calc(7.5rem+env(safe-area-inset-bottom))]">
+    <div className="glass-panel rounded-[var(--radius-card)] p-4 sm:p-10">
       <div className="mb-6 rounded-2xl bg-[color:var(--background)] p-4 text-sm">
         <span className="font-bold">{localized(lang, membership.plan.name, membership.plan.name_ar)}</span>
         <span className="block text-[color:var(--muted-foreground)]">
@@ -187,7 +203,7 @@ function RedeemInner() {
               disabled={!allowed}
               onClick={() => setVehicleId(v.id)}
               className={clsx(
-                "flex items-center justify-between rounded-2xl border px-4 py-3 text-start text-sm transition",
+                "flex min-h-12 cursor-pointer items-center justify-between rounded-2xl border px-4 py-3 text-start text-sm transition duration-200",
                 !allowed
                   ? "cursor-not-allowed border-[color:var(--border)] bg-[color:var(--background)] opacity-40"
                   : vehicleId === v.id
@@ -217,14 +233,17 @@ function RedeemInner() {
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
-          <input
-            className="wizard-input"
-            placeholder="123456"
-            inputMode="numeric"
-            maxLength={6}
-            value={plate}
-            onChange={(e) => setPlate(e.target.value.replace(/\D/g, "").slice(0, 6))}
-          />
+          <label className="flex min-w-0 flex-col gap-1.5">
+            <span className="text-sm font-semibold">{t("Plate no.")}</span>
+            <input
+              className="wizard-input"
+              placeholder="123456"
+              inputMode="numeric"
+              maxLength={6}
+              value={plate}
+              onChange={(e) => setPlate(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            />
+          </label>
           {planVtype ? (
             // Locked to the membership's vehicle type.
             <div className="wizard-input flex items-center justify-between text-[color:var(--muted-foreground)]">
@@ -232,14 +251,17 @@ function RedeemInner() {
               <span className="text-xs">🔒</span>
             </div>
           ) : (
-            <select
-              className="wizard-input"
-              value={vtype}
-              onChange={(e) => setVtype(e.target.value as "sedan" | "suv")}
-            >
-              <option value="sedan">{t("Salon / Sedan")}</option>
-              <option value="suv">{t("SUV / 4-Wheel")}</option>
-            </select>
+            <label className="flex min-w-0 flex-col gap-1.5">
+              <span className="text-sm font-semibold">{t("Vehicle type")}</span>
+              <select
+                className="wizard-input"
+                value={vtype}
+                onChange={(e) => setVtype(e.target.value as "sedan" | "suv")}
+              >
+                <option value="suv">{t("SUV / 4-Wheel")}</option>
+                <option value="sedan">{t("Salon / Sedan")}</option>
+              </select>
+            </label>
           )}
         </div>
       )}
@@ -264,7 +286,11 @@ function RedeemInner() {
         ))}
       </div>
       {slots === null ? (
-        <p className="py-6 text-center text-sm text-[color:var(--muted-foreground)]">{t("Checking availability…")}</p>
+        <div aria-label={t("Checking availability…")} className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {Array.from({ length: 12 }, (_, index) => (
+            <span key={index} aria-hidden="true" className="block h-11 animate-pulse rounded-xl bg-slate-200/80" />
+          ))}
+        </div>
       ) : (
         <HourSlotPicker
           date={date}
@@ -297,15 +323,20 @@ function RedeemInner() {
           {error}
         </p>
       )}
+      </div>
 
-      <button
-        type="button"
-        className="primary-button mt-8 w-full disabled:cursor-not-allowed disabled:opacity-40"
-        disabled={!canSubmit}
-        onClick={submit}
-      >
-        {busy ? t("Confirming…") : `${t("Confirm Booking")} — ${t("Free with membership")}`}
-      </button>
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[color:var(--border)] bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_32px_rgba(15,23,42,0.12)] backdrop-blur-xl">
+        <div className="mx-auto w-full max-w-2xl">
+          <button
+            type="button"
+            className="primary-button w-full disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={!canSubmit}
+            onClick={submit}
+          >
+            {busy ? t("Confirming…") : `${t("Confirm Booking")} — ${t("Free with membership")}`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -315,8 +346,8 @@ export default function MembershipBookingPage() {
   return (
     <>
       <Navbar />
-      <main className="section-shell py-10 sm:py-14">
-        <div className="mb-8 text-center">
+      <main className="section-shell py-6 sm:py-14">
+        <div className="mb-5 text-center sm:mb-8">
           <span className="section-kicker">{t("Memberships")}</span>
           <h1 className="section-title mt-4">{t("Book with membership")}</h1>
         </div>

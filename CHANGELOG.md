@@ -2,6 +2,37 @@
 
 ---
 
+## [2026-07-11] — Booking flow loading and clarity
+
+### Changed
+- **Layout-preserving loading** — services, availability slots, booking products, and membership booking data now use responsive skeleton states instead of blank areas or loading text.
+- **Calmer vehicle guidance** — service selection uses a slower eased scroll that finishes with the plate and saved-car controls clear of the fixed action bar.
+- **Clear next action** — after service selection, the saved-car and plate area receives a subtle highlight and contextual hint that clears as soon as the customer selects or enters a vehicle.
+- **Clearer service cards** — descriptions can use three lines and price/duration stay aligned to the bottom of every card.
+- **Professional product modal** — optional booking products now open in a centered, responsive e-commerce modal with a stable internal product grid, larger imagery, clear quantity controls, a persistent selection total, focus trapping, and reliable page scroll locking.
+- **Visible product opportunity** — the confirmation step now presents booking products as a polished “Enhance your booking” card with a shopping icon, recommendation badge, stronger commerce copy, and a short two-cycle attention pulse that respects reduced-motion preferences.
+
+### Fixed
+- **Returning customer login** — existing customers now go directly to password sign-in instead of being asked to claim/register the same account again. The mock API now returns both `registered` and `has_password`, while the client safely treats older responses without `has_password` as returning accounts.
+- **Selected time feedback** — an hour pill now displays the selected quarter-hour rather than reverting visually to `:00`.
+- **Complete booking total** — the summary total includes physical booking products as well as services, add-ons, discounts, and membership pricing.
+- **Stable product selection** — changing a product quantity no longer moves the modal or scrolls the booking page, because the dialog now renders through a document-level portal.
+- **Vehicle wording** — the multi-vehicle action now says “Add another vehicle.”
+
+---
+
+## [2026-07-11] — Mobile-first booking flow
+
+### Changed
+- **Compact service selection** — mobile booking now shows two service cards per row, keeps SUV / 4-Wheel first, and guides customers to saved-car or plate selection after choosing a service.
+- **Persistent actions** — standard and membership bookings now use fixed, safe-area-aware action bars so Continue and Confirm remain reachable without scrolling.
+- **Responsive extras** — service add-ons and physical booking products use compact layouts, accessible 44px controls, thumbnails, and overflow-safe mobile behavior.
+
+### Removed
+- **Customer bus availability card** — dispatch capacity remains enforced by the backend without exposing operational bus counts in the booking flow.
+
+---
+
 ## [2026-07-11] — Booking product add-ons
 
 ### Added

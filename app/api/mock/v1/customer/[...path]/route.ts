@@ -316,7 +316,10 @@ async function handle(req: NextRequest, segments: string[]) {
   // ── Auth ──
   if (method === "POST" && path === "auth/check-phone") {
     const existing = store.customers.find((c) => c.phone === String(body.phone ?? "").trim());
-    return envelope({ registered: !!(existing && existing.password) });
+    return envelope({
+      registered: existing !== undefined,
+      has_password: existing?.password != null && existing.password !== "",
+    });
   }
 
   if (method === "POST" && path === "auth/login") {
