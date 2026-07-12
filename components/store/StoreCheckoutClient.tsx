@@ -67,14 +67,6 @@ function fallbackProducts(): StoreProductInventory[] {
   }));
 }
 
-function availableFor(product: StoreProductInventory) {
-  return Math.max(
-    0,
-    product.available_quantity ??
-      product.stock_quantity - product.reserved_quantity,
-  );
-}
-
 function readCart(): Cart {
   if (typeof window === "undefined") return {};
   try {
@@ -83,10 +75,6 @@ function readCart(): Cart {
   } catch {
     return {};
   }
-}
-
-function writeCart(cart: Cart) {
-  window.localStorage.setItem(CART_KEY, JSON.stringify(cart));
 }
 
 function readPendingCheckout(): PendingCheckout | null {
@@ -126,6 +114,18 @@ function isCompletedOrder(order: StoreOrder) {
   return COMPLETED_ORDER_STATUSES.has(order.status);
 }
 
+function normalizeQatarPhone(value: string) {
+  let digits = value.replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("974")) digits = digits.slice(3);
+  return digits.length === 8 ? `+974${digits}` : value.trim();
+}
+
+function isValidQatarPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  return digits.length === 8 || (digits.length === 11 && digits.startsWith("974"));
+}
+
 export function StoreCheckoutClient() {
   const topRef = useRef<HTMLDivElement | null>(null);
   const checkoutInFlightRef = useRef(false);
@@ -153,6 +153,10 @@ export function StoreCheckoutClient() {
   const [products, setProducts] = useState<StoreProductInventory[]>(() =>
     fallbackProducts(),
   );
+  const [step, setStep] = useState<"location" | "contact" | "review">("location");
+  const [contactMode, setContactMode] = useState<"guest" | "signin">("guest");
+  const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -172,6 +176,9 @@ export function StoreCheckoutClient() {
       setCart(pending.cart);
       setArea(pending.order.delivery_area);
       setAddressDetails(pending.order.delivery_details);
+      setGuestName(pending.order.customer_name);
+      setGuestPhone(pending.order.customer_phone);
+      setStep("review");
       if (
         typeof pending.order.latitude === "number" &&
         typeof pending.order.longitude === "number"
@@ -212,7 +219,11 @@ export function StoreCheckoutClient() {
 
     me()
       .then((current) => {
-        if (!cancelled) setCustomer(current);
+        if (!cancelled) {
+          setCustomer(current);
+          setGuestName(current.name ?? "");
+          setGuestPhone(current.phone);
+        }
       })
       .catch(() => {
         if (!cancelled) setCustomer(null);
@@ -234,6 +245,10 @@ export function StoreCheckoutClient() {
     });
   }, [submitted]);
 
+  useEffect(() => {
+    requestAnimationFrame(() => topRef.current?.scrollIntoView({ behavior: "auto", block: "start" }));
+  }, [step]);
+
   const items = useMemo(
     () =>
       products.map((product) => ({
@@ -251,21 +266,6 @@ export function StoreCheckoutClient() {
       ),
     [items],
   );
-
-  function updateQuantity(id: string, quantity: number) {
-    if (pendingCheckout) return;
-
-    const product = products.find((item) => String(item.id) === id);
-    const max = product ? availableFor(product) : quantity;
-    const next = { ...cart };
-    if (quantity <= 0) {
-      delete next[id];
-    } else {
-      next[id] = Math.min(quantity, max);
-    }
-    setCart(next);
-    writeCart(next);
-  }
 
   async function reverseGeocode(lat: number, lng: number) {
     try {
@@ -381,10 +381,6 @@ export function StoreCheckoutClient() {
 
   async function retryPayment() {
     if (checkoutInFlightRef.current || !pendingCheckout) return;
-    if (!customer) {
-      setError("Sign in before continuing payment.");
-      return;
-    }
 
     checkoutInFlightRef.current = true;
     setSubmitting(true);
@@ -404,8 +400,11 @@ export function StoreCheckoutClient() {
       return;
     }
     if (checkoutInFlightRef.current) return;
-    if (!customer) {
-      setError("Sign in before placing your store order.");
+    const contactName = customer?.name?.trim() || guestName.trim();
+    const contactPhone = customer?.phone || normalizeQatarPhone(guestPhone);
+    if (!contactName || !isValidQatarPhone(contactPhone)) {
+      setError("Enter a valid name and Qatar phone number before checkout.");
+      setStep("contact");
       return;
     }
 
@@ -416,8 +415,8 @@ export function StoreCheckoutClient() {
     setPaymentNotice(null);
     try {
       const order = await createStoreOrder({
-        customer_name: customer.name,
-        customer_phone: customer.phone,
+        customer_name: contactName,
+        customer_phone: contactPhone,
         delivery_area: area,
         delivery_details: addressDetails,
         latitude: geo?.lat ?? null,
@@ -495,214 +494,155 @@ export function StoreCheckoutClient() {
     );
   }
 
-  return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-      <div className="mb-8">
-        <span className="section-kicker">Store Checkout</span>
-        <h1 className="section-title mt-4">Complete your product order</h1>
-      </div>
+  const locationValid = geo !== null && area.trim().length > 1 && addressDetails.trim().length > 3;
+  const contactValid = customer
+    ? Boolean(customer.phone)
+    : guestName.trim().length > 1 && isValidQatarPhone(guestPhone);
+  const steps = [
+    { id: "location", label: "Location" },
+    { id: "contact", label: "Contact" },
+    { id: "review", label: "Review" },
+  ] as const;
+  const currentStep = steps.findIndex((item) => item.id === step);
 
+  return (
+    <div ref={topRef} className="mx-auto w-full max-w-3xl scroll-mt-24 px-4 py-6 pb-32 sm:px-6 sm:py-10">
       {items.length === 0 ? (
-        <div className="glass-panel rounded-[var(--radius-card)] p-8 text-center">
-          <h2 className="text-2xl font-bold text-[color:var(--navy)]">
-            Your cart is empty
-          </h2>
-          <p className="section-copy mx-auto mt-3">
-            Add products from the Bubbleit store before checking out.
-          </p>
-          <Link href="/store" className="primary-button mt-6">
-            Shop products
-          </Link>
+        <div className="commerce-card p-8 text-center">
+          <h1 className="text-2xl font-bold text-[color:var(--navy)]">Your cart is empty</h1>
+          <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">Choose your products before starting checkout.</p>
+          <Link href="/store" className="primary-button mt-6">Shop products</Link>
         </div>
       ) : (
-        <form className="grid gap-8 lg:grid-cols-[1fr_24rem]" onSubmit={submitOrder}>
-          <section className="glass-panel rounded-[var(--radius-card)] p-6 sm:p-8">
-            <h2 className="text-2xl font-bold text-[color:var(--navy)]">
-              Delivery details
-            </h2>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                {!authChecked ? (
-                  <div className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5 text-sm font-semibold text-[color:var(--muted-foreground)]">
-                    Checking your account...
+        <>
+          <div className="mb-6 flex items-center justify-between">
+            <Link href="/store" className="inline-flex min-h-11 items-center text-sm font-semibold text-[color:var(--muted-foreground)] hover:text-[color:var(--navy)]">
+              <span className="me-2" aria-hidden="true">←</span> Back to cart
+            </Link>
+            <span className="text-sm font-bold text-[color:var(--navy)]">{formatStorePrice(subtotal)}</span>
+          </div>
+
+          <nav className="mb-7 grid grid-cols-3 gap-2" aria-label="Checkout progress">
+            {steps.map((item, index) => (
+              <div key={item.id} className="min-w-0">
+                <div className={index <= currentStep ? "h-1 rounded-full bg-[color:var(--blue)] transition-colors duration-300" : "h-1 rounded-full bg-slate-200 transition-colors duration-300"} />
+                <span className={index === currentStep ? "mt-2 block text-xs font-bold text-[color:var(--navy)]" : "mt-2 block text-xs font-semibold text-[color:var(--muted-foreground)]"}>
+                  {index + 1}. {item.label}
+                </span>
+              </div>
+            ))}
+          </nav>
+
+          <div key={step} className="checkout-step">
+            {step === "location" && (
+              <section className="commerce-card overflow-hidden">
+                <div className="border-b border-slate-200 px-5 py-5 sm:px-7">
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">Step 1 of 3</span>
+                  <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">Where should we deliver?</h1>
+                  <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">Pin the exact location, then add the building details.</p>
+                </div>
+                <div className="space-y-4 p-4 sm:p-7">
+                  <div className="overflow-hidden rounded-2xl">
+                    <LocationMap value={geo} onChange={handlePinChange} />
                   </div>
+                  <button type="button" className="secondary-button w-full gap-2" disabled={geoState === "locating" || checkoutLocked} onClick={requestLocation}>
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true" fill="none"><path d="M12 20s5.25-5.13 5.25-9a5.25 5.25 0 1 0-10.5 0c0 3.87 5.25 9 5.25 9Z" stroke="currentColor" strokeWidth="1.8"/><circle cx="12" cy="11" r="1.9" fill="currentColor"/></svg>
+                    {geoState === "locating" ? "Finding your location…" : geo ? "Update precise location" : "Use my precise location"}
+                  </button>
+                  {geo && <p className="text-center text-xs font-semibold text-emerald-700">Location pinned successfully</p>}
+                  {geoState === "error" && <p role="alert" className="text-center text-xs font-medium text-red-600">Location access failed. Tap the map to place the pin manually.</p>}
+                  <label className="block text-sm font-semibold text-[color:var(--navy)]">Delivery area
+                    <input className="wizard-input mt-2 min-h-12" placeholder="e.g. West Bay, The Pearl" value={area} disabled={checkoutLocked} onChange={(event) => setArea(event.target.value)} />
+                  </label>
+                  <label className="block text-sm font-semibold text-[color:var(--navy)]">Building and delivery notes
+                    <textarea className="wizard-input mt-2 min-h-20 resize-none" placeholder="Building, street, villa number or parking notes" value={addressDetails} disabled={checkoutLocked} onChange={(event) => setAddressDetails(event.target.value)} />
+                  </label>
+                </div>
+              </section>
+            )}
+
+            {step === "contact" && (
+              <section className="commerce-card p-5 sm:p-7">
+                <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">Step 2 of 3</span>
+                <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">How can we reach you?</h1>
+                <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">No account required. We only need a valid phone number for this delivery.</p>
+
+                {!authChecked ? (
+                  <div className="mt-6 h-28 animate-pulse rounded-2xl bg-slate-100" />
                 ) : customer ? (
-                  <div className="rounded-3xl border border-emerald-100 bg-emerald-50/70 p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">
-                      Signed in account
-                    </p>
-                    <p className="mt-2 text-lg font-bold text-[color:var(--navy)]">
-                      {customer.name || "Bubbleit customer"}
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-[color:var(--muted-foreground)]" dir="ltr">
-                      {customer.phone}
-                    </p>
+                  <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-emerald-700">Using signed-in account</p>
+                    <p className="mt-2 text-lg font-bold">{customer.name || "Bubbleit customer"}</p>
+                    <p className="mt-1 text-sm font-semibold" dir="ltr">{customer.phone}</p>
                   </div>
                 ) : (
-                  <AuthPanel
-                    inline
-                    title="Sign in to continue checkout."
-                    onAuthed={setCustomer}
-                  />
-                )}
-              </div>
-              <div className="space-y-3 sm:col-span-2">
-                <button
-                  type="button"
-                  className="secondary-button gap-2"
-                  disabled={geoState === "locating" || checkoutLocked}
-                  onClick={requestLocation}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    aria-hidden="true"
-                    fill="none"
-                  >
-                    <path
-                      d="M12 20s5.25-5.13 5.25-9a5.25 5.25 0 1 0-10.5 0c0 3.87 5.25 9 5.25 9Z"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinejoin="round"
-                    />
-                    <circle cx="12" cy="11" r="1.9" fill="currentColor" />
-                  </svg>
-                  {geoState === "locating" ? "Locating..." : "Use precise location"}
-                </button>
-                {geo && (
-                  <span className="ms-0 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 sm:ms-3">
-                    Location pinned ({geo.lat.toFixed(4)}, {geo.lng.toFixed(4)})
-                  </span>
-                )}
-                {geoState === "error" && (
-                  <p className="text-xs font-medium text-red-600">
-                    Could not get your location. Check browser permissions or
-                    set the pin manually.
-                  </p>
-                )}
-                <div
-                  className={
-                    checkoutLocked
-                      ? "pointer-events-none space-y-1.5 opacity-60"
-                      : "space-y-1.5"
-                  }
-                >
-                  <LocationMap value={geo} onChange={handlePinChange} />
-                  <p className="text-xs text-slate-500">
-                    Tap the map or drag the pin to set the exact delivery spot.
-                  </p>
-                </div>
-              </div>
-              <label className="text-sm font-semibold text-[color:var(--navy)] sm:col-span-2">
-                Delivery area
-                <input
-                  required
-                  className="wizard-input mt-2"
-                  placeholder="e.g. West Bay, The Pearl"
-                  value={area}
-                  disabled={checkoutLocked}
-                  onChange={(event) => setArea(event.target.value)}
-                />
-              </label>
-              <label className="text-sm font-semibold text-[color:var(--navy)] sm:col-span-2">
-                Address details
-                <textarea
-                  required
-                  className="wizard-input mt-2 min-h-24 resize-y"
-                  placeholder="Building, street, parking or delivery notes"
-                  value={addressDetails}
-                  disabled={checkoutLocked}
-                  onChange={(event) => setAddressDetails(event.target.value)}
-                />
-              </label>
-            </div>
-          </section>
-
-          <aside className="glass-panel h-fit rounded-[var(--radius-card)] p-6">
-            <h2 className="text-xl font-bold text-[color:var(--navy)]">
-              Order summary
-            </h2>
-            <div className="mt-5 space-y-4">
-              {items.map(({ product, quantity }) => (
-                <div
-                  key={product.id}
-                  className="rounded-2xl border border-[color:var(--border)] bg-white/75 p-4"
-                >
-                  <div className="flex justify-between gap-4">
-                    <div>
-                      <p className="font-semibold text-[color:var(--navy)]">
-                        {product.name}
-                      </p>
-                      <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-                        {formatStorePrice(product.price)}
-                      </p>
+                  <>
+                    <div className="mt-6 grid grid-cols-2 rounded-full bg-slate-100 p-1">
+                      <button type="button" className={contactMode === "guest" ? "min-h-11 rounded-full bg-white px-3 text-sm font-bold text-[color:var(--navy)] shadow-sm" : "min-h-11 rounded-full px-3 text-sm font-semibold text-[color:var(--muted-foreground)]"} onClick={() => setContactMode("guest")}>Guest checkout</button>
+                      <button type="button" className={contactMode === "signin" ? "min-h-11 rounded-full bg-white px-3 text-sm font-bold text-[color:var(--navy)] shadow-sm" : "min-h-11 rounded-full px-3 text-sm font-semibold text-[color:var(--muted-foreground)]"} onClick={() => setContactMode("signin")}>Sign in</button>
                     </div>
-                    <p className="font-bold text-[color:var(--blue)]">
-                      {formatStorePrice(product.price * quantity)}
-                    </p>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--border)] text-lg font-bold text-[color:var(--navy)]"
-                      disabled={checkoutLocked}
-                      onClick={() => updateQuantity(String(product.id), quantity - 1)}
-                      aria-label={`Decrease ${product.name} quantity`}
-                    >
-                      -
-                    </button>
-                    <span className="min-w-8 text-center text-sm font-bold">
-                      {quantity}
-                    </span>
-                    <button
-                      type="button"
-                      className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--border)] text-lg font-bold text-[color:var(--navy)]"
-                      disabled={checkoutLocked || quantity >= availableFor(product)}
-                      onClick={() => updateQuantity(String(product.id), quantity + 1)}
-                      aria-label={`Increase ${product.name} quantity`}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                    {contactMode === "guest" ? (
+                      <div className="mt-5 space-y-4">
+                        <label className="block text-sm font-semibold">Full name
+                          <input className="wizard-input mt-2 min-h-12" autoComplete="name" value={guestName} onChange={(event) => setGuestName(event.target.value)} placeholder="Your full name" />
+                        </label>
+                        <label className="block text-sm font-semibold">Qatar phone number
+                          <div className="mt-2 flex min-h-12 overflow-hidden rounded-xl border border-[color:var(--border)] bg-white focus-within:border-[color:var(--blue)] focus-within:ring-2 focus-within:ring-[color:var(--cyan)]/30">
+                            <span className="grid place-items-center border-e border-slate-200 px-3 text-sm font-bold" dir="ltr">+974</span>
+                            <input className="min-w-0 flex-1 px-3 text-sm outline-none" inputMode="tel" autoComplete="tel" dir="ltr" maxLength={8} value={guestPhone.replace(/\D/g, "").replace(/^974/, "").slice(0, 8)} onChange={(event) => setGuestPhone(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="5555 5555" />
+                          </div>
+                        </label>
+                        {guestPhone.length > 0 && !isValidQatarPhone(guestPhone) && <p className="text-xs font-medium text-red-600">Enter all 8 digits of your Qatar phone number.</p>}
+                        <p className="rounded-xl bg-blue-50 px-4 py-3 text-xs leading-5 text-[color:var(--muted-foreground)]">Phone verification by OTP will be added here later. You can continue as a guest for now.</p>
+                      </div>
+                    ) : (
+                      <div className="mt-5"><AuthPanel inline title="Sign in to use your saved details" onAuthed={(current) => { setCustomer(current); setGuestName(current.name ?? ""); setGuestPhone(current.phone); }} /></div>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
 
-            <div className="mt-6 border-t border-[color:var(--border)] pt-5">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-[color:var(--muted-foreground)]">
-                  Total
-                </span>
-                <span className="text-2xl font-bold text-[color:var(--navy)]">
-                  {formatStorePrice(subtotal)}
-                </span>
+            {step === "review" && (
+              <form className="space-y-4" onSubmit={submitOrder}>
+                <section className="commerce-card p-5 sm:p-7">
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">Step 3 of 3</span>
+                  <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">Review your order</h1>
+                  <div className="mt-5 divide-y divide-slate-100">
+                    {items.map(({ product, quantity }) => (
+                      <div key={product.id} className="flex items-center justify-between gap-4 py-3">
+                        <div className="min-w-0"><p className="truncate text-sm font-bold">{product.name}</p><p className="text-xs text-[color:var(--muted-foreground)]">Qty {quantity} × {formatStorePrice(product.price)}</p></div>
+                        <span className="shrink-0 text-sm font-bold">{formatStorePrice(product.price * quantity)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4"><span className="font-semibold">Total</span><span className="text-2xl font-extrabold text-[color:var(--navy)]">{formatStorePrice(subtotal)}</span></div>
+                </section>
+
+                <section className="commerce-card divide-y divide-slate-100 px-5 sm:px-7">
+                  <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">Deliver to</p><p className="mt-1 text-sm font-semibold">{area} · {addressDetails}</p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("location")}>Edit</button></div>
+                  <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">Contact</p><p className="mt-1 text-sm font-semibold">{customer?.name || guestName} · <span dir="ltr">{customer?.phone || normalizeQatarPhone(guestPhone)}</span></p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("contact")}>Edit</button></div>
+                </section>
+
+                {pendingCheckout && <p role={paymentNotice ? "alert" : "status"} className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">Order {pendingCheckout.order.reference} is saved. {paymentNotice ?? "Retry payment to continue."}</p>}
+                {error && <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
+                <button type="submit" className="primary-button min-h-14 w-full text-base disabled:opacity-50" disabled={submitting}>{submitLabel}</button>
+                <p className="text-center text-xs text-[color:var(--muted-foreground)]">By placing your order, you confirm the delivery and contact details above.</p>
+              </form>
+            )}
+          </div>
+
+          {step !== "review" && (
+            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/96 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-10px_30px_rgba(38,34,98,0.1)]">
+              <div className="mx-auto flex max-w-3xl gap-2">
+                {step === "contact" && <button type="button" className="secondary-button min-h-14 px-5" onClick={() => setStep("location")}>Back</button>}
+                <button type="button" className="primary-button min-h-14 flex-1 text-base disabled:opacity-40" disabled={step === "location" ? !locationValid : !contactValid} onClick={() => { setError(null); setStep(step === "location" ? "contact" : "review"); }}>
+                  {step === "location" ? "Continue to contact" : "Review order"} <span className="ms-2" aria-hidden="true">→</span>
+                </button>
               </div>
-              <button
-                type="submit"
-                className="primary-button mt-6 w-full disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={submitting || !customer}
-              >
-                {submitLabel}
-              </button>
-              {pendingCheckout && (
-                <p
-                  role={paymentNotice ? "alert" : "status"}
-                  className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800"
-                >
-                  Order {pendingCheckout.order.reference} is saved. {paymentNotice ?? "Retry payment to continue checkout."}
-                </p>
-              )}
-              {error && (
-                <p role="alert" className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                  {error}
-                </p>
-              )}
-              <Link href="/store" className="secondary-button mt-3 w-full">
-                Back to store
-              </Link>
             </div>
-          </aside>
-        </form>
+          )}
+        </>
       )}
     </div>
   );

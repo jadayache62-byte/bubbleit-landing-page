@@ -53,6 +53,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${headingFont.variable} ${bodyFont.variable} ${arabicFont.variable}`}
     >
       <body>

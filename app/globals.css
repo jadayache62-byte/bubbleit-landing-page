@@ -12,7 +12,7 @@
   --deep-blue: #166cd1;
   --shadow-soft: 0 20px 45px rgba(38, 34, 98, 0.08);
   --shadow-card: 0 12px 30px rgba(20, 137, 222, 0.12);
-  --radius-card: 28px;
+  --radius-card: 20px;
   --radius-pill: 999px;
 }
 
@@ -67,6 +67,15 @@ img {
   height: auto;
 }
 
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 3px;
+}
+
+:where(a, button) {
+  touch-action: manipulation;
+}
+
 ::selection {
   background: rgba(0, 204, 255, 0.28);
 }
@@ -97,12 +106,75 @@ img {
   box-shadow: var(--shadow-soft);
 }
 
+.commerce-card {
+  @apply rounded-[var(--radius-card)] border border-slate-200/90 bg-white;
+  box-shadow: 0 8px 24px rgba(38, 34, 98, 0.07);
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 .primary-button {
-  @apply inline-flex min-h-11 cursor-pointer items-center justify-center rounded-full bg-[color:var(--navy)] px-6 py-3 text-sm font-semibold text-white transition-colors duration-200 ease-out hover:bg-[color:var(--deep-blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--navy)];
+  @apply inline-flex min-h-11 cursor-pointer items-center justify-center rounded-full bg-[color:var(--navy)] px-6 py-3 text-sm font-semibold text-white transition-[background-color,transform,box-shadow] duration-200 ease-out hover:bg-[color:var(--deep-blue)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--navy)];
 }
 
 .secondary-button {
-  @apply inline-flex min-h-11 cursor-pointer items-center justify-center rounded-full border border-[color:var(--border)] bg-white px-6 py-3 text-sm font-semibold text-[color:var(--navy)] transition-colors duration-200 ease-out hover:border-[color:var(--blue)] hover:text-[color:var(--blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)];
+  @apply inline-flex min-h-11 cursor-pointer items-center justify-center rounded-full border border-[color:var(--border)] bg-white px-6 py-3 text-sm font-semibold text-[color:var(--navy)] transition-[border-color,color,transform,background-color] duration-200 ease-out hover:border-[color:var(--blue)] hover:text-[color:var(--blue)] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)];
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cart-bar-in {
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes booking-products-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes booking-products-dialog-in {
+  from { opacity: 0; transform: translate3d(0, 32px, 0) scale(0.97); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+.page-enter { animation: page-enter 260ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.checkout-step { animation: page-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.cart-backdrop {
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 180ms ease-in, visibility 0s linear 180ms;
+  will-change: opacity;
+}
+.cart-backdrop.is-open {
+  pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 220ms ease-out, visibility 0s linear 0s;
+}
+.cart-dialog {
+  opacity: 0;
+  transform: translate3d(0, 18px, 0) scale(0.985);
+  transition: opacity 180ms ease-in, transform 180ms ease-in;
+  will-change: transform, opacity;
+}
+.cart-dialog.is-open {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  transition: opacity 220ms ease-out, transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+[aria-label="Cart actions"] { animation: cart-bar-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.booking-products-backdrop { animation: booking-products-backdrop-in 300ms ease-out both; }
+.booking-products-dialog {
+  animation: booking-products-dialog-in 420ms cubic-bezier(0.16, 1, 0.3, 1) 40ms both;
+  will-change: transform, opacity;
 }
 
 .card-grid {

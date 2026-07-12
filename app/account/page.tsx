@@ -13,6 +13,7 @@ import {
   deleteVehicle,
   getToken,
   listBookings,
+  listMemberships,
   listVehicles,
   logout,
   me,
@@ -21,6 +22,7 @@ import type {
   Booking,
   BookingStatus,
   Customer,
+  CustomerMembership,
   Vehicle,
   VehicleType,
 } from "@/lib/api/types";
@@ -38,6 +40,7 @@ const STATUS_STYLES: Record<BookingStatus, string> = {
 };
 
 const CANCELLABLE: BookingStatus[] = ["pending_payment", "paid", "assigned"];
+const ACCOUNT_TABS = ["overview", "bookings", "memberships", "vehicles"] as const;
 
 const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
   sedan: "Salon / Sedan",
@@ -53,12 +56,14 @@ export default function AccountPage() {
   const [checked, setChecked] = useState(false);
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[] | null>(null);
-  const [tab, setTab] = useState<"bookings" | "cars">("bookings");
+  const [memberships, setMemberships] = useState<CustomerMembership[] | null>(null);
+  const [tab, setTab] = useState<"overview" | "bookings" | "memberships" | "vehicles">("overview");
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     listBookings().then(setBookings).catch(() => setBookings([]));
     listVehicles().then(setVehicles).catch(() => setVehicles([]));
+    listMemberships().then(setMemberships).catch(() => setMemberships([]));
   }, []);
 
   useEffect(() => {
@@ -99,15 +104,44 @@ export default function AccountPage() {
     setCustomer(null);
     setBookings(null);
     setVehicles(null);
+    setMemberships(null);
   }
+
+  function handleTabKeyDown(
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    current: (typeof ACCOUNT_TABS)[number],
+  ) {
+    const index = ACCOUNT_TABS.indexOf(current);
+    let next = index;
+    if (event.key === "ArrowRight") next = (index + 1) % ACCOUNT_TABS.length;
+    else if (event.key === "ArrowLeft") next = (index - 1 + ACCOUNT_TABS.length) % ACCOUNT_TABS.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = ACCOUNT_TABS.length - 1;
+    else return;
+    event.preventDefault();
+    const value = ACCOUNT_TABS[next];
+    setTab(value);
+    requestAnimationFrame(() => document.getElementById(`account-tab-${value}`)?.focus());
+  }
+
+  const activeBookings = (bookings ?? [])
+    .filter((booking) => !["completed", "cancelled_by_customer", "cancelled_by_admin", "no_show"].includes(booking.status))
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+  const activeMemberships = (memberships ?? []).filter((membership) => membership.status === "active" && membership.washes_remaining > 0);
 
   return (
     <>
       <Navbar />
-      <main className="section-shell min-h-[60dvh] py-10 sm:py-14">
-        {!checked ? null : !customer ? (
+      <main id="main-content" className="section-shell min-h-[60dvh] py-7 sm:py-14">
+        {!checked ? (
+          <div className="mx-auto max-w-3xl space-y-4" role="status" aria-live="polite" aria-label={t("Loading account…")}>
+            <div className="commerce-card h-48 animate-pulse bg-slate-100" />
+            <div className="grid grid-cols-3 gap-2">{[0, 1, 2].map((item) => <div key={item} className="commerce-card h-24 animate-pulse bg-slate-100" />)}</div>
+          </div>
+        ) : !customer ? (
           <div className="mx-auto max-w-md">
             <AuthPanel
+              title={t("Welcome back")}
               onAuthed={(c) => {
                 setCustomer(c);
                 refresh();
@@ -116,124 +150,92 @@ export default function AccountPage() {
           </div>
         ) : (
           <>
-            <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <span className="section-kicker">{t("My Account")}</span>
-                <h1 className="section-title mt-4">
-                  {customer.name ? `${t("Hi,")} ${customer.name.split(" ")[0]}` : t("My Bookings")}
-                </h1>
-                <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">{customer.phone}</p>
+            <section className="commerce-card overflow-hidden">
+              <div className="flex flex-col gap-5 bg-[color:var(--navy)] p-5 text-white sm:flex-row sm:items-center sm:justify-between sm:p-7">
+                <div className="flex items-center gap-4">
+                  <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-white/12 text-xl font-extrabold" aria-hidden="true">{(customer.name?.trim()?.[0] ?? "B").toUpperCase()}</span>
+                  <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-white/65">{t("My Account")}</p><h1 className="mt-1 text-2xl font-bold sm:text-3xl">{customer.name ? t("Hi,") + " " + customer.name.split(" ")[0] : t("Welcome back")}</h1><p className="mt-1 text-sm font-medium text-white/70" dir="ltr">{customer.phone}</p></div>
+                </div>
+                <div className="flex gap-2"><Link href="/book" aria-label={t("Book a new wash")} className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-[color:var(--cyan)] px-5 text-sm font-extrabold transition hover:bg-white sm:flex-none" style={{ color: "#262262" }}>{t("Book a Wash")}</Link><button type="button" className="min-h-12 rounded-full border border-white/40 px-4 text-sm font-semibold text-white transition hover:bg-white/10" onClick={handleLogout}>{t("Log out")}</button></div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Link href="/book" className="primary-button">
-                  {t("Book a Wash")}
-                </Link>
-                <Link href="/memberships" className="secondary-button">
-                  {t("My Memberships")}
-                </Link>
-                <button type="button" className="secondary-button" onClick={handleLogout}>
-                  {t("Log out")}
-                </button>
+              <div className="grid grid-cols-3 divide-x divide-slate-200 bg-white">
+                <button type="button" aria-label={`${activeBookings.length} ${t("upcoming bookings")}`} onClick={() => setTab("bookings")} className="min-h-20 px-2 py-3 text-center transition hover:bg-slate-50"><span className="block text-xl font-extrabold text-[color:var(--navy)]">{activeBookings.length}</span><span className="mt-1 block text-[11px] font-semibold text-[color:var(--muted-foreground)] sm:text-xs">{t("Upcoming")}</span></button>
+                <button type="button" aria-label={`${activeMemberships.length} ${t("active membership plans")}`} onClick={() => setTab("memberships")} className="min-h-20 px-2 py-3 text-center transition hover:bg-slate-50"><span className="block text-xl font-extrabold text-[color:var(--navy)]">{activeMemberships.length}</span><span className="mt-1 block text-[11px] font-semibold text-[color:var(--muted-foreground)] sm:text-xs">{t("Active plans")}</span></button>
+                <button type="button" aria-label={`${vehicles?.length ?? 0} ${t("saved vehicles")}`} onClick={() => setTab("vehicles")} className="min-h-20 px-2 py-3 text-center transition hover:bg-slate-50"><span className="block text-xl font-extrabold text-[color:var(--navy)]">{vehicles?.length ?? 0}</span><span className="mt-1 block text-[11px] font-semibold text-[color:var(--muted-foreground)] sm:text-xs">{t("Vehicles")}</span></button>
               </div>
+            </section>
+
+            <section className="mt-5 grid grid-cols-3 gap-2" aria-label={t("Quick actions")}>
+              <Link href="/book" className="commerce-card flex min-h-24 flex-col justify-between p-3 transition hover:border-[color:var(--blue)] sm:p-4"><svg viewBox="0 0 24 24" className="h-5 w-5 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg><span className="mt-3 text-xs font-bold text-[color:var(--navy)] sm:text-sm">{t("Book a wash")}</span></Link>
+              <Link href="/memberships" className="commerce-card flex min-h-24 flex-col justify-between p-3 transition hover:border-[color:var(--blue)] sm:p-4"><svg viewBox="0 0 24 24" className="h-5 w-5 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="M4 7h16v12H4zM7 4v6M17 4v6M8 14h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg><span className="mt-3 text-xs font-bold text-[color:var(--navy)] sm:text-sm">{t("Get a membership")}</span></Link>
+              <Link href="/store" className="commerce-card flex min-h-24 flex-col justify-between p-3 transition hover:border-[color:var(--blue)] sm:p-4"><svg viewBox="0 0 24 24" className="h-5 w-5 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="M6 8h12l1 12H5L6 8ZM9 9V6a3 3 0 0 1 6 0v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg><span className="mt-3 text-xs font-bold text-[color:var(--navy)] sm:text-sm">{t("Shop products")}</span></Link>
+            </section>
+
+            {error && <p role="alert" className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
+
+            <div className="mt-7 grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-white p-1 sm:grid-cols-4" role="tablist" aria-label={t("Account sections")}>
+              {([["overview", t("Overview")], ["bookings", t("Bookings")], ["memberships", t("Memberships")], ["vehicles", t("Vehicles")]] as const).map(([value, label]) => <button key={value} id={`account-tab-${value}`} type="button" role="tab" tabIndex={tab === value ? 0 : -1} aria-selected={tab === value} aria-controls={`account-panel-${value}`} onKeyDown={(event) => handleTabKeyDown(event, value)} onClick={() => setTab(value)} className={clsx("min-h-11 rounded-xl px-3 text-sm font-semibold transition", tab === value ? "bg-[color:var(--navy)] text-white" : "text-[color:var(--muted-foreground)] hover:bg-slate-50 hover:text-[color:var(--navy)]")}>{label}</button>)}
             </div>
 
-            {error && (
-              <p role="alert" className="mb-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                {error}
-              </p>
-            )}
+            <div key={tab} id={`account-panel-${tab}`} role="tabpanel" aria-labelledby={`account-tab-${tab}`} tabIndex={0} className="checkout-step mt-6 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-4">
+              {tab === "overview" && <div className="grid gap-5 lg:grid-cols-2">
+                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} onCancel={() => handleCancel(activeBookings[0].id)} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
+                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Savings")}</p><h2 className="mt-1 text-xl font-bold">{t("Membership")}</h2></div><button type="button" aria-label={t("View all memberships")} onClick={() => setTab("memberships")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{memberships === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeMemberships.length > 0 ? <MembershipCard membership={activeMemberships[0]} /> : <EmptyState title={t("Wash more, pay less")} copy={t("Prepaid wash bundles make every booking faster.")} action={t("See memberships")} href="/memberships" />}</section>
+              </div>}
 
-            <div className="mb-6 flex gap-2">
-              {(
-                [
-                  ["bookings", t("Bookings")],
-                  ["cars", t("My Cars")],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setTab(value)}
-                  className={
-                    tab === value
-                      ? "rounded-full bg-[color:var(--navy)] px-5 py-2 text-sm font-semibold text-white"
-                      : "rounded-full border border-[color:var(--border)] bg-white px-5 py-2 text-sm font-semibold text-[color:var(--foreground)] hover:border-[color:var(--blue)]"
-                  }
-                >
-                  {label}
-                </button>
-              ))}
+              {tab === "bookings" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My bookings")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Review upcoming and previous wash appointments.")}</p></div><Link href="/book" className="primary-button shrink-0 px-4">{t("New booking")}</Link></div>{bookings === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : bookings.length === 0 ? <EmptyState title={t("No bookings yet")} copy={t("Your first sparkling-clean car is a few taps away.")} action={t("Book your first wash")} href="/book" /> : <div className="grid gap-4 md:grid-cols-2">{bookings.map((booking) => <BookingCard key={booking.id} booking={booking} onCancel={() => handleCancel(booking.id)} />)}</div>}</section>}
+
+              {tab === "memberships" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My memberships")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("See remaining washes, validity, and book with a plan.")}</p></div><Link href="/memberships" className="primary-button shrink-0 px-4">{t("Browse plans")}</Link></div>{memberships === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-44 animate-pulse bg-slate-100" />)}</div> : memberships.length === 0 ? <EmptyState title={t("No memberships yet")} copy={t("Save more when you wash regularly.")} action={t("See memberships")} href="/memberships" /> : <div className="grid gap-4 md:grid-cols-2">{memberships.map((membership) => <MembershipCard key={membership.id} membership={membership} />)}</div>}</section>}
+
+              {tab === "vehicles" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My vehicles")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Vehicles saved during booking appear here.")}</p></div><Link href="/book" className="primary-button shrink-0 px-4">{t("Add through booking")}</Link></div>{vehicles === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-36 animate-pulse bg-slate-100" />)}</div> : vehicles.length === 0 ? <EmptyState title={t("No vehicles saved")} copy={t("Your vehicle is saved automatically when you book.")} action={t("Book a Wash")} href="/book" /> : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{vehicles.map((vehicle) => <article key={vehicle.id} className="commerce-card flex min-h-40 flex-col p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">{t(VEHICLE_TYPE_LABELS[vehicle.type])}</p><p className="mt-1 text-2xl font-extrabold tracking-wider text-[color:var(--navy)]">{vehicle.plate_number}</p></div><svg viewBox="0 0 24 24" className="h-6 w-6 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="m5 16 1-5h12l1 5M7 11l2-4h6l2 4M4 16h16v3H4z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></div>{(vehicle.make || vehicle.model || vehicle.color) && <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">{[vehicle.make, vehicle.model, vehicle.color].filter(Boolean).join(" · ")}</p>}<div className="mt-auto flex items-center justify-between pt-4"><Link href="/book" className="min-h-11 py-3 text-sm font-bold text-[color:var(--blue)]">{t("Book a wash")}</Link><button type="button" className="min-h-11 px-2 text-sm font-semibold text-red-600 hover:underline" onClick={() => handleRemoveVehicle(vehicle.id)}>{t("Remove")}</button></div></article>)}</div>}</section>}
             </div>
-
-            {tab === "cars" ? (
-              vehicles === null ? (
-                <p className="py-16 text-center text-sm text-[color:var(--muted-foreground)]">{t("Loading your cars…")}</p>
-              ) : vehicles.length === 0 ? (
-                <div className="glass-panel rounded-[var(--radius-card)] p-12 text-center">
-                  <h2 className="text-xl font-bold">{t("No cars saved yet")}</h2>
-                  <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-                    {t("Cars you add during a booking are saved here by plate number.")}
-                  </p>
-                  <Link href="/book" className="primary-button mt-6">
-                    {t("Book a Wash")}
-                  </Link>
-                </div>
-              ) : (
-                <div className="card-grid md:grid-cols-2 lg:grid-cols-3">
-                  {vehicles.map((v) => (
-                    <article key={v.id} className="glass-panel flex flex-col gap-3 rounded-[var(--radius-card)] p-6">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-2xl font-extrabold tracking-wider text-[color:var(--navy)]">
-                          {v.plate_number}
-                        </span>
-                        <span className="rounded-full bg-[color:var(--background)] px-3 py-1 text-xs font-semibold">
-                          {t(VEHICLE_TYPE_LABELS[v.type])}
-                        </span>
-                      </div>
-                      {(v.make || v.model || v.color) && (
-                        <p className="text-sm text-[color:var(--muted-foreground)]">
-                          {[v.make, v.model, v.color].filter(Boolean).join(" · ")}
-                        </p>
-                      )}
-                      <button
-                        type="button"
-                        className="self-start text-sm font-semibold text-red-600 hover:underline"
-                        onClick={() => handleRemoveVehicle(v.id)}
-                      >
-                        {t("Remove")}
-                      </button>
-                    </article>
-                  ))}
-                </div>
-              )
-            ) : bookings === null ? (
-              <p className="py-16 text-center text-sm text-[color:var(--muted-foreground)]">{t("Loading your bookings…")}</p>
-            ) : bookings.length === 0 ? (
-              <div className="glass-panel rounded-[var(--radius-card)] p-12 text-center">
-                <h2 className="text-xl font-bold">{t("No bookings yet")}</h2>
-                <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-                  {t("Your first sparkling-clean car is a few taps away.")}
-                </p>
-                <Link href="/book" className="primary-button mt-6">
-                  {t("Book your first wash")}
-                </Link>
-              </div>
-            ) : (
-              <div className="card-grid md:grid-cols-2">
-                {bookings.map((booking) => (
-                  <BookingCard
-                    key={booking.id}
-                    booking={booking}
-                    onCancel={() => handleCancel(booking.id)}
-                  />
-                ))}
-              </div>
-            )}
           </>
         )}
       </main>
       <Footer />
     </>
+  );
+}
+
+function EmptyState({
+  title,
+  copy,
+  action,
+  href,
+}: {
+  title: string;
+  copy: string;
+  action: string;
+  href: string;
+}) {
+  return (
+    <div className="commerce-card flex min-h-44 flex-col items-start justify-center p-6">
+      <h3 className="text-lg font-bold text-[color:var(--navy)]">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">{copy}</p>
+      <Link href={href} className="primary-button mt-5">{action}</Link>
+    </div>
+  );
+}
+
+function MembershipCard({ membership }: { membership: CustomerMembership }) {
+  const { t } = useI18n();
+  const active = membership.status === "active" && membership.washes_remaining > 0;
+  const expiry = membership.expires_at
+    ? new Date(membership.expires_at).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })
+    : null;
+
+  return (
+    <article className="commerce-card flex min-h-44 flex-col p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">{t("Membership")}</p><h3 className="mt-1 font-bold text-[color:var(--navy)]">{membership.plan.name}</h3></div>
+        <span className={clsx("rounded-full px-3 py-1 text-xs font-bold", active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600")}>{t(active ? "Active" : membership.status.replaceAll("_", " "))}</span>
+      </div>
+      <div className="mt-4 flex items-end justify-between gap-4"><p><span className="text-3xl font-extrabold text-[color:var(--navy)]">{membership.washes_remaining}</span><span className="ms-2 text-sm font-semibold text-[color:var(--muted-foreground)]">{t("washes left")}</span></p>{expiry && <p className="text-xs font-medium text-[color:var(--muted-foreground)]">{t("Expires")} {expiry}</p>}</div>
+      <div className="mt-auto flex flex-col gap-2 pt-5 sm:flex-row">
+        {active && <Link href="/book" className="primary-button flex-1 px-4">{t("Book a Wash")}</Link>}
+        <Link href="/memberships" className="secondary-button flex-1 px-4">{t(active ? "View plans" : "Renew plan")}</Link>
+      </div>
+    </article>
   );
 }
 
@@ -254,7 +256,7 @@ function BookingCard({
   const { t } = useI18n();
 
   return (
-    <article className="glass-panel flex flex-col gap-4 rounded-[var(--radius-card)] p-6">
+    <article className="commerce-card flex flex-col gap-4 p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <span className="font-bold text-[color:var(--navy)]">{booking.reference}</span>
         <span
@@ -268,19 +270,21 @@ function BookingCard({
       </div>
 
       <div className="flex flex-col gap-1 text-sm text-[color:var(--muted-foreground)]">
-        <span>🗓 {when}</span>
-        <span>📍 {booking.address_area || "—"}</span>
-        <span>
-          🚗{" "}
+        <span><span className="font-semibold text-[color:var(--navy)]">{t("Date")}: </span>{when}</span>
+        <span><span className="font-semibold text-[color:var(--navy)]">{t("Location")}: </span>{booking.address_area || "—"}</span>
+        <span><span className="font-semibold text-[color:var(--navy)]">{t("Service")}: </span>
           {booking.cars
-            .map((c) => `${c.service.name} — ${c.vehicle.make} ${c.vehicle.model}`)
+            .map((c) => `${c.service.name} — ${[c.vehicle.make, c.vehicle.model].filter(Boolean).join(" ") || c.vehicle.plate_number}`)
             .join(" · ")}
         </span>
       </div>
 
-      <div className="flex items-center justify-between border-t border-[color:var(--border)] pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
         <span className="font-bold">QR {booking.total}</span>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Link href="/book" className="secondary-button min-h-9 px-4 py-2 text-xs">
+            {t("Book again")}
+          </Link>
           {CANCELLABLE.includes(booking.status) && (
             <button
               type="button"

@@ -3,22 +3,23 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { AppButton } from "@/components/ui";
 import { useI18n } from "@/lib/i18n";
 
 // Absolute paths so the links work from /book and /account too.
 const navItems = [
-  { label: "My Bookings", href: "/account" },
-  { label: "Memberships", href: "/memberships" },
-  { label: "Store", href: "/store" },
-  { label: "Services", href: "/#services" },
-  { label: "Download", href: "/#download" },
+  { label: "Services", description: "Explore wash options", href: "/#services" },
+  { label: "Memberships", description: "Save on regular washes", href: "/memberships" },
+  { label: "Store", description: "Shop car-care products", href: "/store" },
+  { label: "Account", description: "Bookings, plans and vehicles", href: "/account" },
 ];
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const { lang, t, setLang } = useI18n();
+  const pathname = usePathname();
+  const isActive = (href: string) => href.startsWith("/#") ? pathname === "/" : pathname.startsWith(href);
 
   useEffect(() => {
     const closeMenu = () => setIsOpen(false);
@@ -45,19 +46,20 @@ export function Navbar() {
             />
           </Link>
 
-          <nav className="hidden items-center gap-7 lg:flex" aria-label="Primary">
+          <nav className="hidden items-center gap-6 lg:flex" aria-label="Primary">
             {navItems.map((item) => (
               <a
                 key={item.href}
                 href={item.href}
-                className="text-sm font-medium text-[color:var(--muted-foreground)] transition hover:text-[color:var(--navy)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)]"
+                className={clsx("border-b-2 py-2 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)]", isActive(item.href) ? "border-[color:var(--blue)] text-[color:var(--navy)]" : "border-transparent text-[color:var(--muted-foreground)] hover:text-[color:var(--navy)]")}
+                aria-current={isActive(item.href) ? "page" : undefined}
               >
                 {t(item.label)}
               </a>
             ))}
           </nav>
 
-          <div className="hidden items-center gap-3 lg:flex">
+          <div className="hidden items-center gap-2 lg:flex">
             <button
               type="button"
               onClick={() => setLang(lang === "en" ? "ar" : "en")}
@@ -65,14 +67,12 @@ export function Navbar() {
             >
               {lang === "en" ? "عربي" : "EN"}
             </button>
-            <AppButton href="/book" className="px-5">
-              {t("Book Now")}
-            </AppButton>
+            <Link href="/book" className="primary-button min-h-12 px-5">{t("Book a Wash")}</Link>
           </div>
 
           <button
             type="button"
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--border)] text-[color:var(--navy)] transition hover:border-[color:var(--blue)] hover:text-[color:var(--blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)] lg:hidden"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[color:var(--border)] text-[color:var(--navy)] transition hover:border-[color:var(--blue)] hover:text-[color:var(--blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)] lg:hidden"
             aria-expanded={isOpen}
             aria-controls="mobile-menu"
             aria-label={isOpen ? "Close navigation menu" : "Open navigation menu"}
@@ -104,6 +104,8 @@ export function Navbar() {
 
         <div
           id="mobile-menu"
+          aria-hidden={!isOpen}
+          inert={!isOpen}
           className={clsx(
             "overflow-hidden transition-[grid-template-rows,opacity] duration-200 ease-out lg:hidden",
             isOpen ? "grid grid-rows-[1fr] pb-4 opacity-100" : "grid grid-rows-[0fr] opacity-0",
@@ -111,29 +113,23 @@ export function Navbar() {
         >
           <div className="overflow-hidden">
             <nav
-              className="glass-panel flex flex-col gap-2 rounded-[28px] p-3"
+              className="commerce-card flex flex-col gap-1.5 p-3"
               aria-label="Mobile"
             >
+              <div className="px-3 pb-2 pt-1"><p className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">{t("Explore Bubbleit")}</p></div>
               {navItems.map((item) => (
-                <a
+                <Link
                   key={item.href}
                   href={item.href}
-                  className="rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--foreground)] transition hover:bg-[color:var(--background)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)]"
+                  className={clsx("flex items-center justify-between rounded-xl px-4 py-3 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)]", isActive(item.href) ? "bg-blue-50 text-[color:var(--deep-blue)]" : "text-[color:var(--foreground)] hover:bg-[color:var(--background)]")}
+                  aria-current={isActive(item.href) ? "page" : undefined}
                   onClick={() => setIsOpen(false)}
                 >
-                  {t(item.label)}
-                </a>
+                  <span><span className="block text-sm font-bold">{t(item.label)}</span><span className="mt-0.5 block text-xs font-medium text-[color:var(--muted-foreground)]">{t(item.description)}</span></span><span aria-hidden="true" className="text-lg">→</span>
+                </Link>
               ))}
-              <button
-                type="button"
-                onClick={() => setLang(lang === "en" ? "ar" : "en")}
-                className="rounded-2xl px-4 py-3 text-start text-sm font-semibold text-[color:var(--navy)] transition hover:bg-[color:var(--background)]"
-              >
-                {lang === "en" ? "عربي" : "English"}
-              </button>
-              <AppButton href="/book" className="mt-2 w-full" variant="primary">
-                {t("Book Now")}
-              </AppButton>
+              <Link href="/book" onClick={() => setIsOpen(false)} className="primary-button mt-2 min-h-14 w-full text-base">{t("Book a Wash")}</Link>
+              <button type="button" onClick={() => setLang(lang === "en" ? "ar" : "en")} className="min-h-11 rounded-xl px-4 text-sm font-semibold text-[color:var(--muted-foreground)] transition hover:bg-[color:var(--background)]">{lang === "en" ? "العربية" : "English"}</button>
             </nav>
           </div>
         </div>

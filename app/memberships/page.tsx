@@ -42,11 +42,13 @@ const STATUS_STYLES: Record<CustomerMembership["status"], string> = {
 export default function MembershipsPage() {
   const { lang, t } = useI18n();
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
   const [mine, setMine] = useState<CustomerMembership[] | null>(null);
   const [authed, setAuthed] = useState(false);
   const [scope, setScope] = useState<(typeof SCOPES)[number]["key"]>("full_wash");
   const [vtype, setVtype] = useState<"sedan" | "suv">("sedan");
   const [buyingPlan, setBuyingPlan] = useState<MembershipPlan | null>(null);
+  const [confirmingPlan, setConfirmingPlan] = useState(false);
   const [needsAuth, setNeedsAuth] = useState(false);
   const [busy, setBusy] = useState(false);
   const [bought, setBought] = useState(false);
@@ -57,7 +59,10 @@ export default function MembershipsPage() {
   }, []);
 
   useEffect(() => {
-    getMembershipPlans().then(setPlans).catch(() => setPlans([]));
+    getMembershipPlans()
+      .then(setPlans)
+      .catch(() => setPlans([]))
+      .finally(() => setPlansLoading(false));
     if (getToken()) {
       me()
         .then(() => {
@@ -68,6 +73,17 @@ export default function MembershipsPage() {
     }
   }, [refreshMine]);
 
+  useEffect(() => {
+    if (!confirmingPlan) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setConfirmingPlan(false);
+      setBuyingPlan(null);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [confirmingPlan]);
+
   const visiblePlans = useMemo(
     () =>
       plans.filter(
@@ -77,14 +93,10 @@ export default function MembershipsPage() {
       ),
     [plans, scope, vtype],
   );
+  const baselinePerWash = visiblePlans.length ? Math.max(...visiblePlans.map((plan) => plan.price / plan.washes_count)) : 0;
 
-  async function buy(plan: MembershipPlan) {
+  async function purchase(plan: MembershipPlan) {
     setError(null);
-    if (!authed) {
-      setBuyingPlan(plan);
-      setNeedsAuth(true);
-      return;
-    }
     setBusy(true);
     try {
       const result = await buyMembership(plan.id);
@@ -94,6 +106,7 @@ export default function MembershipsPage() {
         return;
       }
       setBought(true);
+      setBuyingPlan(null);
       refreshMine();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("Something went wrong. Please try again."));
@@ -102,16 +115,33 @@ export default function MembershipsPage() {
     }
   }
 
+  function selectPlan(plan: MembershipPlan) {
+    setError(null);
+    setBuyingPlan(plan);
+    setConfirmingPlan(true);
+  }
+
+  async function confirmPlan() {
+    if (!buyingPlan || busy) return;
+    setConfirmingPlan(false);
+    if (!authed) {
+      setNeedsAuth(true);
+      return;
+    }
+    await purchase(buyingPlan);
+  }
+
   return (
     <>
       <Navbar />
       <main className="section-shell py-10 sm:py-14">
-        <div className="mb-10 text-center">
+        <div className="mb-8 text-center">
           <span className="section-kicker">{t("Memberships")}</span>
           <h1 className="section-title mt-4">{t("Wash Memberships")}</h1>
           <p className="section-copy mx-auto mt-3">
             {t("Prepaid wash bundles — better prices, one tap to book.")}
           </p>
+          <div className="mx-auto mt-5 flex max-w-xl flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-semibold text-[color:var(--muted-foreground)]"><span>✓ {t("Valid for 30 days")}</span><span>✓ {t("Book in one tap")}</span><span>✓ {t("Secure payment")}</span></div>
         </div>
 
         {/* My memberships */}
@@ -143,8 +173,8 @@ export default function MembershipsPage() {
                     )}
                   </p>
                   {m.status === "active" && m.washes_remaining > 0 && (
-                    <Link href={`/book/membership?m=${m.id}`} className="primary-button mt-auto">
-                      {t("Book with membership")}
+                    <Link href="/book" className="primary-button mt-auto">
+                      {t("Book a Wash")}
                     </Link>
                   )}
                 </article>
@@ -209,12 +239,22 @@ export default function MembershipsPage() {
         )}
 
         {/* Plans */}
-        <div className="card-grid md:grid-cols-2 xl:grid-cols-4">
-          {visiblePlans.map((plan) => (
+        <div className="card-grid md:grid-cols-2 xl:grid-cols-4" aria-busy={plansLoading} aria-label={plansLoading ? t("Loading membership plans…") : t("Membership plans")}>
+          {plansLoading ? Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="commerce-card flex min-h-[19rem] flex-col items-center p-6" aria-hidden="true">
+              <span className="mt-2 block h-12 w-16 animate-pulse rounded-xl bg-slate-200" />
+              <span className="mt-3 block h-4 w-20 animate-pulse rounded-md bg-slate-200" />
+              <span className="mt-7 block h-8 w-28 animate-pulse rounded-lg bg-slate-200" />
+              <span className="mt-3 block h-4 w-24 animate-pulse rounded-md bg-slate-200" />
+              <span className="mt-3 block h-3 w-20 animate-pulse rounded-md bg-slate-200" />
+              <span className="mt-auto block h-12 w-full animate-pulse rounded-full bg-slate-200" />
+            </div>
+          )) : visiblePlans.map((plan) => (
             <article
               key={plan.id}
-              className="glass-panel flex flex-col items-center gap-2 rounded-[var(--radius-card)] p-8 text-center transition hover:-translate-y-1"
+              className={clsx("commerce-card relative flex flex-col items-center gap-2 p-6 text-center", plan.washes_count === 8 && "border-[color:var(--blue)] ring-2 ring-blue-100")}
             >
+              {plan.washes_count === 8 && <span className="absolute -top-3 rounded-full bg-[color:var(--blue)] px-3 py-1 text-xs font-bold text-white">{t("Most popular")}</span>}
               <span className="text-4xl font-bold text-[color:var(--navy)]">
                 {plan.washes_count}
               </span>
@@ -224,14 +264,16 @@ export default function MembershipsPage() {
               <span className="mt-2 text-2xl font-bold text-[color:var(--blue)]">
                 QR {plan.price}
               </span>
+              <span className="text-sm font-semibold text-[color:var(--navy)]">QR {(plan.price / plan.washes_count).toFixed(0)} / {t("wash")}</span>
+              {baselinePerWash > plan.price / plan.washes_count && <span className="text-xs font-semibold text-emerald-700">{t("Save")} {Math.round((1 - (plan.price / plan.washes_count) / baselinePerWash) * 100)}%</span>}
               <span className="text-xs text-[color:var(--muted-foreground)]">{t("Valid 30 days")}</span>
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => buy(plan)}
+                onClick={() => selectPlan(plan)}
                 className="primary-button mt-4 w-full disabled:opacity-40"
               >
-                {busy ? t("Buying…") : t("Buy")}
+                {busy && buyingPlan?.id === plan.id ? t("Buying…") : t("Choose this plan")}
               </button>
             </article>
           ))}
@@ -239,29 +281,66 @@ export default function MembershipsPage() {
       </main>
       <Footer />
 
+      {/* Plan review — no request is created until the customer confirms. */}
+      {confirmingPlan && buyingPlan && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/45 p-3 sm:items-center sm:p-6"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setConfirmingPlan(false);
+              setBuyingPlan(null);
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-membership-title"
+            className="booking-products-dialog w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl"
+          >
+            <div className="border-b border-slate-200 px-5 py-5 sm:px-6">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">{t("Review your selection")}</p>
+              <h2 id="confirm-membership-title" className="mt-2 text-2xl font-bold text-[color:var(--navy)]">{t("Confirm membership")}</h2>
+              <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Check the details before continuing. No request has been sent yet.")}</p>
+            </div>
+
+            <div className="space-y-4 px-5 py-5 sm:px-6">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="font-bold text-[color:var(--navy)]">{localized(lang, buyingPlan.name, buyingPlan.name_ar)}</p>
+                <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                  <div><dt className="text-[color:var(--muted-foreground)]">{t("Wash type")}</dt><dd className="mt-0.5 font-bold">{t(SCOPES.find((item) => item.key === buyingPlan.scope)?.label ?? "Membership")}</dd></div>
+                  <div><dt className="text-[color:var(--muted-foreground)]">{t("Vehicle")}</dt><dd className="mt-0.5 font-bold">{buyingPlan.vehicle_type === "suv" ? t("SUV / 4-Wheel") : buyingPlan.vehicle_type === "sedan" ? t("Salon / Sedan") : t("Any vehicle")}</dd></div>
+                  <div><dt className="text-[color:var(--muted-foreground)]">{t("Included")}</dt><dd className="mt-0.5 font-bold">{buyingPlan.washes_count} {t("washes")}</dd></div>
+                  <div><dt className="text-[color:var(--muted-foreground)]">{t("Validity")}</dt><dd className="mt-0.5 font-bold">{buyingPlan.validity_days} {t("days")}</dd></div>
+                </dl>
+              </div>
+              <div className="flex items-end justify-between border-t border-slate-200 pt-4"><div><p className="text-sm font-semibold text-[color:var(--muted-foreground)]">{t("Total")}</p><p className="mt-1 text-xs text-[color:var(--muted-foreground)]">QR {(buyingPlan.price / buyingPlan.washes_count).toFixed(0)} / {t("wash")}</p></div><p className="text-3xl font-extrabold text-[color:var(--navy)]">QR {buyingPlan.price}</p></div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 border-t border-slate-200 bg-slate-50 px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pb-5">
+              <button type="button" className="secondary-button min-h-14" onClick={() => { setConfirmingPlan(false); setBuyingPlan(null); }}>{t("Go back")}</button>
+              <button type="button" className="primary-button min-h-14 px-4 disabled:opacity-50" disabled={busy} onClick={confirmPlan}>{busy ? t("Processing…") : t("Confirm and continue")}</button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {/* Auth modal for guest purchase */}
       {needsAuth && buyingPlan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md">
             <AuthPanel
               title={t("Sign in to buy a membership.")}
-              onClose={() => setNeedsAuth(false)}
+              onClose={() => {
+                setNeedsAuth(false);
+                setBuyingPlan(null);
+              }}
               onAuthed={async () => {
                 setNeedsAuth(false);
                 setAuthed(true);
                 refreshMine();
-                await buyMembership(buyingPlan.id)
-                  .then((result) => {
-                    if (result.pay_url) {
-                      window.location.assign(result.pay_url);
-                      return;
-                    }
-                    setBought(true);
-                    refreshMine();
-                  })
-                  .catch((e) =>
-                    setError(e instanceof ApiError ? e.message : t("Something went wrong. Please try again.")),
-                  );
+                await purchase(buyingPlan);
               }}
             />
           </div>

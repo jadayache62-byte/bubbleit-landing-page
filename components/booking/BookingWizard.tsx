@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import Image from "next/image";
 import Link from "next/link";
@@ -173,44 +173,6 @@ function fmt(amount: number) {
   return `${CURRENCY} ${amount}`;
 }
 
-let activeScrollFrame: number | null = null;
-
-function scrollWindowTo(
-  getTargetY: number | (() => number),
-  reducedMotion: boolean,
-  duration = 700,
-  onComplete?: () => void,
-) {
-  if (activeScrollFrame !== null) {
-    cancelAnimationFrame(activeScrollFrame);
-    activeScrollFrame = null;
-  }
-  const resolveTarget = () =>
-    typeof getTargetY === "function" ? getTargetY() : getTargetY;
-  if (reducedMotion) {
-    window.scrollTo({ top: resolveTarget(), behavior: "auto" });
-    onComplete?.();
-    return;
-  }
-  const startY = window.scrollY;
-  const startedAt = performance.now();
-  // Ease out immediately follows the customer's tap, then settles gently at
-  // the destination instead of pausing first and accelerating late.
-  const easeInOut = (progress: number) => 1 - (1 - progress) * (1 - progress);
-  const frame = (now: number) => {
-    const progress = Math.min(1, (now - startedAt) / duration);
-    const distance = resolveTarget() - startY;
-    window.scrollTo(0, startY + distance * easeInOut(progress));
-    if (progress < 1) {
-      activeScrollFrame = requestAnimationFrame(frame);
-    } else {
-      activeScrollFrame = null;
-      onComplete?.();
-    }
-  };
-  activeScrollFrame = requestAnimationFrame(frame);
-}
-
 function Skeleton({ className }: { className: string }) {
   return <span aria-hidden="true" className={`block animate-pulse rounded-xl bg-slate-200/80 ${className}`} />;
 }
@@ -230,10 +192,16 @@ export function BookingWizard() {
 
   // On every step change, bring the top of the wizard into view (mobile
   // otherwise lands at the bottom of the freshly rendered step).
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!topRef.current) return;
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    scrollWindowTo(window.scrollY + topRef.current.getBoundingClientRect().top - 96, reduceMotion);
+    const root = document.documentElement;
+    const previousScrollBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = "auto";
+    window.scrollTo({
+      top: window.scrollY + topRef.current.getBoundingClientRect().top - 96,
+      behavior: "auto",
+    });
+    root.style.scrollBehavior = previousScrollBehavior;
   }, [step]);
 
   // Step 1 — cars & services
@@ -271,6 +239,7 @@ export function BookingWizard() {
   const [notes, setNotes] = useState("");
   const [bookingProducts, setBookingProducts] = useState<StoreProductInventory[]>([]);
   const [productQuantities, setProductQuantities] = useState<Record<string, number>>({});
+  const [productPromptSeen, setProductPromptSeen] = useState(false);
 
   // Step 5 — identity + confirm
   const [authed, setAuthed] = useState(false);
@@ -430,7 +399,7 @@ export function BookingWizard() {
   // step we ask the backend to price the cart with the customer's eligible
   // memberships applied; the toggle lets them pay instead and keep the wash.
   const [quote, setQuote] = useState<BookingQuote | null>(null);
-  const [useMembership, setUseMembership] = useState(true);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   useEffect(() => {
     if (step !== 3 || !authed || !slot) return;
@@ -444,8 +413,14 @@ export function BookingWizard() {
     if (quoteCars.length === 0) return;
 
     let cancelled = false;
-    // Always price with memberships applied so we can detect eligibility even
-    // when the customer has toggled it off; the toggle only decides display.
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setQuote(null);
+        setQuoteLoading(true);
+      }
+    });
+    // Always price with memberships applied. Eligible coverage is automatic
+    // so the customer stays inside one standard booking flow.
     getQuote({
       scheduled_at: serializeQatarBookingDateTime(date, slot),
       cars: quoteCars,
@@ -456,6 +431,9 @@ export function BookingWizard() {
       })
       .catch(() => {
         if (!cancelled) setQuote(null);
+      })
+      .finally(() => {
+        if (!cancelled) setQuoteLoading(false);
       });
     return () => {
       cancelled = true;
@@ -463,14 +441,13 @@ export function BookingWizard() {
   }, [step, authed, slot, date, cars]);
 
   const membershipEligible = quote?.membership_eligible ?? false;
-  const applyMembership = membershipEligible && useMembership;
+  const applyMembership = membershipEligible;
   const membershipDiscount = applyMembership
     ? (quote?.membership_discount ?? 0)
     : 0;
   // Total the customer actually pays: membership-adjusted, or the promo net.
-  const activeProductTotal = applyMembership ? 0 : productTotal;
+  const activeProductTotal = productTotal;
   const dueTotal = (applyMembership ? (quote?.total_price ?? 0) : netTotal) + activeProductTotal;
-  const paidByMembership = applyMembership && dueTotal <= 0;
   const washesLeftAfter = applyMembership
     ? quote?.memberships.reduce(
         (min, m) => Math.min(min, m.remaining_after),
@@ -596,10 +573,10 @@ export function BookingWizard() {
         payment_method: "online",
         // Server re-prices and applies memberships; false lets the customer
         // pay and keep the wash. Promo only applies when paying.
-        use_membership: useMembership,
+        use_membership: true,
         notes: notes.trim() || undefined,
         promo_code: !applyMembership && promoActive ? applied.code : undefined,
-        product_lines: (!applyMembership ? Object.entries(productQuantities) : [])
+        product_lines: Object.entries(productQuantities)
           .filter(([, quantity]) => quantity > 0)
           .map(([product_id, quantity]) => ({ product_id, quantity })),
       });
@@ -661,40 +638,31 @@ export function BookingWizard() {
       ref={topRef}
       className="mx-auto w-full max-w-3xl scroll-mt-24 pb-[calc(13rem+env(safe-area-inset-bottom))]"
     >
-      {/* Progress */}
-      <ol
-        className="mb-8 flex items-center justify-between gap-1 sm:gap-2"
+      <nav
+        className="mb-7 grid grid-cols-4 gap-2"
         aria-label="Booking progress"
       >
         {STEPS.map((label, i) => (
-          <li key={label} className="flex flex-1 items-center gap-1 sm:gap-2">
-            <span
+          <div key={label} className="min-w-0" aria-current={i === step ? "step" : undefined}>
+            <div
               className={clsx(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition",
-                i < step && "bg-[color:var(--blue)] text-white",
-                i === step && "bg-[color:var(--navy)] text-white",
-                i > step &&
-                  "border border-[color:var(--border)] bg-white text-[color:var(--muted-foreground)]",
+                "h-1 rounded-full transition-colors duration-300",
+                i <= step ? "bg-[color:var(--blue)]" : "bg-slate-200",
               )}
-            >
-              {i < step ? "✓" : i + 1}
-            </span>
+            />
             <span
               className={clsx(
-                "hidden text-xs font-medium sm:block",
+                "mt-2 block truncate text-[11px] sm:text-xs",
                 i === step
-                  ? "text-[color:var(--navy)]"
-                  : "text-[color:var(--muted-foreground)]",
+                  ? "font-bold text-[color:var(--navy)]"
+                  : "font-semibold text-[color:var(--muted-foreground)]",
               )}
             >
-              {t(label)}
+              {i + 1}. {t(label)}
             </span>
-            {i < STEPS.length - 1 && (
-              <span className="mx-1 hidden h-px flex-1 bg-[color:var(--border)] sm:block" />
-            )}
-          </li>
+          </div>
         ))}
-      </ol>
+      </nav>
 
       <div className="glass-panel rounded-[var(--radius-card)] p-4 sm:p-10">
         {step === 0 && (
@@ -844,19 +812,32 @@ export function BookingWizard() {
               />
             )}
 
-            <PayOption
-              active
-              onClick={() => {}}
-              title={t("Pay online (SkipCash)")}
-            />
+            {authed && quoteLoading && (
+              <div className="commerce-card space-y-3 p-5" aria-label={t("Checking membership coverage…")}>
+                <Skeleton className="h-5 w-44" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
+            )}
 
-            {membershipEligible && (
-              <MembershipToggle
-                on={useMembership}
-                onToggle={() => setUseMembership((v) => !v)}
-                name={quote?.memberships[0]?.name ?? t("your membership")}
-                remainingAfter={washesLeftAfter}
-              />
+            {authed && !quoteLoading && applyMembership && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5" role="status">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-600 text-lg font-bold text-white" aria-hidden="true">✓</span>
+                  <div>
+                    <h3 className="font-bold text-emerald-900">{t("Membership applied automatically")}</h3>
+                    <p className="mt-1 text-sm leading-6 text-emerald-800">{quote?.memberships[0]?.name ?? t("Your eligible wash is covered by your membership.")}</p>
+                    {washesLeftAfter !== undefined && Number.isFinite(washesLeftAfter) && <p className="mt-1 text-xs font-semibold text-emerald-700">{t("Washes left after booking")}: {washesLeftAfter}</p>}
+                  </div>
+                </div>
+                <div className="mt-4 border-t border-emerald-200 pt-4 text-sm font-semibold text-emerald-900">
+                  {productTotal > 0 ? t("Your wash is covered. You’ll only pay for the products added to this booking.") : t("No payment is required for this booking.")}
+                </div>
+              </div>
+            )}
+
+            {authed && !quoteLoading && !applyMembership && (
+              <PayOption active onClick={() => {}} title={t("Pay online (SkipCash)")} />
             )}
 
             {showPromo && (
@@ -871,17 +852,17 @@ export function BookingWizard() {
               />
             )}
 
-            {!applyMembership && (
-              <BookingProductPicker
+            <BookingProductPicker
                 products={bookingProducts}
                 loading={productsLoading}
                 quantities={productQuantities}
+                autoOpen={!productPromptSeen}
+                onAutoOpen={() => setProductPromptSeen(true)}
                 onChange={(id, quantity) => setProductQuantities((current) => ({
                   ...current,
                   [id]: quantity,
                 }))}
               />
-            )}
 
             <Field label={t("Notes for the team (optional)")}>
               <textarea
@@ -905,11 +886,10 @@ export function BookingWizard() {
               membershipApplied={applyMembership}
               membershipDiscount={membershipDiscount}
               dueTotal={dueTotal}
-              paidByMembership={paidByMembership}
               washesLeftAfter={washesLeftAfter}
               timeRangeLabel={quote?.time_range_label ?? null}
               durationLabel={quote?.duration_label ?? null}
-              products={applyMembership ? [] : bookingProducts}
+              products={bookingProducts}
               productQuantities={productQuantities}
               productTotal={activeProductTotal}
             />
@@ -936,9 +916,9 @@ export function BookingWizard() {
                 <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
                   {fmt(dueTotal)}
                 </span>
-                {paidByMembership ? (
+                {applyMembership ? (
                   <span className="ms-2 text-xs font-semibold text-emerald-600">
-                    ({t("covered by membership")})
+                    ({productTotal > 0 ? t("wash covered · products only") : t("covered by membership")})
                   </span>
                 ) : (
                   discount > 0 && (
@@ -985,7 +965,13 @@ export function BookingWizard() {
                 disabled={submitting || !authed}
                 onClick={submit}
               >
-                {submitting ? t("Confirming…") : t("Confirm & Pay")}
+                {submitting
+                  ? t("Confirming…")
+                  : applyMembership && dueTotal <= 0
+                    ? t("Confirm booking")
+                    : applyMembership
+                      ? t("Pay for products")
+                      : t("Confirm & Pay")}
               </button>
             )}
           </div>
@@ -1060,6 +1046,7 @@ function StepServices({
 }) {
   const { lang, t } = useI18n();
   const contextRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const plateRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const guideSequence = useRef(0);
   const [attentionKey, setAttentionKey] = useState<number | null>(null);
 
@@ -1075,13 +1062,14 @@ function StepServices({
       if (sequence !== guideSequence.current) return;
       const target = contextRefs.current[key];
       if (!target) return;
-      if (activeScrollFrame !== null) {
-        cancelAnimationFrame(activeScrollFrame);
-        activeScrollFrame = null;
-      }
       target.scrollIntoView({
         behavior: reduceMotion ? "auto" : "smooth",
         block: "end",
+      });
+      requestAnimationFrame(() => {
+        const input = plateRefs.current[key];
+        input?.focus({ preventScroll: true });
+        input?.select();
       });
     }));
   }
@@ -1357,6 +1345,9 @@ function StepServices({
                   required
                 >
                   <input
+                    ref={(node) => {
+                      plateRefs.current[car.key] = node;
+                    }}
                     className="wizard-input"
                     placeholder="123456"
                     inputMode={isCar ? "numeric" : undefined}
@@ -1420,11 +1411,15 @@ function BookingProductPicker({
   products,
   loading,
   quantities,
+  autoOpen,
+  onAutoOpen,
   onChange,
 }: {
   products: StoreProductInventory[];
   loading: boolean;
   quantities: Record<string, number>;
+  autoOpen: boolean;
+  onAutoOpen: () => void;
   onChange: (id: string, quantity: number) => void;
 }) {
   const { t } = useI18n();
@@ -1436,6 +1431,12 @@ function BookingProductPicker({
     0,
     product.available_quantity ?? product.stock_quantity - product.reserved_quantity,
   );
+
+  useEffect(() => {
+    if (!autoOpen || loading || products.length === 0) return;
+    onAutoOpen();
+    requestAnimationFrame(() => setOpen(true));
+  }, [autoOpen, loading, onAutoOpen, products.length]);
 
   useEffect(() => {
     if (!open) return;
@@ -1511,7 +1512,7 @@ function BookingProductPicker({
         type="button"
         onClick={() => setOpen(true)}
         className={clsx(
-          "group relative flex min-h-20 w-full cursor-pointer items-center gap-3 overflow-hidden rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 via-white to-cyan-50 px-4 py-3 text-start shadow-sm transition-colors duration-200 hover:border-[color:var(--blue)] focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-2 sm:gap-4 sm:px-5",
+          "group relative flex min-h-24 w-full cursor-pointer items-center gap-3 overflow-hidden rounded-2xl border-2 border-[color:var(--navy)] bg-white px-4 py-4 text-start shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:border-[color:var(--blue)] hover:shadow-md active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-2 sm:gap-4 sm:px-5",
           selectedCount === 0 && "booking-products-nudge",
         )}
       >
@@ -1520,12 +1521,12 @@ function BookingProductPicker({
         </span>
         <span className="min-w-0 flex-1">
           <span className="mb-1 flex flex-wrap items-center gap-2">
-            <span className="font-bold text-[color:var(--navy)]">{t("Enhance your booking")}</span>
-            {selectedCount === 0 && (
-              <span className="rounded-full bg-[color:var(--cyan)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--navy)]">
-                {t("Recommended")}
-              </span>
-            )}
+            <span className="text-base font-bold text-[color:var(--navy)] sm:text-lg">
+              {selectedCount > 0 ? t("Edit added products") : t("Add products to your booking")}
+            </span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">
+              {t("Optional")}
+            </span>
           </span>
           <span className="block text-xs leading-4 text-[color:var(--muted-foreground)] sm:text-sm">
             {selectedCount > 0
@@ -1533,8 +1534,8 @@ function BookingProductPicker({
               : t("Add car-care essentials and we’ll bring them with your wash.")}
           </span>
         </span>
-        <span className="hidden shrink-0 items-center gap-1 text-xs font-bold text-[color:var(--blue)] sm:flex">
-          {t("View products")}
+        <span className="flex shrink-0 items-center gap-1 rounded-full bg-[color:var(--navy)] px-3 py-2 text-xs font-bold text-white transition-colors group-hover:bg-[color:var(--blue)] sm:px-4">
+          <span className="hidden sm:inline">{selectedCount > 0 ? t("Edit") : t("Browse products")}</span>
           <svg viewBox="0 0 20 20" className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" fill="none" aria-hidden="true"><path d="m7 4 6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </span>
       </button>
@@ -1544,12 +1545,12 @@ function BookingProductPicker({
           role="dialog"
           aria-modal="true"
           aria-labelledby="booking-products-title"
-          className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6"
+          className="booking-products-backdrop fixed inset-0 z-[100] grid place-items-center bg-slate-950/55 p-3 sm:p-6"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setOpen(false);
           }}
         >
-          <section ref={modalRef} className="flex h-[min(88dvh,52rem)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_32px_100px_rgba(15,23,42,0.32)]">
+          <section ref={modalRef} className="booking-products-dialog flex h-[min(88dvh,52rem)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/60 bg-white shadow-[0_32px_100px_rgba(15,23,42,0.32)]">
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[color:var(--border)] bg-white px-4 py-4 sm:px-7 sm:py-6">
               <div>
                 <span className="mb-1 block text-xs font-bold uppercase tracking-[0.16em] text-[color:var(--blue)]">{t("Optional add-ons")}</span>
@@ -1635,7 +1636,6 @@ function Summary({
   membershipApplied,
   membershipDiscount,
   dueTotal,
-  paidByMembership,
   washesLeftAfter,
   timeRangeLabel,
   durationLabel,
@@ -1655,7 +1655,6 @@ function Summary({
   membershipApplied: boolean;
   membershipDiscount: number;
   dueTotal: number;
-  paidByMembership: boolean;
   washesLeftAfter?: number;
   timeRangeLabel: string | null;
   durationLabel: string | null;
@@ -1759,7 +1758,11 @@ function Summary({
             {t("Payment")}
           </span>
           <span className="font-medium">
-            {paidByMembership ? t("Membership") : t("Pay online (SkipCash)")}
+            {membershipApplied
+              ? productTotal > 0
+                ? t("Membership wash + online payment for products")
+                : t("Membership — no payment required")
+              : t("Pay online (SkipCash)")}
           </span>
         </li>
         {membershipApplied && membershipDiscount > 0 && (
@@ -1809,7 +1812,7 @@ function Summary({
           <span>{t("Total")}</span>
               <span>{fmt(dueTotal)}</span>
         </li>
-        {paidByMembership &&
+        {membershipApplied &&
           washesLeftAfter !== undefined &&
           Number.isFinite(washesLeftAfter) && (
             <li className="flex justify-end text-xs text-[color:var(--muted-foreground)]">
@@ -1821,51 +1824,6 @@ function Summary({
   );
 }
 
-function MembershipToggle({
-  on,
-  onToggle,
-  name,
-  remainingAfter,
-}: {
-  on: boolean;
-  onToggle: () => void;
-  name: string;
-  remainingAfter?: number;
-}) {
-  const { t } = useI18n();
-  return (
-    <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-      <div className="text-sm">
-        <span className="font-semibold text-emerald-800">
-          {t("Use membership")}
-        </span>
-        <span className="block text-xs text-emerald-700">
-          {name}
-          {on && remainingAfter !== undefined && Number.isFinite(remainingAfter)
-            ? ` · ${t("Washes left after booking")}: ${remainingAfter}`
-            : ""}
-        </span>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        onClick={onToggle}
-        className={clsx(
-          "relative h-6 w-11 shrink-0 rounded-full transition",
-          on ? "bg-emerald-600" : "bg-slate-300",
-        )}
-      >
-        <span
-          className={clsx(
-            "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all",
-            on ? "start-[1.375rem]" : "start-0.5",
-          )}
-        />
-      </button>
-    </div>
-  );
-}
 
 function PromoField({
   applied,
