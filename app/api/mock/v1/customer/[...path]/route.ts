@@ -53,7 +53,10 @@ function fail(status: number, message: string, errors: Record<string, string[]> 
 
 function authCustomer(req: NextRequest) {
   const header = req.headers.get("authorization") ?? "";
-  const token = header.replace(/^Bearer\s+/i, "");
+  const token =
+    header.replace(/^Bearer\s+/i, "") ||
+    req.cookies.get("bubbleit_customer_token")?.value ||
+    "";
   const customerId = db().tokens.get(token);
   if (!customerId) return null;
   return db().customers.find((c) => c.id === customerId) ?? null;
@@ -175,12 +178,16 @@ async function handle(req: NextRequest, segments: string[]) {
     const customerPhone = String(body.customer_phone ?? linkedCustomer?.phone ?? "").trim();
     const deliveryArea = String(body.delivery_area ?? "").trim();
     const deliveryDetails = String(body.delivery_details ?? "").trim();
+    const buildingNumber = String(body.building_number ?? "").trim();
+    const zoneNumber = String(body.zone_number ?? "").trim();
+    const streetNumber = String(body.street_number ?? "").trim();
 
-    if (!customerName || !customerPhone || !deliveryArea || linesInput.length === 0) {
+    if (!customerName || !customerPhone || !deliveryArea || !buildingNumber || linesInput.length === 0) {
       return fail(422, "Validation failed.", {
         ...(customerName ? {} : { customer_name: ["The customer name field is required."] }),
         ...(customerPhone ? {} : { customer_phone: ["The customer phone field is required."] }),
         ...(deliveryArea ? {} : { delivery_area: ["The delivery area field is required."] }),
+        ...(buildingNumber ? {} : { building_number: ["The building number field is required."] }),
         ...(linesInput.length ? {} : { lines: ["At least one product is required."] }),
       });
     }
@@ -193,7 +200,7 @@ async function handle(req: NextRequest, segments: string[]) {
         return fail(422, "Validation failed.", { lines: ["Invalid product or quantity."] });
       }
       if (product.stock_quantity < quantity) {
-        return fail(409, `${product.name} has only ${product.stock_quantity} left in stock.`);
+        return fail(409, `${product.name} does not have enough stock for that quantity.`);
       }
       orderLines.push({
         product_id: product.id,
@@ -225,6 +232,9 @@ async function handle(req: NextRequest, segments: string[]) {
       customer_phone: customerPhone,
       delivery_area: deliveryArea,
       delivery_details: deliveryDetails,
+      building_number: buildingNumber,
+      zone_number: zoneNumber || null,
+      street_number: streetNumber || null,
       latitude: typeof body.latitude === "number" ? body.latitude : null,
       longitude: typeof body.longitude === "number" ? body.longitude : null,
       subtotal,
@@ -411,7 +421,11 @@ async function handle(req: NextRequest, segments: string[]) {
 
   if (method === "POST" && path === "auth/logout") {
     const header = req.headers.get("authorization") ?? "";
-    store.tokens.delete(header.replace(/^Bearer\s+/i, ""));
+    const token =
+      header.replace(/^Bearer\s+/i, "") ||
+      req.cookies.get("bubbleit_customer_token")?.value ||
+      "";
+    if (token) store.tokens.delete(token);
     return envelope(null, { message: "Logged out." });
   }
 
@@ -456,19 +470,59 @@ async function handle(req: NextRequest, segments: string[]) {
   }
   if (method === "POST" && path === "addresses") {
     const area = String(body.area ?? "").trim();
-    if (!area) {
-      return fail(422, "Validation failed.", { area: ["The area field is required."] });
+    const buildingNumber = String(body.building_number ?? "").trim();
+    if (!area || !buildingNumber) {
+      return fail(422, "Validation failed.", {
+        ...(area ? {} : { area: ["The area field is required."] }),
+        ...(buildingNumber ? {} : { building_number: ["The building number field is required."] }),
+      });
     }
     const address = {
       id: store.nextId++,
       label: String(body.label ?? "Home").trim(),
       area,
       details: String(body.details ?? "").trim(),
+      building_number: buildingNumber,
+      zone_number: String(body.zone_number ?? "").trim() || null,
+      street_number: String(body.street_number ?? "").trim() || null,
       latitude: typeof body.latitude === "number" ? body.latitude : null,
       longitude: typeof body.longitude === "number" ? body.longitude : null,
     };
     customer.addresses.push(address);
     return envelope(address, { status: 201, message: "Address added." });
+  }
+  const addressMatch = path.match(/^addresses\/(\d+)$/);
+  if (addressMatch && (method === "PUT" || method === "DELETE")) {
+    const addressId = Number(addressMatch[1]);
+    const index = customer.addresses.findIndex((address) => address.id === addressId);
+    if (index === -1) return fail(404, "Address not found.");
+    if (method === "DELETE") {
+      customer.addresses.splice(index, 1);
+      return envelope(null, { status: 200, message: "Address removed." });
+    }
+
+    const area = String(body.area ?? "").trim();
+    const buildingNumber = String(body.building_number ?? "").trim();
+    if (!area || !buildingNumber) {
+      return fail(422, "Validation failed.", {
+        ...(area ? {} : { area: ["The area field is required."] }),
+        ...(buildingNumber ? {} : { building_number: ["The building number field is required."] }),
+      });
+    }
+
+    const updated = {
+      ...customer.addresses[index],
+      label: String(body.label ?? customer.addresses[index].label ?? "Home").trim(),
+      area,
+      details: String(body.details ?? "").trim(),
+      building_number: buildingNumber,
+      zone_number: String(body.zone_number ?? "").trim() || null,
+      street_number: String(body.street_number ?? "").trim() || null,
+      latitude: typeof body.latitude === "number" ? body.latitude : null,
+      longitude: typeof body.longitude === "number" ? body.longitude : null,
+    };
+    customer.addresses[index] = updated;
+    return envelope(updated, { message: "Address updated." });
   }
 
   // ── Memberships ──

@@ -28,14 +28,34 @@ const BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "/api/mock/v1/customer";
 
 const TOKEN_KEY = "bubbleit.customer_token";
+const TOKEN_COOKIE = "bubbleit_customer_token";
+const TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+
+function readTokenCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const token = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${TOKEN_COOKIE}=`))
+    ?.split("=")[1];
+  return token ? decodeURIComponent(token) : null;
+}
+
+function writeTokenCookie(token: string | null) {
+  if (typeof document === "undefined") return;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = token
+    ? `${TOKEN_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=${TOKEN_MAX_AGE_SECONDS}; SameSite=Lax${secure}`
+    : `${TOKEN_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+}
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
+  return readTokenCookie() ?? window.localStorage.getItem(TOKEN_KEY);
 }
 
 export function setToken(token: string | null) {
   if (typeof window === "undefined") return;
+  writeTokenCookie(token);
   if (token) window.localStorage.setItem(TOKEN_KEY, token);
   else window.localStorage.removeItem(TOKEN_KEY);
 }
@@ -67,6 +87,7 @@ async function request<T>(
   const res = await fetch(`${BASE}${path}`, {
     method: options.method ?? "GET",
     headers,
+    credentials: "same-origin",
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
@@ -227,6 +248,18 @@ export function deleteVehicle(id: number) {
 
 export function createAddress(payload: Omit<Address, "id"> | Omit<Address, "id" | "latitude" | "longitude">) {
   return request<Address>("/addresses", { method: "POST", body: payload });
+}
+
+export function listAddresses() {
+  return request<Paginated<Address>>("/addresses").then((r) => r.data);
+}
+
+export function updateAddress(id: number, payload: Omit<Address, "id">) {
+  return request<Address>(`/addresses/${id}`, { method: "PUT", body: payload });
+}
+
+export function deleteAddress(id: number) {
+  return request<null>(`/addresses/${id}`, { method: "DELETE" });
 }
 
 // ── Memberships ──────────────────────────────────────────────────────────────

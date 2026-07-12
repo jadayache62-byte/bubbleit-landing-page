@@ -2,6 +2,40 @@
 
 ---
 
+## [2026-07-12] — Unified customer journeys and mobile commerce polish
+
+### Added
+- **Store discovery and mini-cart** — the store now includes search, category filters, aligned responsive product cards, inline quantity controls, a fixed View cart / Checkout footer, and a smooth accessible mini-cart with line totals and subtotal.
+- **Three-step guest checkout** — store purchases now use Location → Contact → Review, support guest checkout without account creation, validate Qatar phone numbers, and preserve a clear future OTP verification point.
+- **Account dashboard** — `/account` now provides an overview, upcoming booking, active membership, saved vehicles, quick actions, rebooking, cancellation, membership redemption/renewal, and vehicle removal.
+- **Membership purchase confirmation** — choosing a membership opens a review dialog with scope, vehicle, washes, validity, per-wash price, and total before any request is sent.
+- **Membership skeletons** — membership plan cards reserve their final responsive layout while pricing loads.
+
+### Changed
+- **Qatar address capture** — booking and store checkout location steps now support current location, manual map pinning, and a Qatar address card with mandatory building number plus optional zone, street, area, and extra details.
+- **Safer customer sessions** — customer auth now mirrors tokens into a SameSite cookie, sends same-origin credentials, and the local mock API accepts cookie-backed sessions.
+- **Phone input constraints** — login, signup, and guest checkout phone fields now accept only eight local Qatar digits and open a numeric keypad on mobile.
+- **Stale booking timing reset** — restored booking pages clear old selected slots and return customers to the location step before they reselect availability.
+- **Single booking flow** — all standard and membership actions now enter `/book`; legacy `/book/membership` URLs redirect to the standard wizard.
+- **Automatic membership coverage** — the Pay & Confirm step detects eligible memberships through the server quote, applies coverage automatically, shows remaining washes, and removes the confusing opt-out path.
+- **Products with covered washes** — customers can add physical products even when a membership covers the wash; only those products remain payable.
+- **Dynamic final action** — the booking CTA now reads Confirm booking, Pay for products, or Confirm & Pay according to the server-backed payable state.
+- **Booking progress and motion** — booking uses the same segmented progress treatment as store checkout, focuses the plate field after service selection, keeps its action footer viewport-fixed, and jumps immediately to the next step without a long scripted scroll.
+- **Product upsell clarity** — the confirmation-step trigger now says Add products to your booking, opens the picker once, and uses a slower eased modal entrance.
+- **Navigation architecture** — desktop and mobile navigation now center Services, Memberships, Store, Account, and one primary Book a Wash action.
+- **Accessible account navigation** — account tabs use full ARIA tab semantics and keyboard navigation without horizontal clipping.
+
+### Fixed
+- **Cart hydration and overlay state** — saved cart restoration no longer causes hydration mismatch, and closed cart backdrops cannot leave a dark tint or intercept clicks.
+- **Header CTA visibility** — the account Book a Wash action now has explicit high-contrast colors instead of rendering blank on white.
+- **Fixed booking actions** — page-enter transforms no longer change the containing block for the fixed booking footer.
+- **Account accessibility** — removed duplicate page headings, added contextual control names, consistent focus rings, inert hidden navigation, accessible loading states, and 44px touch targets.
+- **Local development origin** — `127.0.0.1` is allowed in Next.js development so interactive pages and API-backed content load correctly.
+
+### Removed
+- **Customer-facing inventory counts** — product cards and checkout errors now communicate availability without exposing exact stock quantities.
+- **Parallel membership redemption wizard** — customer-facing membership booking links no longer create a separate journey.
+
 ## [2026-07-11] — Booking flow loading and clarity
 
 ### Changed

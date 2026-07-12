@@ -78,6 +78,9 @@ export type Address = {
   label: string;
   area: string;
   details: string;
+  building_number?: string | null;
+  zone_number?: string | null;
+  street_number?: string | null;
   latitude: number | null;
   longitude: number | null;
 };
@@ -284,6 +287,9 @@ export type StoreOrder = {
   customer_phone: string;
   delivery_area: string;
   delivery_details: string;
+  building_number?: string | null;
+  zone_number?: string | null;
+  street_number?: string | null;
   latitude: number | null;
   longitude: number | null;
   subtotal: number;
@@ -297,6 +303,9 @@ export type CreateStoreOrderPayload = {
   customer_phone?: string;
   delivery_area: string;
   delivery_details: string;
+  building_number?: string;
+  zone_number?: string;
+  street_number?: string;
   latitude?: number | null;
   longitude?: number | null;
   notes?: string;

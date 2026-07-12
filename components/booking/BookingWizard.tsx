@@ -24,6 +24,7 @@ import {
   createBooking,
   createVehicle,
   getAvailability,
+  listAddresses,
   listVehicles,
   getQuote,
   getServices,
@@ -35,6 +36,7 @@ import {
 import type {
   Booking,
   BookingQuote,
+  Address,
   Service,
   Slot,
   StoreProductInventory,
@@ -49,6 +51,7 @@ import {
 import { localized, useI18n } from "@/lib/i18n";
 
 const CURRENCY = "QR";
+const STALE_SLOT_MS = 15 * 60 * 1000;
 
 // The three vehicle cards. Jet ski & jet boat share one "Jet" card with a
 // sub-toggle; each vehicle in a booking can independently be any kind.
@@ -223,8 +226,13 @@ export function BookingWizard() {
 
   // Step 2 — location
   const [area, setArea] = useState("");
+  const [buildingNumber, setBuildingNumber] = useState("");
+  const [zoneNumber, setZoneNumber] = useState("");
+  const [streetNumber, setStreetNumber] = useState("");
   const [details, setDetails] = useState("");
   const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
+  const [myAddresses, setMyAddresses] = useState<Address[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [geoState, setGeoState] = useState<"idle" | "locating" | "error">(
     "idle",
   );
@@ -234,6 +242,7 @@ export function BookingWizard() {
   const [date, setDate] = useState(days[0].date);
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [slot, setSlot] = useState<string | null>(null);
+  const [slotSelectedAt, setSlotSelectedAt] = useState<number | null>(null);
 
   // Step 4 — payment
   const [notes, setNotes] = useState("");
@@ -272,7 +281,7 @@ export function BookingWizard() {
     }
   }, []);
 
-  // Saved cars power the plate chips; refresh whenever auth flips on.
+  // Saved cars and locations power the quick-pick chips; refresh whenever auth flips on.
   const [myVehicles, setMyVehicles] = useState<Vehicle[]>([]);
   useEffect(() => {
     if (!authed) return;
@@ -280,6 +289,11 @@ export function BookingWizard() {
     listVehicles()
       .then((vs) => {
         if (!cancelled) setMyVehicles(vs);
+      })
+      .catch(() => {});
+    listAddresses()
+      .then((addresses) => {
+        if (!cancelled) setMyAddresses(addresses);
       })
       .catch(() => {});
     return () => {
@@ -298,6 +312,7 @@ export function BookingWizard() {
   ) => {
     setSlots(null);
     setSlot(null);
+    setSlotSelectedAt(null);
     setNowMs(Date.now());
     getAvailability(d, "standard", cart)
       .then((a) => {
@@ -321,6 +336,26 @@ export function BookingWizard() {
       if (slotRequestRef.current === requestId) slotRequestRef.current += 1;
     };
   }, [step, date, availabilityCars, loadSlots]);
+
+  const resetStaleSlot = useCallback(() => {
+    if (!slotSelectedAt || Date.now() - slotSelectedAt < STALE_SLOT_MS) return;
+    setSlot(null);
+    setSlots(null);
+    setStep(1);
+  }, [slotSelectedAt]);
+
+  useEffect(() => {
+    const onPageShow = () => resetStaleSlot();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") resetStaleSlot();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [resetStaleSlot]);
 
   const total = useMemo(
     () =>
@@ -460,8 +495,32 @@ export function BookingWizard() {
 
   const canContinue =
     (step === 0 && carsValid) ||
-    (step === 1 && area.trim().length > 1) ||
+    (step === 1 && (selectedAddressId !== null || (geo !== null && buildingNumber.trim().length > 0))) ||
     (step === 2 && slot !== null);
+
+  function selectSlot(nextSlot: string | null) {
+    setSlot(nextSlot);
+    setSlotSelectedAt(nextSlot ? Date.now() : null);
+  }
+
+  function applySavedAddress(address: Address) {
+    setSelectedAddressId(address.id);
+    setArea(address.area ?? "");
+    setBuildingNumber(address.building_number ?? "");
+    setZoneNumber(address.zone_number ?? "");
+    setStreetNumber(address.street_number ?? "");
+    setDetails(address.details ?? "");
+    setGeo(
+      typeof address.latitude === "number" && typeof address.longitude === "number"
+        ? { lat: address.latitude, lng: address.longitude }
+        : null,
+    );
+    setGeoState("idle");
+  }
+
+  const markLocationManual = useCallback(() => {
+    if (selectedAddressId !== null) setSelectedAddressId(null);
+  }, [selectedAddressId]);
 
   function updateCar(key: number, patch: Partial<CarDraft>) {
     const editsVehicle =
@@ -507,11 +566,12 @@ export function BookingWizard() {
   // Fired when the user drags/clicks the pin on the map.
   const handlePinChange = useCallback(
     (v: { lat: number; lng: number }) => {
+      markLocationManual();
       setGeo(v);
       setGeoState("idle");
       reverseGeocode(v.lat, v.lng);
     },
-    [reverseGeocode],
+    [reverseGeocode, markLocationManual],
   );
 
   function requestLocation() {
@@ -523,6 +583,7 @@ export function BookingWizard() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
+        markLocationManual();
         setGeo({ lat: latitude, lng: longitude });
         setGeoState("idle");
         reverseGeocode(latitude, longitude);
@@ -537,13 +598,16 @@ export function BookingWizard() {
     setSubmitting(true);
     setError(null);
     try {
-      const address = await createAddress({
+      const addressId = selectedAddressId ?? (await createAddress({
         label: "Home",
-        area: area.trim(),
+        area: area.trim() || "Qatar",
         details: details.trim(),
+        building_number: buildingNumber.trim(),
+        zone_number: zoneNumber.trim(),
+        street_number: streetNumber.trim(),
         latitude: geo?.lat ?? null,
         longitude: geo?.lng ?? null,
-      });
+      })).id;
 
       const carPayloads = [];
       for (const car of cars) {
@@ -569,7 +633,7 @@ export function BookingWizard() {
       const booking = await createBooking({
         scheduled_at: serializeQatarBookingDateTime(date, slot),
         cars: carPayloads,
-        address_id: address.id,
+        address_id: addressId,
         payment_method: "online",
         // Server re-prices and applies memberships; false lets the customer
         // pay and keep the wash. Promo only applies when paying.
@@ -689,6 +753,45 @@ export function BookingWizard() {
             title={t("Where should we come?")}
             subtitle={t("Our wash bus comes to you — home, office, anywhere.")}
           >
+            {authed && myAddresses.length > 0 && (
+              <section className="rounded-3xl border border-[color:var(--border)] bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-[color:var(--navy)]">{t("Use a saved location")}</p>
+                    <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">{t("Pick one and continue without entering the Blue plate again.")}</p>
+                  </div>
+                  <Link href="/account/locations" className="min-h-11 shrink-0 rounded-full px-3 py-3 text-xs font-bold text-[color:var(--blue)]">
+                    {t("Manage")}
+                  </Link>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {myAddresses.map((address) => {
+                    const active = selectedAddressId === address.id;
+                    return (
+                      <button
+                        key={address.id}
+                        type="button"
+                        onClick={() => applySavedAddress(address)}
+                        className={clsx(
+                          "min-w-[14rem] rounded-2xl border p-3 text-left transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-2",
+                          active
+                            ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                            : "border-[color:var(--border)] bg-slate-50 text-[color:var(--foreground)] hover:border-[color:var(--blue)]",
+                        )}
+                      >
+                        <span className="block text-sm font-extrabold">{address.label || t("Saved location")}</span>
+                        <span className={clsx("mt-1 block text-xs font-semibold", active ? "text-white/75" : "text-[color:var(--muted-foreground)]")}>
+                          {t("Building")} {address.building_number || "—"}
+                          {address.zone_number ? ` · ${t("Zone")} ${address.zone_number}` : ""}
+                          {address.street_number ? ` · ${t("Street")} ${address.street_number}` : ""}
+                        </span>
+                        <span className={clsx("mt-1 block truncate text-xs", active ? "text-white/70" : "text-[color:var(--muted-foreground)]")}>{address.area}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -736,20 +839,74 @@ export function BookingWizard() {
                 )}
               </p>
             </div>
-            <Field label={t("Area / neighborhood")} required>
+            <div className="rounded-3xl border border-[color:var(--border)] bg-white p-3 shadow-sm sm:p-4">
+              <p className="mb-3 text-sm font-bold text-[color:var(--navy)]">{t("Blue plate")}</p>
+              <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-center text-white">
+                <span className="block text-sm font-bold">{t("Building No.")} <span aria-hidden="true">*</span></span>
+                <input
+                  className="mt-1 w-full bg-transparent text-center text-4xl font-bold outline-none placeholder:text-white/45"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="000"
+                  value={buildingNumber}
+                  onChange={(e) => {
+                    markLocationManual();
+                    setBuildingNumber(e.target.value.replace(/\D/g, "").slice(0, 6));
+                  }}
+                  required
+                />
+              </label>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-white">
+                  <span className="block text-sm font-bold">{t("Zone No.")}</span>
+                  <input
+                    className="mt-1 w-full bg-transparent text-3xl font-bold outline-none placeholder:text-white/35"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="000"
+                    value={zoneNumber}
+                    onChange={(e) => {
+                      markLocationManual();
+                      setZoneNumber(e.target.value.replace(/\D/g, "").slice(0, 3));
+                    }}
+                  />
+                </label>
+                <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-white">
+                  <span className="block text-sm font-bold">{t("Street No.")}</span>
+                  <input
+                    className="mt-1 w-full bg-transparent text-3xl font-bold outline-none placeholder:text-white/35"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="000"
+                    value={streetNumber}
+                    onChange={(e) => {
+                      markLocationManual();
+                      setStreetNumber(e.target.value.replace(/\D/g, "").slice(0, 4));
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+            <Field label={t("Area / neighborhood")}>
               <input
                 className="wizard-input"
                 placeholder={t("e.g. West Bay, The Pearl…")}
                 value={area}
-                onChange={(e) => setArea(e.target.value)}
+                onChange={(e) => {
+                  markLocationManual();
+                  setArea(e.target.value);
+                }}
               />
             </Field>
-            <Field label={t("Building, street, parking details")}>
+            <Field label={t("Extra details")}>
               <textarea
                 className="wizard-input min-h-24 resize-y"
-                placeholder={t("Tower name, gate number, parking level…")}
+                placeholder={t("Flat, floor, gate, parking level…")}
                 value={details}
-                onChange={(e) => setDetails(e.target.value)}
+                onChange={(e) => {
+                  markLocationManual();
+                  setDetails(e.target.value);
+                }}
               />
             </Field>
           </StepPanel>
@@ -791,7 +948,7 @@ export function BookingWizard() {
                 slots={slots}
                 selectedSlot={slot}
                 nowMs={nowMs}
-                onSelect={setSlot}
+                onSelect={selectSlot}
               />
             )}
           </StepPanel>

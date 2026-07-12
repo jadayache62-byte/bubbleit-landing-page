@@ -12,6 +12,7 @@ import {
   cancelBooking,
   deleteVehicle,
   getToken,
+  listAddresses,
   listBookings,
   listMemberships,
   listVehicles,
@@ -21,6 +22,7 @@ import {
 import type {
   Booking,
   BookingStatus,
+  Address,
   Customer,
   CustomerMembership,
   Vehicle,
@@ -56,6 +58,7 @@ export default function AccountPage() {
   const [checked, setChecked] = useState(false);
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[] | null>(null);
+  const [addresses, setAddresses] = useState<Address[] | null>(null);
   const [memberships, setMemberships] = useState<CustomerMembership[] | null>(null);
   const [tab, setTab] = useState<"overview" | "bookings" | "memberships" | "vehicles">("overview");
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +66,7 @@ export default function AccountPage() {
   const refresh = useCallback(() => {
     listBookings().then(setBookings).catch(() => setBookings([]));
     listVehicles().then(setVehicles).catch(() => setVehicles([]));
+    listAddresses().then(setAddresses).catch(() => setAddresses([]));
     listMemberships().then(setMemberships).catch(() => setMemberships([]));
   }, []);
 
@@ -104,6 +108,7 @@ export default function AccountPage() {
     setCustomer(null);
     setBookings(null);
     setVehicles(null);
+    setAddresses(null);
     setMemberships(null);
   }
 
@@ -158,17 +163,19 @@ export default function AccountPage() {
                 </div>
                 <div className="flex gap-2"><Link href="/book" aria-label={t("Book a new wash")} className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-[color:var(--cyan)] px-5 text-sm font-extrabold transition hover:bg-white sm:flex-none" style={{ color: "#262262" }}>{t("Book a Wash")}</Link><button type="button" className="min-h-12 rounded-full border border-white/40 px-4 text-sm font-semibold text-white transition hover:bg-white/10" onClick={handleLogout}>{t("Log out")}</button></div>
               </div>
-              <div className="grid grid-cols-3 divide-x divide-slate-200 bg-white">
+              <div className="grid grid-cols-4 divide-x divide-slate-200 bg-white">
                 <button type="button" aria-label={`${activeBookings.length} ${t("upcoming bookings")}`} onClick={() => setTab("bookings")} className="min-h-20 px-2 py-3 text-center transition hover:bg-slate-50"><span className="block text-xl font-extrabold text-[color:var(--navy)]">{activeBookings.length}</span><span className="mt-1 block text-[11px] font-semibold text-[color:var(--muted-foreground)] sm:text-xs">{t("Upcoming")}</span></button>
                 <button type="button" aria-label={`${activeMemberships.length} ${t("active membership plans")}`} onClick={() => setTab("memberships")} className="min-h-20 px-2 py-3 text-center transition hover:bg-slate-50"><span className="block text-xl font-extrabold text-[color:var(--navy)]">{activeMemberships.length}</span><span className="mt-1 block text-[11px] font-semibold text-[color:var(--muted-foreground)] sm:text-xs">{t("Active plans")}</span></button>
                 <button type="button" aria-label={`${vehicles?.length ?? 0} ${t("saved vehicles")}`} onClick={() => setTab("vehicles")} className="min-h-20 px-2 py-3 text-center transition hover:bg-slate-50"><span className="block text-xl font-extrabold text-[color:var(--navy)]">{vehicles?.length ?? 0}</span><span className="mt-1 block text-[11px] font-semibold text-[color:var(--muted-foreground)] sm:text-xs">{t("Vehicles")}</span></button>
+                <Link href="/account/locations" aria-label={`${addresses?.length ?? 0} ${t("saved locations")}`} className="min-h-20 px-2 py-3 text-center transition hover:bg-slate-50"><span className="block text-xl font-extrabold text-[color:var(--navy)]">{addresses?.length ?? 0}</span><span className="mt-1 block text-[11px] font-semibold text-[color:var(--muted-foreground)] sm:text-xs">{t("Locations")}</span></Link>
               </div>
             </section>
 
-            <section className="mt-5 grid grid-cols-3 gap-2" aria-label={t("Quick actions")}>
+            <section className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label={t("Quick actions")}>
               <Link href="/book" className="commerce-card flex min-h-24 flex-col justify-between p-3 transition hover:border-[color:var(--blue)] sm:p-4"><svg viewBox="0 0 24 24" className="h-5 w-5 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg><span className="mt-3 text-xs font-bold text-[color:var(--navy)] sm:text-sm">{t("Book a wash")}</span></Link>
               <Link href="/memberships" className="commerce-card flex min-h-24 flex-col justify-between p-3 transition hover:border-[color:var(--blue)] sm:p-4"><svg viewBox="0 0 24 24" className="h-5 w-5 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="M4 7h16v12H4zM7 4v6M17 4v6M8 14h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg><span className="mt-3 text-xs font-bold text-[color:var(--navy)] sm:text-sm">{t("Get a membership")}</span></Link>
               <Link href="/store" className="commerce-card flex min-h-24 flex-col justify-between p-3 transition hover:border-[color:var(--blue)] sm:p-4"><svg viewBox="0 0 24 24" className="h-5 w-5 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="M6 8h12l1 12H5L6 8ZM9 9V6a3 3 0 0 1 6 0v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg><span className="mt-3 text-xs font-bold text-[color:var(--navy)] sm:text-sm">{t("Shop products")}</span></Link>
+              <Link href="/account/locations" className="commerce-card flex min-h-24 flex-col justify-between p-3 transition hover:border-[color:var(--blue)] sm:p-4"><svg viewBox="0 0 24 24" className="h-5 w-5 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="M12 21s6-5.33 6-11a6 6 0 1 0-12 0c0 5.67 6 11 6 11Z" stroke="currentColor" strokeWidth="1.8"/><circle cx="12" cy="10" r="2" fill="currentColor"/></svg><span className="mt-3 text-xs font-bold text-[color:var(--navy)] sm:text-sm">{t("Manage locations")}</span></Link>
             </section>
 
             {error && <p role="alert" className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}

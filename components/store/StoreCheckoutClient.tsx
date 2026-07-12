@@ -136,6 +136,9 @@ export function StoreCheckoutClient() {
     useState<PendingCheckout | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [area, setArea] = useState("");
+  const [buildingNumber, setBuildingNumber] = useState("");
+  const [zoneNumber, setZoneNumber] = useState("");
+  const [streetNumber, setStreetNumber] = useState("");
   const [addressDetails, setAddressDetails] = useState("");
   const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
   const [geoState, setGeoState] = useState<"idle" | "locating" | "error">(
@@ -175,6 +178,9 @@ export function StoreCheckoutClient() {
       setPendingCheckout(pending);
       setCart(pending.cart);
       setArea(pending.order.delivery_area);
+      setBuildingNumber(pending.order.building_number ?? "");
+      setZoneNumber(pending.order.zone_number ?? "");
+      setStreetNumber(pending.order.street_number ?? "");
       setAddressDetails(pending.order.delivery_details);
       setGuestName(pending.order.customer_name);
       setGuestPhone(pending.order.customer_phone);
@@ -417,8 +423,16 @@ export function StoreCheckoutClient() {
       const order = await createStoreOrder({
         customer_name: contactName,
         customer_phone: contactPhone,
-        delivery_area: area,
-        delivery_details: addressDetails,
+        delivery_area: area.trim() || "Qatar",
+        delivery_details: [
+          `Building ${buildingNumber.trim()}`,
+          zoneNumber.trim() ? `Zone ${zoneNumber.trim()}` : "",
+          streetNumber.trim() ? `Street ${streetNumber.trim()}` : "",
+          addressDetails.trim(),
+        ].filter(Boolean).join(" · "),
+        building_number: buildingNumber.trim(),
+        zone_number: zoneNumber.trim(),
+        street_number: streetNumber.trim(),
         latitude: geo?.lat ?? null,
         longitude: geo?.lng ?? null,
         lines: items.map(({ product, quantity }) => ({
@@ -494,7 +508,7 @@ export function StoreCheckoutClient() {
     );
   }
 
-  const locationValid = geo !== null && area.trim().length > 1 && addressDetails.trim().length > 3;
+  const locationValid = geo !== null && buildingNumber.trim().length > 0;
   const contactValid = customer
     ? Boolean(customer.phone)
     : guestName.trim().length > 1 && isValidQatarPhone(guestPhone);
@@ -551,11 +565,28 @@ export function StoreCheckoutClient() {
                   </button>
                   {geo && <p className="text-center text-xs font-semibold text-emerald-700">Location pinned successfully</p>}
                   {geoState === "error" && <p role="alert" className="text-center text-xs font-medium text-red-600">Location access failed. Tap the map to place the pin manually.</p>}
-                  <label className="block text-sm font-semibold text-[color:var(--navy)]">Delivery area
+                  <div className="rounded-3xl border border-[color:var(--border)] bg-white p-3 shadow-sm sm:p-4">
+                    <p className="mb-3 text-sm font-bold text-[color:var(--navy)]">Blue plate</p>
+                    <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-center text-white">
+                      <span className="block text-sm font-bold">Building No. <span aria-hidden="true">*</span></span>
+                      <input className="mt-1 w-full bg-transparent text-center text-4xl font-bold outline-none placeholder:text-white/45 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={buildingNumber} disabled={checkoutLocked} onChange={(event) => setBuildingNumber(event.target.value.replace(/\D/g, "").slice(0, 6))} required />
+                    </label>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-white">
+                        <span className="block text-sm font-bold">Zone No.</span>
+                        <input className="mt-1 w-full bg-transparent text-3xl font-bold outline-none placeholder:text-white/35 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={zoneNumber} disabled={checkoutLocked} onChange={(event) => setZoneNumber(event.target.value.replace(/\D/g, "").slice(0, 3))} />
+                      </label>
+                      <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-white">
+                        <span className="block text-sm font-bold">Street No.</span>
+                        <input className="mt-1 w-full bg-transparent text-3xl font-bold outline-none placeholder:text-white/35 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={streetNumber} disabled={checkoutLocked} onChange={(event) => setStreetNumber(event.target.value.replace(/\D/g, "").slice(0, 4))} />
+                      </label>
+                    </div>
+                  </div>
+                  <label className="block text-sm font-semibold text-[color:var(--navy)]">Area / neighborhood
                     <input className="wizard-input mt-2 min-h-12" placeholder="e.g. West Bay, The Pearl" value={area} disabled={checkoutLocked} onChange={(event) => setArea(event.target.value)} />
                   </label>
-                  <label className="block text-sm font-semibold text-[color:var(--navy)]">Building and delivery notes
-                    <textarea className="wizard-input mt-2 min-h-20 resize-none" placeholder="Building, street, villa number or parking notes" value={addressDetails} disabled={checkoutLocked} onChange={(event) => setAddressDetails(event.target.value)} />
+                  <label className="block text-sm font-semibold text-[color:var(--navy)]">Extra details
+                    <textarea className="wizard-input mt-2 min-h-20 resize-none" placeholder="Flat, floor, gate, parking level" value={addressDetails} disabled={checkoutLocked} onChange={(event) => setAddressDetails(event.target.value)} />
                   </label>
                 </div>
               </section>
@@ -589,7 +620,7 @@ export function StoreCheckoutClient() {
                         <label className="block text-sm font-semibold">Qatar phone number
                           <div className="mt-2 flex min-h-12 overflow-hidden rounded-xl border border-[color:var(--border)] bg-white focus-within:border-[color:var(--blue)] focus-within:ring-2 focus-within:ring-[color:var(--cyan)]/30">
                             <span className="grid place-items-center border-e border-slate-200 px-3 text-sm font-bold" dir="ltr">+974</span>
-                            <input className="min-w-0 flex-1 px-3 text-sm outline-none" inputMode="tel" autoComplete="tel" dir="ltr" maxLength={8} value={guestPhone.replace(/\D/g, "").replace(/^974/, "").slice(0, 8)} onChange={(event) => setGuestPhone(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="5555 5555" />
+                            <input className="min-w-0 flex-1 px-3 text-sm outline-none" inputMode="numeric" autoComplete="tel-national" dir="ltr" maxLength={8} pattern="[0-9]*" value={guestPhone.replace(/\D/g, "").replace(/^974/, "").slice(0, 8)} onChange={(event) => setGuestPhone(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="5555 5555" />
                           </div>
                         </label>
                         {guestPhone.length > 0 && !isValidQatarPhone(guestPhone) && <p className="text-xs font-medium text-red-600">Enter all 8 digits of your Qatar phone number.</p>}
@@ -620,7 +651,7 @@ export function StoreCheckoutClient() {
                 </section>
 
                 <section className="commerce-card divide-y divide-slate-100 px-5 sm:px-7">
-                  <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">Deliver to</p><p className="mt-1 text-sm font-semibold">{area} · {addressDetails}</p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("location")}>Edit</button></div>
+                  <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">Deliver to</p><p className="mt-1 text-sm font-semibold">Building {buildingNumber}{zoneNumber ? ` · Zone ${zoneNumber}` : ""}{streetNumber ? ` · Street ${streetNumber}` : ""}{area ? ` · ${area}` : ""}</p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("location")}>Edit</button></div>
                   <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">Contact</p><p className="mt-1 text-sm font-semibold">{customer?.name || guestName} · <span dir="ltr">{customer?.phone || normalizeQatarPhone(guestPhone)}</span></p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("contact")}>Edit</button></div>
                 </section>
 

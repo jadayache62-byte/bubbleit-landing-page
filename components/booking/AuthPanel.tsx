@@ -32,6 +32,13 @@ function normalizeQatarPhone(value: string) {
   return value.trim().replace(/\s+/g, "");
 }
 
+function localQatarDigits(value: string) {
+  let digits = value.replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("974")) digits = digits.slice(3);
+  return digits.slice(0, 8);
+}
+
 export function AuthPanel({
   title,
   inline = false,
@@ -160,6 +167,7 @@ export function AuthPanel({
         className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[color:var(--muted-foreground)] hover:text-[color:var(--navy)] hover:underline"
         onClick={() => {
           setStage("phone");
+          setPhone(localQatarDigits(phone));
           setPassword("");
           setCode("");
           setError(null);
@@ -188,17 +196,20 @@ export function AuthPanel({
             </p>
             <input
               className="wizard-input"
-              placeholder="+974 5555 5555"
-              inputMode="tel"
+              placeholder="5555 5555"
+              inputMode="numeric"
+              autoComplete="tel-national"
               dir="ltr"
+              maxLength={8}
+              pattern="[0-9]*"
               value={phone}
-              onChange={(e) => setPhone(e.target.value.replace(/[^\d+\s]/g, ""))}
-              onKeyDown={(e) => e.key === "Enter" && phone.replace(/\D/g, "").length >= 7 && submitPhone()}
+              onChange={(e) => setPhone(localQatarDigits(e.target.value))}
+              onKeyDown={(e) => e.key === "Enter" && phone.replace(/\D/g, "").length === 8 && submitPhone()}
             />
             <button
               type="button"
               className="primary-button disabled:opacity-40"
-              disabled={busy || phone.replace(/\D/g, "").length < 7}
+              disabled={busy || phone.replace(/\D/g, "").length !== 8}
               onClick={submitPhone}
             >
               {busy ? "…" : t("Continue")}

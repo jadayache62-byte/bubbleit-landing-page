@@ -235,7 +235,7 @@ export function StoreClient() {
                 {product.description}
               </p>
               <p className="mt-4 text-xs font-semibold text-[color:var(--muted-foreground)] sm:mt-3">
-                {available > 0 ? `${available} in stock` : "Out of stock"}
+                {available > 0 ? "Available" : "Out of stock"}
               </p>
               {inCart > 0 ? <div className="mt-auto flex min-h-12 items-center justify-between rounded-full border border-[color:var(--border)] bg-white p-1 pt-1"><button type="button" className="grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100" onClick={() => { const next = {...cart}; if (inCart === 1) delete next[id]; else next[id] = inCart - 1; updateCart(next); }} aria-label={`Remove one ${product.name}`}>−</button><span className="text-xs font-bold sm:text-sm">{inCart} in cart</span><button type="button" className="grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100 disabled:opacity-30" disabled={available <= 0} onClick={() => addProduct(product)} aria-label={`Add one ${product.name}`}>+</button></div> : <button
                 type="button"
