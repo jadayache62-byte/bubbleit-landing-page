@@ -22,7 +22,9 @@ import type {
   VerifyOtpResult,
 } from "@/lib/api/types";
 
-// Swap to the real Laravel backend by setting NEXT_PUBLIC_API_BASE, e.g.
+// The mock API is a DEV-ONLY fallback. Production builds fail in
+// next.config.mjs when NEXT_PUBLIC_API_BASE is unset, so a deployed bundle
+// never silently serves mock data. Point it at the real backend, e.g.
 // NEXT_PUBLIC_API_BASE=https://bubbleit-backend.on-forge.com/api/v1/customer
 const BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "/api/mock/v1/customer";

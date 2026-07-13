@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-13] — Production audit hardening (build guard + security headers)
+
+### Fixed
+- Production builds now fail fast when `NEXT_PUBLIC_API_BASE` is unset, so a deploy can no longer silently fall back to the in-repo mock API and take fake bookings/payments. The mock stays a development-only fallback.
+
+### Added
+- Baseline security headers via `next.config.mjs`: `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: strict-origin-when-cross-origin`.
+
+---
+
 ## [2026-07-12] — Unified customer journeys and mobile commerce polish
 
 ### Added
