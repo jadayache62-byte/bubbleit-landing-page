@@ -9,6 +9,7 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Framework: Next.js app router
 - Scope: landing pages, customer booking web flow, memberships pages, account pages, and the local mock customer API
 - Backend integration target: `https://bubbleit-backend.on-forge.com/api/v1/customer`
+- **Production builds require `NEXT_PUBLIC_API_BASE`** (the real customer API base). `next.config.mjs` throws when it is missing so a deploy never silently serves the dev-only mock API at `/api/mock/v1/customer`.
 
 ## Booking Flow Notes
 
