@@ -868,7 +868,12 @@ async function handle(req: NextRequest, segments: string[]) {
         duration: { ...membershipDuration, status: "accepted", ambiguous: false },
         payment_method: "membership",
         total: 0,
-        address_area: String(body.address_area ?? "").trim(),
+        address_label: bookingAddress?.label ?? (String(body.address_label ?? "").trim() || null),
+        address_area: bookingAddress?.area ?? String(body.address_area ?? "").trim(),
+        address_street: bookingAddress?.details ?? (String(body.address_street ?? "").trim() || null),
+        building_number: bookingAddress?.building_number ?? (String(body.building_number ?? "").trim() || null),
+        zone_number: bookingAddress?.zone_number ?? (String(body.zone_number ?? "").trim() || null),
+        street_number: bookingAddress?.street_number ?? (String(body.street_number ?? "").trim() || null),
         notes: String(body.notes ?? "").trim(),
         cars: [{
           vehicle,
@@ -980,7 +985,7 @@ async function handle(req: NextRequest, segments: string[]) {
     if (body.address_id) {
       const address = customer.addresses.find((a) => a.id === body.address_id);
       if (!address) return fail(422, "Validation failed.", { address_id: ["Invalid address."] });
-      addressArea = `${address.area}${address.details ? ` — ${address.details}` : ""}`;
+      addressArea = address.area;
     }
 
     const subtotal = bookingCars.reduce((sum, c) => sum + c.subtotal, 0);
@@ -1017,7 +1022,12 @@ async function handle(req: NextRequest, segments: string[]) {
       payment_method: fullyCovered ? "membership" : paymentMethod,
       total: Math.max(0, subtotal - discount + productTotal),
       product_total: productTotal,
+      address_label: bookingAddress?.label ?? (String(body.address_label ?? "").trim() || null),
       address_area: addressArea,
+      address_street: bookingAddress?.details ?? (String(body.address_street ?? "").trim() || null),
+      building_number: bookingAddress?.building_number ?? (String(body.building_number ?? "").trim() || null),
+      zone_number: bookingAddress?.zone_number ?? (String(body.zone_number ?? "").trim() || null),
+      street_number: bookingAddress?.street_number ?? (String(body.street_number ?? "").trim() || null),
       notes: String(body.notes ?? "").trim(),
       cars: bookingCars,
       products: bookingProducts,

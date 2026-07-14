@@ -331,6 +331,14 @@ function BookingCard({
     minute: "2-digit",
   });
   const { t } = useI18n();
+  const hasBluePlate = Boolean(
+    booking.building_number || booking.zone_number || booking.street_number,
+  );
+  const addressDetails = [
+    booking.address_label,
+    booking.address_street,
+    booking.address_area,
+  ].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
 
   return (
     <article className="commerce-card flex flex-col gap-4 p-5 sm:p-6">
@@ -348,13 +356,38 @@ function BookingCard({
 
       <div className="flex flex-col gap-1 text-sm text-[color:var(--muted-foreground)]">
         <span><span className="font-semibold text-[color:var(--navy)]">{t("Date")}: </span>{when}</span>
-        <span><span className="font-semibold text-[color:var(--navy)]">{t("Location")}: </span>{booking.address_area || "—"}</span>
+        <span><span className="font-semibold text-[color:var(--navy)]">{t("Location")}: </span>{addressDetails.join(" · ") || "—"}</span>
         <span><span className="font-semibold text-[color:var(--navy)]">{t("Service")}: </span>
           {booking.cars
             .map((c) => `${c.service.name} — ${[c.vehicle.make, c.vehicle.model].filter(Boolean).join(" ") || c.vehicle.plate_number}`)
             .join(" · ")}
         </span>
       </div>
+
+      {hasBluePlate && (
+        <section aria-label={t("Blue Plate")} className="overflow-hidden rounded-2xl bg-[color:var(--navy)] text-white">
+          <p className="px-4 pt-3 text-xs font-bold uppercase tracking-[0.12em] text-white/65">{t("Blue Plate")}</p>
+          <div className="mt-2 grid grid-cols-3 divide-x divide-white/15">
+            {([
+              [t("Building"), booking.building_number],
+              [t("Zone"), booking.zone_number],
+              [t("Street"), booking.street_number],
+            ] as const).map(([label, value]) => (
+              <div key={label} className="px-3 pb-4 text-center">
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-white/55">{label}</span>
+                <span className="mt-1 block text-xl font-extrabold">{value || "—"}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {booking.notes.trim() && (
+        <div className="rounded-2xl border border-sky-100 bg-sky-50 p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-[color:var(--blue)]">{t("Address details / note")}</p>
+          <p className="mt-1 text-sm text-[color:var(--navy)]">{booking.notes}</p>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
         <span className="font-bold">QR {booking.total}</span>

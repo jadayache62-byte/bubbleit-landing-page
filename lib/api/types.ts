@@ -184,7 +184,12 @@ export type Booking = {
     unit_price: number;
     line_total: number;
   }[];
+  address_label?: string | null;
   address_area: string;
+  address_street?: string | null;
+  building_number?: string | null;
+  zone_number?: string | null;
+  street_number?: string | null;
   notes: string;
   cars: BookingCar[];
   created_at: string;
