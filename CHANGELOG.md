@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-07-14] — Non-enumerating customer auth continuation (MAD-56)
+
+### Security
+- Phone discovery no longer branches on registration or password state. Every valid phone receives the same method chooser for password sign-in, account creation/claim, or OTP recovery.
+- The development mock mirrors the generic, non-cacheable continuation and does not read customer state.
+
+---
+
 ## [2026-07-14] — Purpose-bound customer OTPs (MAD-55)
 
 ### Security

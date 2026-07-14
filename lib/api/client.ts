@@ -186,7 +186,7 @@ export function payStoreOrder(orderId: number) {
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 export function checkPhone(phone: string) {
-  return request<{ registered: boolean; has_password?: boolean }>("/auth/check-phone", {
+  return request<{ continuation: "choose_auth_method" }>("/auth/check-phone", {
     method: "POST",
     body: { phone },
     auth: false,

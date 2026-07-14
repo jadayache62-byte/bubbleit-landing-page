@@ -329,11 +329,13 @@ async function handle(req: NextRequest, segments: string[]) {
 
   // ── Auth ──
   if (method === "POST" && path === "auth/check-phone") {
-    const existing = store.customers.find((c) => c.phone === String(body.phone ?? "").trim());
-    return envelope({
-      registered: existing !== undefined,
-      has_password: existing?.password != null && existing.password !== "",
-    });
+    const phone = String(body.phone ?? "").trim();
+    if (!/^\+?\d{7,15}$/.test(phone)) {
+      return fail(422, "Validation failed.", { phone: ["A valid phone number is required."] });
+    }
+    const response = envelope({ continuation: "choose_auth_method" });
+    response.headers.set("Cache-Control", "no-store, private");
+    return response;
   }
 
   if (method === "POST" && path === "auth/login") {

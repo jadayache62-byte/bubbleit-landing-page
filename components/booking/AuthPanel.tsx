@@ -1,8 +1,8 @@
 "use client";
 
-// Password-first sign-in: OTP messages cost money, so codes are only sent for
-// first-time registration and forgot-password. Returning customers sign in
-// with phone + password.
+// Generic auth-method continuation: the anonymous phone boundary never reveals
+// whether an account or password exists. The customer chooses password sign-in,
+// registration/account claim, or OTP-backed recovery.
 
 import { useState } from "react";
 import clsx from "clsx";
@@ -18,7 +18,7 @@ import {
 import type { Customer } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
 
-type Stage = "phone" | "password" | "claim" | "register" | "register_code" | "forgot";
+type Stage = "phone" | "method" | "password" | "register" | "register_code" | "forgot";
 
 function normalizeQatarPhone(value: string) {
   let digits = value.replace(/\D/g, "");
@@ -71,11 +71,8 @@ export function AuthPanel({
     try {
       const normalizedPhone = normalizeQatarPhone(phone);
       setPhone(normalizedPhone);
-      const { registered, has_password: hasPassword } = await checkPhone(normalizedPhone);
-      // Older customer APIs returned only `registered`. Treat a missing
-      // has_password flag as a normal returning account; only an explicit
-      // false means this is a manager-created account that still needs claiming.
-      setStage(registered ? (hasPassword === false ? "claim" : "password") : "register");
+      await checkPhone(normalizedPhone);
+      setStage("method");
     } catch (e) {
       fail(e);
     } finally {
@@ -220,7 +217,9 @@ export function AuthPanel({
         {stage === "password" && (
           <>
             {phoneChip}
-            <p className="text-sm font-semibold text-emerald-700">{t("Welcome back!")}</p>
+            <p className="text-sm text-[color:var(--muted-foreground)]">
+              {t("Enter your account password.")}
+            </p>
             <input
               className="wizard-input"
               type="password"
@@ -248,13 +247,34 @@ export function AuthPanel({
           </>
         )}
 
-        {(stage === "register" || stage === "claim") && (
+        {stage === "method" && (
+          <>
+            {phoneChip}
+            <p className="text-sm text-[color:var(--muted-foreground)]">
+              {t("Choose how you would like to continue.")}
+            </p>
+            <button type="button" className="primary-button" onClick={() => setStage("password")}>
+              {t("Sign in with password")}
+            </button>
+            <button type="button" className="secondary-button" onClick={() => setStage("register")}>
+              {t("Create or claim an account")}
+            </button>
+            <button
+              type="button"
+              className="cursor-pointer self-center border-none bg-transparent p-2 text-sm font-semibold text-[color:var(--blue)] hover:underline"
+              disabled={busy}
+              onClick={startForgot}
+            >
+              {busy ? t("Sending…") : t("Reset my password")}
+            </button>
+          </>
+        )}
+
+        {stage === "register" && (
           <>
             {phoneChip}
             <p className="text-sm font-semibold text-[color:var(--blue)]">
-              {stage === "claim"
-                ? "Existing booking account — add a password to continue."
-                : t("New number — let's set up your account.")}
+              {t("Create or claim your account after WhatsApp verification.")}
             </p>
             <input
               className="wizard-input"
