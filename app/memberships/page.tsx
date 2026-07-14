@@ -10,7 +10,6 @@ import {
   ApiError,
   buyMembership,
   getMembershipPlans,
-  getToken,
   listMemberships,
   me,
 } from "@/lib/api/client";
@@ -63,14 +62,12 @@ export default function MembershipsPage() {
       .then(setPlans)
       .catch(() => setPlans([]))
       .finally(() => setPlansLoading(false));
-    if (getToken()) {
-      me()
-        .then(() => {
-          setAuthed(true);
-          refreshMine();
-        })
-        .catch(() => setAuthed(false));
-    }
+    me()
+      .then(() => {
+        setAuthed(true);
+        refreshMine();
+      })
+      .catch(() => setAuthed(false));
   }, [refreshMine]);
 
   useEffect(() => {

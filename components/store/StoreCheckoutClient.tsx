@@ -8,7 +8,6 @@ import { AuthPanel } from "@/components/booking/AuthPanel";
 import {
   ApiError,
   createStoreOrder,
-  getToken,
   listStoreProducts,
   me,
   payStoreOrder,
@@ -212,16 +211,6 @@ export function StoreCheckoutClient() {
 
   useEffect(() => {
     let cancelled = false;
-
-    if (!getToken()) {
-      queueMicrotask(() => {
-        if (!cancelled) setAuthChecked(true);
-      });
-
-      return () => {
-        cancelled = true;
-      };
-    }
 
     me()
       .then((current) => {

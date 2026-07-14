@@ -28,7 +28,6 @@ import {
   listVehicles,
   getQuote,
   getServices,
-  getToken,
   listStoreProducts,
   me,
   validatePromo,
@@ -274,11 +273,9 @@ export function BookingWizard() {
       .then(setBookingProducts)
       .catch(() => {})
       .finally(() => setProductsLoading(false));
-    if (getToken()) {
-      me()
-        .then(() => setAuthed(true))
-        .catch(() => setAuthed(false));
-    }
+    me()
+      .then(() => setAuthed(true))
+      .catch(() => setAuthed(false));
   }, []);
 
   // Saved cars and locations power the quick-pick chips; refresh whenever auth flips on.

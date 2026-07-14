@@ -2,6 +2,33 @@
 
 ---
 
+## [2026-07-14] — HttpOnly customer sessions and recovery (MAD-54)
+
+### Security
+- Customer API traffic now passes through a same-origin BFF that keeps the backend bearer token in an HttpOnly, Secure-in-production, SameSite=Lax cookie; bearer tokens are no longer exposed to JavaScript, localStorage, or direct browser requests.
+- Cross-site mutations are rejected, upstream 401 responses clear the server-owned session, and password recovery revokes the temporary and all other sessions before requiring a fresh sign-in.
+
+### Fixed
+- Session loss preserves the intended path, renders a clear sign-in state, and never automatically replays an interrupted mutation.
+
+---
+
+## [2026-07-14] — Non-enumerating customer auth continuation (MAD-56)
+
+### Security
+- Phone discovery no longer branches on registration or password state. Every valid phone receives the same method chooser for password sign-in, account creation/claim, or OTP recovery.
+- The development mock mirrors the generic, non-cacheable continuation and does not read customer state.
+
+---
+
+## [2026-07-14] — Purpose-bound customer OTPs (MAD-55)
+
+### Security
+- Registration and password-recovery requests now send an explicit OTP purpose, and the development mock enforces the same single-purpose consumption contract as the backend.
+- API errors preserve `Retry-After` so throttled customers see the remaining wait instead of an indefinite retry message.
+
+---
+
 ## [2026-07-13] — Production audit hardening (build guard + security headers)
 
 ### Fixed
@@ -23,7 +50,7 @@
 
 ### Changed
 - **Qatar address capture** — booking and store checkout location steps now support current location, manual map pinning, and a Qatar address card with mandatory building number plus optional zone, street, area, and extra details.
-- **Safer customer sessions** — customer auth now mirrors tokens into a SameSite cookie, sends same-origin credentials, and the local mock API accepts cookie-backed sessions.
+- **Historical customer-session baseline (superseded by MAD-54)** — customer auth previously mirrored bearer tokens into a script-readable SameSite cookie; MAD-54 replaced this with the server-owned HttpOnly BFF session above.
 - **Phone input constraints** — login, signup, and guest checkout phone fields now accept only eight local Qatar digits and open a numeric keypad on mobile.
 - **Stale booking timing reset** — restored booking pages clear old selected slots and return customers to the location step before they reselect availability.
 - **Single booking flow** — all standard and membership actions now enter `/book`; legacy `/book/membership` URLs redirect to the standard wizard.

@@ -9,7 +9,7 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Framework: Next.js app router
 - Scope: landing pages, customer booking web flow, memberships pages, account pages, and the local mock customer API
 - Backend integration target: `https://bubbleit-backend.on-forge.com/api/v1/customer`
-- **Production builds require `NEXT_PUBLIC_API_BASE`** (the real customer API base). `next.config.mjs` throws when it is missing so a deploy never silently serves the dev-only mock API at `/api/mock/v1/customer`.
+- **Production builds require server-only `CUSTOMER_API_BASE`** (the real customer API base). Browser code calls `/api/customer`; that BFF alone holds the backend bearer token in an HttpOnly, Secure, SameSite=Lax cookie. Never restore script-readable auth cookies, localStorage bearer tokens, or direct browser-to-backend authorization headers. `next.config.mjs` throws when the upstream is missing so a deploy never silently serves the dev-only mock API at `/api/mock/v1/customer`.
 
 ## Booking Flow Notes
 
@@ -29,7 +29,11 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Keep optional physical booking products behind the explicit “Add products to your booking” confirmation-step trigger so notes and the summary remain visible. The picker opens once when Pay & Confirm is first reached. It must be a centered document-level modal portal—not a bottom drawer or a fixed element nested inside the glass wizard—and must freeze background scroll while quantities change.
 - Make the confirmation-step product trigger visually distinct and easy to notice, but keep attention animation finite and disable it through the global reduced-motion rule; never use a continuous decorative animation at checkout.
 - Customer totals must include service add-ons and selected booking products. A selected quarter-hour must remain visible on its hour pill.
-- Customer phone lookup must distinguish `registered` from `has_password`: registered customers sign in, while only an explicit `has_password: false` enters the legacy/manager-created account-claim flow. Keep the local mock response aligned with this contract.
+- Customer phone discovery must never return or branch on `registered` or `has_password`. Every valid
+  phone receives `continuation=choose_auth_method`; the customer explicitly chooses password sign-in,
+  registration/account claim, or recovery. Keep the local mock response and no-store behavior aligned.
+- OTP requests must include `purpose=registration` for signup/account claim and
+  `purpose=authentication` for credential recovery. The local mock must reject cross-purpose reuse.
 
 ## Membership Rules
 

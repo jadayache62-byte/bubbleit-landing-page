@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans, IBM_Plex_Sans_Arabic, Space_Grotesk } from "next/font/google";
 import { LanguageProvider } from "@/lib/i18n";
+import { SessionBoundary } from "@/components/SessionBoundary";
 import "./globals.css";
 
 const headingFont = Space_Grotesk({
@@ -57,7 +58,10 @@ export default function RootLayout({
       className={`${headingFont.variable} ${bodyFont.variable} ${arabicFont.variable}`}
     >
       <body>
-        <LanguageProvider>{children}</LanguageProvider>
+        <LanguageProvider>
+          <SessionBoundary />
+          {children}
+        </LanguageProvider>
       </body>
     </html>
   );

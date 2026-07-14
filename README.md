@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-If `NEXT_PUBLIC_API_BASE` is not set, the app falls back to the local mock API under `/api/mock/v1/customer`.
+If `CUSTOMER_API_BASE` is not set in development, the server-side BFF falls back to the local mock API under `/api/mock/v1/customer`.
 
 To run against the real backend:
 
@@ -22,7 +22,7 @@ cp .env.example .env.local
 Set this env var on Forge:
 
 ```bash
-NEXT_PUBLIC_API_BASE=https://bubbleit-backend.on-forge.com/api/v1/customer
+CUSTOMER_API_BASE=https://bubbleit-backend.on-forge.com/api/v1/customer
 ```
 
 Use a real Next.js production process:
