@@ -26,6 +26,8 @@
     "eslint": "^9.39.1",
     "eslint-config-next": "^16.2.6",
     "tailwindcss": "^4.1.13",
-    "typescript": "^5.9.3"
-  }
+    "typescript": "^5.9.3",
+    "nx": "23.1.0"
+  },
+  "nx": {}
 }
