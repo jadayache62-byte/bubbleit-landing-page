@@ -240,6 +240,13 @@ const AR: Record<string, string> = {
   "Enter your phone number to sign in or create your account.":
     "أدخل رقم هاتفك لتسجيل الدخول أو إنشاء حساب.",
   "Welcome back!": "أهلاً بعودتك!",
+  "Choose how you would like to continue.": "اختر كيف تريد المتابعة.",
+  "Sign in with password": "تسجيل الدخول بكلمة المرور",
+  "Create or claim an account": "إنشاء حساب أو استلام حساب",
+  "Reset my password": "إعادة تعيين كلمة المرور",
+  "Enter your account password.": "أدخل كلمة مرور حسابك.",
+  "Create or claim your account after WhatsApp verification.":
+    "أنشئ حسابك أو استلمه بعد التحقق عبر واتساب.",
   "Password": "كلمة المرور",
   "Forgot password?": "نسيت كلمة المرور؟",
   "New number — let's set up your account.": "رقم جديد — لننشئ حسابك.",

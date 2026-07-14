@@ -7,7 +7,7 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getBooking, getToken } from "@/lib/api/client";
+import { completeMockBookingPayment, getBooking } from "@/lib/api/client";
 import type { Booking } from "@/lib/api/types";
 
 function CheckoutInner() {
@@ -18,7 +18,7 @@ function CheckoutInner() {
   const [state, setState] = useState<"loading" | "ready" | "paying" | "error">("loading");
 
   useEffect(() => {
-    if (!bookingId || !getToken()) {
+    if (!bookingId) {
       queueMicrotask(() => setState("error"));
       return;
     }
@@ -33,12 +33,7 @@ function CheckoutInner() {
   async function pay() {
     setState("paying");
     try {
-      const base = process.env.NEXT_PUBLIC_API_BASE ?? "/api/mock/v1/customer";
-      const res = await fetch(`${base}/bookings/${bookingId}/mock-complete-payment`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (!res.ok) throw new Error();
+      await completeMockBookingPayment(bookingId);
       router.push("/account?paid=1");
     } catch {
       setState("error");

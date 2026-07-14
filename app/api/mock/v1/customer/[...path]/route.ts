@@ -1,16 +1,18 @@
 // Mock implementation of customer-contract-v1 (bubbleit-mobile/docs/api-contract/).
 // Response envelope, paginator shape, and status semantics match the contract so
-// the frontend swaps to the real Laravel backend via NEXT_PUBLIC_API_BASE only.
+// the server-side BFF swaps to the real Laravel backend via CUSTOMER_API_BASE.
 
 import { NextRequest, NextResponse } from "next/server";
 import type {
   Booking,
   BookingStatus,
+  DurationSnapshot,
   PaymentMethod,
   StoreOrder,
   StoreOrderLine,
   Vehicle,
 } from "@/lib/api/types";
+import { formatQatarDateTime, qatarServiceDate } from "@/lib/datetime";
 import {
   MEMBERSHIP_PLANS,
   MIDNIGHT_SLOT_GRID,
@@ -26,7 +28,12 @@ import {
 
 function envelope(
   data: unknown,
-  init: { status?: number; message?: string; errors?: Record<string, string[]> | null } = {},
+  init: {
+    status?: number;
+    message?: string;
+    errors?: Record<string, string[]> | null;
+    code?: string;
+  } = {},
 ) {
   const status = init.status ?? 200;
   return NextResponse.json(
@@ -35,6 +42,7 @@ function envelope(
       message: init.message ?? "",
       data,
       errors: init.errors ?? null,
+      ...(init.code ? { code: init.code } : {}),
     },
     { status },
   );
@@ -47,16 +55,19 @@ function paginated<T>(items: T[]) {
   };
 }
 
-function fail(status: number, message: string, errors: Record<string, string[]> | null = null) {
-  return envelope(null, { status, message, errors });
+function fail(
+  status: number,
+  message: string,
+  errors: Record<string, string[]> | null = null,
+  data: unknown = null,
+  code?: string,
+) {
+  return envelope(data, { status, message, errors, code });
 }
 
 function authCustomer(req: NextRequest) {
   const header = req.headers.get("authorization") ?? "";
-  const token =
-    header.replace(/^Bearer\s+/i, "") ||
-    req.cookies.get("bubbleit_customer_token")?.value ||
-    "";
+  const token = header.replace(/^Bearer\s+/i, "");
   const customerId = db().tokens.get(token);
   if (!customerId) return null;
   return db().customers.find((c) => c.id === customerId) ?? null;
@@ -65,23 +76,125 @@ function authCustomer(req: NextRequest) {
 // Mock fleet capacity: 2 buses → a slot is unavailable once 2 active bookings hold it.
 const FLEET_CAPACITY = 2;
 const POST_BOOKING_BUFFER_MINUTES = 30;
+const SERVICE_AREA_VERSION = "qatar-cgis-land-2026-07-14-v1";
+const idempotencyResponses = new Map<string, { request: string; status: number; body: unknown }>();
+
+// Development-only approximation. Production eligibility is always decided
+// by the Laravel API's versioned official CGIS polygon snapshot.
+function mockQatarLand(latitude: unknown, longitude: unknown) {
+  return typeof latitude === "number" && typeof longitude === "number"
+    && latitude >= 24.471111 && latitude <= 26.15875
+    && longitude >= 50.750034 && longitude <= 51.660696;
+}
+
+function serviceAreaFailure(code: "SERVICE_AREA_OUTSIDE_QATAR" | "SERVICE_AREA_STALE", message: string, status = 422) {
+  return NextResponse.json({
+    success: false,
+    message,
+    data: { service_area: { version: SERVICE_AREA_VERSION, eligible: false } },
+    errors: null,
+    code,
+  }, { status });
+}
+
+type DurationCartCar = { service_id: number; add_on_ids?: number[] };
+
+async function durationSnapshot(cars: DurationCartCar[]) {
+  const contributions = cars.length === 0
+    ? [{
+        line_index: 0,
+        kind: "fallback" as const,
+        service_id: null,
+        add_on_id: null,
+        name: "Default booking duration",
+        configured_minutes: 60,
+        contributes: true,
+        minutes: 60,
+      }]
+    : cars.flatMap((car, lineIndex) => {
+        const service = SERVICES.find((candidate) => candidate.id === Number(car.service_id));
+        if (!service) return [];
+        const selectedIds = [...new Set((car.add_on_ids ?? []).map(Number))].sort((a, b) => a - b);
+        const addOns = service.add_ons
+          .filter((addOn) => selectedIds.includes(addOn.id))
+          .sort((a, b) => a.id - b.id);
+
+        return [{
+          line_index: lineIndex,
+          kind: "service" as const,
+          service_id: service.id,
+          add_on_id: null,
+          name: service.name,
+          configured_minutes: service.duration_minutes,
+          contributes: true,
+          minutes: service.duration_minutes,
+        }, ...addOns.map((addOn) => ({
+          line_index: lineIndex,
+          kind: "add_on" as const,
+          service_id: service.id,
+          add_on_id: addOn.id,
+          name: addOn.name,
+          configured_minutes: addOn.duration_minutes ?? 0,
+          contributes: addOn.extends_duration,
+          minutes: addOn.extends_duration ? (addOn.duration_minutes ?? 0) : 0,
+        }))];
+      });
+  const schema = "duration-v1";
+  const canonical = JSON.stringify({ schema, contributions });
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+  return {
+    schema,
+    version: `${schema}:${hash.slice(0, 24)}`,
+    total_minutes: Math.max(1, contributions.reduce((sum, contribution) => sum + contribution.minutes, 0)),
+    contributions,
+  };
+}
+
+function staleDuration(current: DurationSnapshot) {
+  return fail(
+    409,
+    "Service timing changed. Please refresh availability and review the updated duration.",
+    null,
+    { duration: current },
+    "DURATION_VERSION_STALE",
+  );
+}
+
+function otpKey(phone: string, purpose: "authentication" | "registration") {
+  return `${phone}|${purpose}`;
+}
 
 function toMinutes(hm: string) {
   return Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
 }
 
-function hasFleetCapacity(dateTime: string, durationMinutes: number) {
-  const date = dateTime.slice(0, 10);
-  const start = toMinutes(dateTime.slice(11, 16));
-  const end = start + durationMinutes + POST_BOOKING_BUFFER_MINUTES;
+function qatarMinutes(iso: string) {
+  return toMinutes(formatQatarDateTime(iso, "en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }));
+}
+
+function hasFleetCapacity(dateTime: string, durationMinutes: number, ignoredBookingId?: number) {
+  const date = qatarServiceDate(dateTime);
+  const start = new Date(dateTime).getTime();
+  const end = start + (durationMinutes + POST_BOOKING_BUFFER_MINUTES) * 60_000;
   const overlaps = db().bookings.filter((booking) => {
-    if (booking.scheduled_at.slice(0, 10) !== date) return false;
+    if (booking.id === ignoredBookingId) return false;
+    if (booking.service_date !== date) return false;
     if (["cancelled_by_customer", "cancelled_by_admin"].includes(booking.status)) return false;
-    const bookingStart = toMinutes(booking.scheduled_at.slice(11, 16));
-    const bookingEnd = bookingStart + (booking.duration_minutes ?? 60) + POST_BOOKING_BUFFER_MINUTES;
+    const bookingStart = new Date(booking.scheduled_at).getTime();
+    const bookingEnd = bookingStart + ((booking.duration_minutes ?? 60) + POST_BOOKING_BUFFER_MINUTES) * 60_000;
     return bookingStart < end && bookingEnd > start;
   }).length;
   return overlaps < FLEET_CAPACITY;
+}
+
+function mockRescheduleSlotVersion(booking: Booking, date: string, start: string) {
+  return `reschedule-v1:${booking.id}:${date}:${start}:${booking.duration?.version ?? booking.duration_minutes ?? 60}:${SERVICE_AREA_VERSION}`;
 }
 
 // Which services each membership scope redeems (mirrors the backend's
@@ -165,6 +278,12 @@ async function handle(req: NextRequest, segments: string[]) {
   if (method === "GET" && path === "service-categories") {
     return envelope(paginated([...new Set(SERVICES.map((s) => s.category))].map((name, i) => ({ id: i + 1, name }))));
   }
+  if (method === "POST" && path === "service-area/validate") {
+    if (!mockQatarLand(body.latitude, body.longitude)) {
+      return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
+    }
+    return envelope({ version: SERVICE_AREA_VERSION, eligible: true });
+  }
 
   // ── Store inventory ──
   if (method === "GET" && path === "store/products") {
@@ -181,6 +300,13 @@ async function handle(req: NextRequest, segments: string[]) {
     const buildingNumber = String(body.building_number ?? "").trim();
     const zoneNumber = String(body.zone_number ?? "").trim();
     const streetNumber = String(body.street_number ?? "").trim();
+
+    if (body.service_area_version !== SERVICE_AREA_VERSION) {
+      return serviceAreaFailure("SERVICE_AREA_STALE", "The service-area map changed. Please confirm the location again.", 409);
+    }
+    if (!mockQatarLand(body.latitude, body.longitude)) {
+      return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
+    }
 
     if (!customerName || !customerPhone || !deliveryArea || !buildingNumber || linesInput.length === 0) {
       return fail(422, "Validation failed.", {
@@ -237,6 +363,7 @@ async function handle(req: NextRequest, segments: string[]) {
       street_number: streetNumber || null,
       latitude: typeof body.latitude === "number" ? body.latitude : null,
       longitude: typeof body.longitude === "number" ? body.longitude : null,
+      service_area: { version: SERVICE_AREA_VERSION, eligible: true },
       subtotal,
       total: subtotal,
       lines: orderLines,
@@ -274,8 +401,14 @@ async function handle(req: NextRequest, segments: string[]) {
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return fail(422, "Validation failed.", { date: ["A valid date is required."] });
     }
+    const latitude = Number(req.nextUrl.searchParams.get("latitude"));
+    const longitude = Number(req.nextUrl.searchParams.get("longitude"));
+    if (!mockQatarLand(latitude, longitude)) {
+      return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
+    }
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
+    const todayStr = qatarServiceDate(now.toISOString());
+    const qatarNowMinutes = qatarMinutes(now.toISOString());
     const grid = req.nextUrl.searchParams.get("window") === "midnight" ? MIDNIGHT_SLOT_GRID : SLOT_GRID;
     // Match the live endpoint's structured cart query. Keep service_ids[] as
     // a legacy fallback for membership and older clients.
@@ -291,23 +424,15 @@ async function handle(req: NextRequest, segments: string[]) {
       }];
     });
     const serviceIds = req.nextUrl.searchParams.getAll("service_ids[]").map(Number);
-    const duration = cartCars.length
-      ? cartCars.reduce((sum, car) => {
-          const service = SERVICES.find((candidate) => candidate.id === car.serviceId);
-          if (!service) return sum;
-
-          return sum + service.duration_minutes + service.add_ons
-            .filter((addOn) => car.addOnIds.includes(addOn.id))
-            .reduce((addOnTotal, addOn) => addOnTotal + (addOn.duration_minutes ?? 0), 0);
-        }, 0) || 60
-      : serviceIds.length
-        ? serviceIds.reduce((sum, id) => sum + (SERVICES.find((s) => s.id === id)?.duration_minutes ?? 0), 0) || 60
-        : 60;
+    const durationContract = await durationSnapshot(cartCars.length
+      ? cartCars.map((car) => ({ service_id: car.serviceId, add_on_ids: car.addOnIds }))
+      : serviceIds.map((serviceId) => ({ service_id: serviceId, add_on_ids: [] })));
+    const duration = durationContract.total_minutes;
     const closing = toMinutes(grid[grid.length - 1]) + 15;
     const existing = store.bookings
-      .filter((b) => b.scheduled_at.slice(0, 10) === date && !["cancelled_by_customer", "cancelled_by_admin"].includes(b.status))
+      .filter((b) => b.service_date === date && !["cancelled_by_customer", "cancelled_by_admin"].includes(b.status))
       .map((b) => {
-        const s = toMinutes(b.scheduled_at.slice(11, 16));
+        const s = qatarMinutes(b.scheduled_at);
         return [s, s + (b.duration_minutes ?? 60) + POST_BOOKING_BUFFER_MINUTES] as const;
       });
     const slots = grid.map((start) => {
@@ -315,21 +440,29 @@ async function handle(req: NextRequest, segments: string[]) {
       const serviceEnd = s + duration;
       const occupancyEnd = serviceEnd + POST_BOOKING_BUFFER_MINUTES;
       const endHm = `${String(Math.floor(serviceEnd / 60)).padStart(2, "0")}:${String(serviceEnd % 60).padStart(2, "0")}`;
-      const isPast = date < todayStr || (date === todayStr && start <= now.toTimeString().slice(0, 5));
+      const isPast = date < todayStr || (date === todayStr && s <= qatarNowMinutes);
       const overlaps = existing.filter(([es, ee]) => es < occupancyEnd && ee > s).length;
       const available = !isPast && occupancyEnd <= closing && overlaps < FLEET_CAPACITY;
       return { start, end: endHm, available };
     });
-    return envelope({ date, duration_minutes: duration, slots });
+    return envelope({
+      date,
+      duration_minutes: duration,
+      duration: durationContract,
+      slots,
+      service_area: { version: SERVICE_AREA_VERSION, eligible: true },
+    });
   }
 
   // ── Auth ──
   if (method === "POST" && path === "auth/check-phone") {
-    const existing = store.customers.find((c) => c.phone === String(body.phone ?? "").trim());
-    return envelope({
-      registered: existing !== undefined,
-      has_password: existing?.password != null && existing.password !== "",
-    });
+    const phone = String(body.phone ?? "").trim();
+    if (!/^\+?\d{7,15}$/.test(phone)) {
+      return fail(422, "Validation failed.", { phone: ["A valid phone number is required."] });
+    }
+    const response = envelope({ continuation: "choose_auth_method" });
+    response.headers.set("Cache-Control", "no-store, private");
+    return response;
   }
 
   if (method === "POST" && path === "auth/login") {
@@ -345,10 +478,11 @@ async function handle(req: NextRequest, segments: string[]) {
 
   if (method === "POST" && path === "auth/register") {
     const phone = String(body.phone ?? "").trim();
-    if (store.otps.get(phone) !== String(body.code ?? "").trim()) {
+    const key = otpKey(phone, "registration");
+    if (store.otps.get(key) !== String(body.code ?? "").trim()) {
       return fail(422, "The verification code is invalid or has expired.");
     }
-    store.otps.delete(phone);
+    store.otps.delete(key);
     let existing = store.customers.find((c) => c.phone === phone);
     if (existing && existing.password) {
       return fail(422, "This phone number is already registered. Please sign in.");
@@ -376,20 +510,25 @@ async function handle(req: NextRequest, segments: string[]) {
 
   if (method === "POST" && path === "auth/request-otp") {
     const phone = String(body.phone ?? "").trim();
+    const purpose = String(body.purpose ?? "");
     if (!/^\+?\d{7,15}$/.test(phone)) {
       return fail(422, "Validation failed.", { phone: ["A valid phone number is required."] });
     }
-    store.otps.set(phone, MOCK_OTP);
+    if (purpose !== "authentication" && purpose !== "registration") {
+      return fail(422, "Validation failed.", { purpose: ["A valid OTP purpose is required."] });
+    }
+    store.otps.set(otpKey(phone, purpose), MOCK_OTP);
     return envelope(null, { message: "Verification code sent." });
   }
 
   if (method === "POST" && path === "auth/verify-otp") {
     const phone = String(body.phone ?? "").trim();
     const code = String(body.code ?? "").trim();
-    if (store.otps.get(phone) !== code) {
+    const key = otpKey(phone, "authentication");
+    if (store.otps.get(key) !== code) {
       return fail(422, "The verification code is invalid or has expired.");
     }
-    store.otps.delete(phone);
+    store.otps.delete(key);
     let customer = store.customers.find((c) => c.phone === phone);
     const isNew = !customer;
     if (!customer) {
@@ -421,10 +560,7 @@ async function handle(req: NextRequest, segments: string[]) {
 
   if (method === "POST" && path === "auth/logout") {
     const header = req.headers.get("authorization") ?? "";
-    const token =
-      header.replace(/^Bearer\s+/i, "") ||
-      req.cookies.get("bubbleit_customer_token")?.value ||
-      "";
+    const token = header.replace(/^Bearer\s+/i, "");
     if (token) store.tokens.delete(token);
     return envelope(null, { message: "Logged out." });
   }
@@ -432,9 +568,21 @@ async function handle(req: NextRequest, segments: string[]) {
   if (method === "PUT" && path === "profile") {
     if (typeof body.name === "string") customer.name = body.name.trim();
     if (typeof body.email === "string") customer.email = body.email.trim() || null;
-    if (typeof body.password === "string" && body.password) customer.password = body.password;
+    const passwordChanged = typeof body.password === "string" && body.password;
+    if (passwordChanged) {
+      customer.password = body.password;
+      for (const [token, customerId] of store.tokens.entries()) {
+        if (customerId === customer.id) store.tokens.delete(token);
+      }
+    }
     const { vehicles: _v, addresses: _a, password: _pw, ...publicCustomer } = customer;
-    return envelope(publicCustomer);
+    const response = envelope(publicCustomer, {
+      message: passwordChanged
+        ? "Password updated. Please sign in again."
+        : "Profile updated.",
+    });
+    if (passwordChanged) response.headers.set("X-Reauthentication-Required", "true");
+    return response;
   }
 
   // ── Vehicles ──
@@ -471,10 +619,11 @@ async function handle(req: NextRequest, segments: string[]) {
   if (method === "POST" && path === "addresses") {
     const area = String(body.area ?? "").trim();
     const buildingNumber = String(body.building_number ?? "").trim();
-    if (!area || !buildingNumber) {
+    if (!area || !buildingNumber || !mockQatarLand(body.latitude, body.longitude)) {
       return fail(422, "Validation failed.", {
         ...(area ? {} : { area: ["The area field is required."] }),
         ...(buildingNumber ? {} : { building_number: ["The building number field is required."] }),
+        ...(mockQatarLand(body.latitude, body.longitude) ? {} : { latitude: ["Confirm a location on Qatar land territory."] }),
       });
     }
     const address = {
@@ -487,6 +636,7 @@ async function handle(req: NextRequest, segments: string[]) {
       street_number: String(body.street_number ?? "").trim() || null,
       latitude: typeof body.latitude === "number" ? body.latitude : null,
       longitude: typeof body.longitude === "number" ? body.longitude : null,
+      service_area: { version: SERVICE_AREA_VERSION, eligible: true, stale: false },
     };
     customer.addresses.push(address);
     return envelope(address, { status: 201, message: "Address added." });
@@ -503,10 +653,11 @@ async function handle(req: NextRequest, segments: string[]) {
 
     const area = String(body.area ?? "").trim();
     const buildingNumber = String(body.building_number ?? "").trim();
-    if (!area || !buildingNumber) {
+    if (!area || !buildingNumber || !mockQatarLand(body.latitude, body.longitude)) {
       return fail(422, "Validation failed.", {
         ...(area ? {} : { area: ["The area field is required."] }),
         ...(buildingNumber ? {} : { building_number: ["The building number field is required."] }),
+        ...(mockQatarLand(body.latitude, body.longitude) ? {} : { latitude: ["Confirm a location on Qatar land territory."] }),
       });
     }
 
@@ -520,6 +671,7 @@ async function handle(req: NextRequest, segments: string[]) {
       street_number: String(body.street_number ?? "").trim() || null,
       latitude: typeof body.latitude === "number" ? body.latitude : null,
       longitude: typeof body.longitude === "number" ? body.longitude : null,
+      service_area: { version: SERVICE_AREA_VERSION, eligible: true, stale: false },
     };
     customer.addresses[index] = updated;
     return envelope(updated, { message: "Address updated." });
@@ -571,6 +723,30 @@ async function handle(req: NextRequest, segments: string[]) {
     const scheduledAt = String(body.scheduled_at ?? "");
     const quoteCars = Array.isArray(body.cars) ? body.cars : [];
     const useMembership = body.use_membership !== false;
+    if (body.service_area_version !== SERVICE_AREA_VERSION) {
+      return serviceAreaFailure("SERVICE_AREA_STALE", "The service-area map changed. Please confirm the location again.", 409);
+    }
+    const quoteAddress = body.address_id
+      ? customer.addresses.find((address) => address.id === Number(body.address_id))
+      : null;
+    if (quoteAddress?.service_area.stale) {
+      return serviceAreaFailure("SERVICE_AREA_STALE", "This saved address must be revalidated.", 409);
+    }
+    if (!quoteAddress && !mockQatarLand(body.latitude, body.longitude)) {
+      return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
+    }
+    if (typeof body.duration_version !== "string" || body.duration_version.length === 0) {
+      return fail(422, "Validation failed.", {
+        duration_version: ["The duration version field is required."],
+      });
+    }
+    const durationContract = await durationSnapshot(quoteCars.map((car: Record<string, unknown>) => ({
+      service_id: Number(car.service_id),
+      add_on_ids: Array.isArray(car.add_on_ids) ? car.add_on_ids.map(Number) : [],
+    })));
+    if (String(body.duration_version ?? "") !== durationContract.version) {
+      return staleDuration(durationContract);
+    }
 
     // Match the backend: auto-apply only for a single, add-on-free car.
     const singleAddonFree =
@@ -586,7 +762,7 @@ async function handle(req: NextRequest, segments: string[]) {
 
     let serviceTotal = 0;
     let membershipDiscount = 0;
-    let totalDuration = 0;
+    const totalDuration = durationContract.total_minutes;
     let firstService: (typeof SERVICES)[number] | undefined;
     const summary = new Map<number, { m: MockMembership; applied: number }>();
     const carsOut = norm.map((c: { service_id: number; type: string }, i: number) => {
@@ -594,7 +770,6 @@ async function handle(req: NextRequest, segments: string[]) {
       firstService ??= service;
       const base = service ? (c.type === "suv" ? service.price_suv : service.price) : 0;
       serviceTotal += base;
-      totalDuration += service?.duration_minutes ?? 0;
       const m = alloc[i];
       if (m) {
         membershipDiscount += base;
@@ -624,6 +799,7 @@ async function handle(req: NextRequest, segments: string[]) {
       time_range_label: `${startHm}–${endHm}`,
       duration_minutes: totalDuration,
       duration_label: formatDuration(totalDuration),
+      duration: durationContract,
       base_price: serviceTotal,
       discount_total: membershipDiscount,
       service_total: serviceTotal,
@@ -640,6 +816,7 @@ async function handle(req: NextRequest, segments: string[]) {
         washes_applied: applied,
         remaining_after: Math.max(0, m.washes_remaining - applied),
       })),
+      service_area: { version: SERVICE_AREA_VERSION, eligible: true },
     });
   }
 
@@ -658,6 +835,20 @@ async function handle(req: NextRequest, segments: string[]) {
 
   if (method === "POST" && path === "bookings") {
     const scheduledAt = String(body.scheduled_at ?? "");
+    if (body.service_area_version !== SERVICE_AREA_VERSION) {
+      return serviceAreaFailure("SERVICE_AREA_STALE", "The service-area map changed. Please confirm the location again.", 409);
+    }
+    const bookingAddress = body.address_id
+      ? customer.addresses.find((address) => address.id === Number(body.address_id))
+      : null;
+    if (!bookingAddress && !mockQatarLand(body.latitude, body.longitude)) {
+      return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
+    }
+    if (typeof body.duration_version !== "string" || body.duration_version.length === 0) {
+      return fail(422, "Validation failed.", {
+        duration_version: ["The duration version field is required."],
+      });
+    }
 
     // Membership redemption: single vehicle, plan-defined service, QR 0.
     if (body.membership_id) {
@@ -670,7 +861,11 @@ async function handle(req: NextRequest, segments: string[]) {
         return fail(422, "This membership is not active or has no washes remaining.");
       }
       const planService = SERVICES.find((sv) => sv.id === (membership.plan.scope === "full_wash" ? 1 : 1)) ?? SERVICES[0];
-      if (!hasFleetCapacity(scheduledAt, planService.duration_minutes)) {
+      const membershipDuration = await durationSnapshot([{ service_id: planService.id, add_on_ids: [] }]);
+      if (String(body.duration_version ?? "") !== membershipDuration.version) {
+        return staleDuration(membershipDuration);
+      }
+      if (!hasFleetCapacity(scheduledAt, membershipDuration.total_minutes)) {
         return fail(409, "This time slot is no longer available. Please pick another slot.");
       }
       membership.washes_used += 1;
@@ -683,12 +878,20 @@ async function handle(req: NextRequest, segments: string[]) {
         reference: makeReference(id),
         status: "paid",
         status_label: STATUS_LABELS.paid,
-        scheduled_at: scheduledAt,
-        scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (planService.duration_minutes * 60_000)).toISOString(),
-        duration_minutes: planService.duration_minutes,
+        scheduled_at: new Date(scheduledAt).toISOString(),
+        service_date: qatarServiceDate(scheduledAt),
+        timezone: "Asia/Qatar",
+        scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (membershipDuration.total_minutes * 60_000)).toISOString(),
+        duration_minutes: membershipDuration.total_minutes,
+        duration: { ...membershipDuration, status: "accepted", ambiguous: false },
         payment_method: "membership",
         total: 0,
-        address_area: String(body.address_area ?? "").trim(),
+        address_label: bookingAddress?.label ?? (String(body.address_label ?? "").trim() || null),
+        address_area: bookingAddress?.area ?? String(body.address_area ?? "").trim(),
+        address_street: bookingAddress?.details ?? (String(body.address_street ?? "").trim() || null),
+        building_number: bookingAddress?.building_number ?? (String(body.building_number ?? "").trim() || null),
+        zone_number: bookingAddress?.zone_number ?? (String(body.zone_number ?? "").trim() || null),
+        street_number: bookingAddress?.street_number ?? (String(body.street_number ?? "").trim() || null),
         notes: String(body.notes ?? "").trim(),
         cars: [{
           vehicle,
@@ -704,6 +907,13 @@ async function handle(req: NextRequest, segments: string[]) {
     }
 
     const cars = Array.isArray(body.cars) ? body.cars : [];
+    const bookingDurationContract = await durationSnapshot(cars.map((car: Record<string, unknown>) => ({
+      service_id: Number(car.service_id),
+      add_on_ids: Array.isArray(car.add_on_ids) ? car.add_on_ids.map(Number) : [],
+    })));
+    if (String(body.duration_version ?? "") !== bookingDurationContract.version) {
+      return staleDuration(bookingDurationContract);
+    }
     const paymentMethod = body.payment_method as PaymentMethod;
 
     if (!scheduledAt || cars.length === 0 || !["pay_on_site", "online"].includes(paymentMethod)) {
@@ -757,10 +967,7 @@ async function handle(req: NextRequest, segments: string[]) {
       productTotal += lineTotal;
     }
 
-    const bookingDuration = bookingCars.reduce(
-      (sum, car) => sum + (SERVICES.find((service) => service.id === car.service.id)?.duration_minutes ?? 0) + car.add_ons.reduce((addOnTotal, addOn) => addOnTotal + (addOn.duration_minutes ?? 0), 0),
-      0,
-    ) || 60;
+    const bookingDuration = bookingDurationContract.total_minutes;
     if (!hasFleetCapacity(scheduledAt, bookingDuration)) {
       return fail(409, "This time slot is no longer available. Please pick another slot.");
     }
@@ -796,7 +1003,7 @@ async function handle(req: NextRequest, segments: string[]) {
     if (body.address_id) {
       const address = customer.addresses.find((a) => a.id === body.address_id);
       if (!address) return fail(422, "Validation failed.", { address_id: ["Invalid address."] });
-      addressArea = `${address.area}${address.details ? ` — ${address.details}` : ""}`;
+      addressArea = address.area;
     }
 
     const subtotal = bookingCars.reduce((sum, c) => sum + c.subtotal, 0);
@@ -824,13 +1031,21 @@ async function handle(req: NextRequest, segments: string[]) {
       reference,
       status: fullyCovered ? "paid" : "pending_payment",
       status_label: fullyCovered ? STATUS_LABELS.paid : STATUS_LABELS.pending_payment,
-      scheduled_at: scheduledAt,
+      scheduled_at: new Date(scheduledAt).toISOString(),
+      service_date: qatarServiceDate(scheduledAt),
+      timezone: "Asia/Qatar",
       scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (bookingDuration * 60_000)).toISOString(),
       duration_minutes: bookingDuration,
+      duration: { ...bookingDurationContract, status: "accepted", ambiguous: false },
       payment_method: fullyCovered ? "membership" : paymentMethod,
       total: Math.max(0, subtotal - discount + productTotal),
       product_total: productTotal,
+      address_label: bookingAddress?.label ?? (String(body.address_label ?? "").trim() || null),
       address_area: addressArea,
+      address_street: bookingAddress?.details ?? (String(body.address_street ?? "").trim() || null),
+      building_number: bookingAddress?.building_number ?? (String(body.building_number ?? "").trim() || null),
+      zone_number: bookingAddress?.zone_number ?? (String(body.zone_number ?? "").trim() || null),
+      street_number: bookingAddress?.street_number ?? (String(body.street_number ?? "").trim() || null),
       notes: String(body.notes ?? "").trim(),
       cars: bookingCars,
       products: bookingProducts,
@@ -855,10 +1070,16 @@ async function handle(req: NextRequest, segments: string[]) {
     }
 
     const { customer_id: _c, ...pub } = booking;
-    return envelope(pub, { status: 201, message: "Booking created." });
+    return envelope({
+      ...pub,
+      payment: {
+        status: pub.payment_method === "online" && pub.total > 0 ? "not_started" : "not_required",
+        checkout_url: null,
+      },
+    }, { status: 201, message: "Booking created." });
   }
 
-  const bookingMatch = path.match(/^bookings\/(\d+)(?:\/(cancel|pay|mock-complete-payment))?$/);
+  const bookingMatch = path.match(/^bookings\/(\d+)(?:\/(cancel|pay|mock-complete-payment|reschedule-options|reschedule))?$/);
   if (bookingMatch) {
     const booking = store.bookings.find(
       (b) => b.id === Number(bookingMatch[1]) && b.customer_id === customer.id,
@@ -869,6 +1090,79 @@ async function handle(req: NextRequest, segments: string[]) {
     if (method === "GET" && !action) {
       const { customer_id: _c, ...pub } = booking;
       return envelope(pub);
+    }
+
+
+    if (method === "GET" && action === "reschedule-options") {
+      if (!["pending_payment", "paid", "assigned"].includes(booking.status)) {
+        return fail(409, "This booking requires manual support to reschedule.", null, null, "RESCHEDULE_MANUAL_REQUIRED");
+      }
+      if (new Date(booking.scheduled_at).getTime() - Date.now() < 2 * 60 * 60 * 1000) {
+        return fail(409, "Customer rescheduling closes two hours before service.", null, null, "RESCHEDULE_CUTOFF_PASSED");
+      }
+      const date = req.nextUrl.searchParams.get("date") ?? booking.service_date;
+      const duration = booking.duration ?? await durationSnapshot([]);
+      const slots = SLOT_GRID.map((start) => {
+        const scheduledAt = `${date}T${start}:00+03:00`;
+        const end = new Date(new Date(scheduledAt).getTime() + (duration.total_minutes * 60_000));
+        const endTime = formatQatarDateTime(end.toISOString(), "en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23",
+        });
+        return {
+          start,
+          end: endTime,
+          available: new Date(scheduledAt).getTime() > Date.now()
+            && hasFleetCapacity(scheduledAt, duration.total_minutes, booking.id),
+          slot_version: mockRescheduleSlotVersion(booking, date, start),
+        };
+      });
+      return envelope({
+        date,
+        timezone: "Asia/Qatar",
+        duration,
+        service_area: { version: SERVICE_AREA_VERSION, eligible: true },
+        policy_version: "reschedule-v1",
+        cutoff_hours: 2,
+        slots,
+      });
+    }
+
+    if (method === "POST" && action === "reschedule") {
+      if (!["pending_payment", "paid", "assigned"].includes(booking.status)) {
+        return fail(409, "This booking requires manual support to reschedule.", null, null, "RESCHEDULE_MANUAL_REQUIRED");
+      }
+      if (new Date(booking.scheduled_at).getTime() - Date.now() < 2 * 60 * 60 * 1000) {
+        return fail(409, "Customer rescheduling closes two hours before service.", null, null, "RESCHEDULE_CUTOFF_PASSED");
+      }
+      const scheduledAt = String(body.scheduled_at ?? "");
+      const date = qatarServiceDate(scheduledAt);
+      const start = formatQatarDateTime(scheduledAt, "en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      });
+      const duration = booking.duration ?? await durationSnapshot([]);
+      if (body.duration_version !== duration.version) return staleDuration(duration);
+      if (body.service_area_version !== SERVICE_AREA_VERSION) {
+        return serviceAreaFailure("SERVICE_AREA_STALE", "The service-area map changed. Please confirm the location again.", 409);
+      }
+      if (body.slot_version !== mockRescheduleSlotVersion(booking, date, start)) {
+        return fail(409, "Availability changed. Please refresh the available times.", null, null, "SLOT_VERSION_STALE");
+      }
+      if (!hasFleetCapacity(scheduledAt, duration.total_minutes, booking.id)) {
+        return fail(409, "This time slot is no longer available. Please pick another slot.", null, null, "SLOT_UNAVAILABLE");
+      }
+      booking.scheduled_at = new Date(scheduledAt).toISOString();
+      booking.scheduled_end_at = new Date(new Date(scheduledAt).getTime() + (duration.total_minutes * 60_000)).toISOString();
+      booking.service_date = date;
+      if (booking.status === "assigned") {
+        booking.status = "paid";
+        booking.status_label = STATUS_LABELS.paid;
+      }
+      const { customer_id: _c, ...pub } = booking;
+      return envelope(pub, { message: "Booking rescheduled." });
     }
 
     if (method === "POST" && action === "cancel") {
@@ -890,7 +1184,7 @@ async function handle(req: NextRequest, segments: string[]) {
       if (booking.status !== "pending_payment" || booking.payment_method !== "online") {
         return fail(422, "This booking is not awaiting online payment.");
       }
-      return envelope({ checkout_url: `/book/checkout?booking=${booking.id}` });
+      return envelope({ checkout_url: `/book/checkout?booking=${booking.id}`, status: "ready" });
     }
 
     // Mock-only: the fake checkout page calls this to simulate a successful
@@ -922,7 +1216,31 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   return handle(req, (await ctx.params).path);
 }
 export async function POST(req: NextRequest, ctx: Ctx) {
-  return handle(req, (await ctx.params).path);
+  const segments = (await ctx.params).path;
+  const key = req.headers.get("idempotency-key");
+  if (!key) return handle(req, segments);
+
+  const requestBody = await req.clone().json().catch(() => ({}));
+  const customerScope = authCustomer(req)?.id ?? "anonymous";
+  const cacheKey = `${customerScope}:${segments.join("/")}:${key}`;
+  const requestHash = JSON.stringify(requestBody);
+  const cached = idempotencyResponses.get(cacheKey);
+  if (cached) {
+    if (cached.request !== requestHash) {
+      return fail(409, "This idempotency key was already used for a different request.", null, null, "IDEMPOTENCY_KEY_REUSED");
+    }
+    return NextResponse.json(cached.body, { status: cached.status });
+  }
+
+  const response = await handle(req, segments);
+  if (response.ok) {
+    idempotencyResponses.set(cacheKey, {
+      request: requestHash,
+      status: response.status,
+      body: await response.clone().json(),
+    });
+  }
+  return response;
 }
 export async function PUT(req: NextRequest, ctx: Ctx) {
   return handle(req, (await ctx.params).path);

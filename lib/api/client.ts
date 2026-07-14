@@ -5,6 +5,7 @@ import type {
   Availability,
   Booking,
   BookingQuote,
+  BookingRescheduleOptions,
   CreateStoreOrderPayload,
   CreateBookingPayload,
   Customer,
@@ -15,6 +16,7 @@ import type {
   PromoValidation,
   QuoteCar,
   Service,
+  ServiceAreaSnapshot,
   StoreOrder,
   StoreOrderPayment,
   StoreProductInventory,
@@ -22,69 +24,47 @@ import type {
   VerifyOtpResult,
 } from "@/lib/api/types";
 
-// The mock API is a DEV-ONLY fallback. Production builds fail in
-// next.config.mjs when NEXT_PUBLIC_API_BASE is unset, so a deployed bundle
-// never silently serves mock data. Point it at the real backend, e.g.
-// NEXT_PUBLIC_API_BASE=https://bubbleit-backend.on-forge.com/api/v1/customer
-const BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "/api/mock/v1/customer";
-
-const TOKEN_KEY = "bubbleit.customer_token";
-const TOKEN_COOKIE = "bubbleit_customer_token";
-const TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
-
-function readTokenCookie(): string | null {
-  if (typeof document === "undefined") return null;
-  const token = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(`${TOKEN_COOKIE}=`))
-    ?.split("=")[1];
-  return token ? decodeURIComponent(token) : null;
-}
-
-function writeTokenCookie(token: string | null) {
-  if (typeof document === "undefined") return;
-  const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = token
-    ? `${TOKEN_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=${TOKEN_MAX_AGE_SECONDS}; SameSite=Lax${secure}`
-    : `${TOKEN_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
-}
-
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return readTokenCookie() ?? window.localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string | null) {
-  if (typeof window === "undefined") return;
-  writeTokenCookie(token);
-  if (token) window.localStorage.setItem(TOKEN_KEY, token);
-  else window.localStorage.removeItem(TOKEN_KEY);
-}
+// The browser only calls this same-origin BFF. The BFF owns the backend bearer
+// token in an HttpOnly cookie, so application JavaScript can never read it.
+const BASE = "/api/customer";
 
 export class ApiError extends Error {
   status: number;
   errors: Record<string, string[]> | null;
+  retryAfterSeconds: number | null;
+  code: string | null;
+  data: unknown;
 
-  constructor(status: number, message: string, errors: Record<string, string[]> | null = null) {
-    super(message);
+  constructor(
+    status: number,
+    message: string,
+    errors: Record<string, string[]> | null = null,
+    retryAfterSeconds: number | null = null,
+    code: string | null = null,
+    data: unknown = null,
+  ) {
+    super(
+      retryAfterSeconds !== null && retryAfterSeconds > 0
+        ? `${message} Try again in ${retryAfterSeconds} seconds.`
+        : message,
+    );
     this.status = status;
     this.errors = errors;
+    this.retryAfterSeconds = retryAfterSeconds;
+    this.code = code;
+    this.data = data;
   }
 }
 
 async function request<T>(
   path: string,
-  options: { method?: string; body?: unknown; auth?: boolean } = {},
+  options: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
-  if (options.auth !== false) {
-    const token = getToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-  }
+  Object.assign(headers, options.headers);
 
   const res = await fetch(`${BASE}${path}`, {
     method: options.method ?? "GET",
@@ -100,8 +80,33 @@ async function request<T>(
     throw new ApiError(res.status, "Unexpected server response.");
   }
 
+  if (
+    res.status === 401 &&
+    res.headers.get("x-session-ended") === "true" &&
+    typeof window !== "undefined"
+  ) {
+    window.sessionStorage.setItem(
+      "bubbleit.auth.return_to",
+      `${window.location.pathname}${window.location.search}`,
+    );
+    window.dispatchEvent(
+      new CustomEvent("bubbleit:session-ended", {
+        detail: { message: envelope.message || "Your session has ended. Please sign in again." },
+      }),
+    );
+  }
+
   if (!res.ok || !envelope.success) {
-    throw new ApiError(res.status, envelope.message || "Request failed.", envelope.errors);
+    const retryAfterHeader = res.headers.get("retry-after");
+    const retryAfter = retryAfterHeader === null ? null : Number.parseInt(retryAfterHeader, 10);
+    throw new ApiError(
+      res.status,
+      envelope.message || "Request failed.",
+      envelope.errors,
+      Number.isFinite(retryAfter) ? retryAfter : null,
+      envelope.code ?? null,
+      envelope.data,
+    );
   }
   return envelope.data;
 }
@@ -109,7 +114,7 @@ async function request<T>(
 // ── Public catalog ───────────────────────────────────────────────────────────
 
 export function getServices() {
-  return request<Paginated<Service>>("/services", { auth: false }).then((r) => r.data);
+  return request<Paginated<Service>>("/services").then((r) => r.data);
 }
 
 export type AvailabilityCar = {
@@ -119,10 +124,16 @@ export type AvailabilityCar = {
 
 export function getAvailability(
   date: string,
-  window: "standard" | "midnight" = "standard",
+  window: "standard" | "midnight",
+  coordinates: { latitude: number; longitude: number },
   cartOrServiceIds: AvailabilityCar[] | number[] = [],
 ) {
-  const params = new URLSearchParams({ date, window });
+  const params = new URLSearchParams({
+    date,
+    window,
+    latitude: String(coordinates.latitude),
+    longitude: String(coordinates.longitude),
+  });
   if (cartOrServiceIds.every((value) => typeof value === "number")) {
     (cartOrServiceIds as number[]).forEach((serviceId) => {
       params.append("service_ids[]", String(serviceId));
@@ -136,15 +147,22 @@ export function getAvailability(
     });
   }
 
-  return request<Availability>(`/availability?${params.toString()}`, { auth: false });
+  return request<Availability>(`/availability?${params.toString()}`);
+}
+
+export function validateServiceArea(latitude: number, longitude: number) {
+  return request<ServiceAreaSnapshot>("/service-area/validate", {
+    method: "POST",
+    body: { latitude, longitude },
+  });
 }
 
 export function getMembershipPlans() {
-  return request<Paginated<MembershipPlan>>("/membership-plans", { auth: false }).then((r) => r.data);
+  return request<Paginated<MembershipPlan>>("/membership-plans").then((r) => r.data);
 }
 
 export function listStoreProducts() {
-  return request<Paginated<StoreProductInventory>>("/store/products", { auth: false }).then((r) =>
+  return request<Paginated<StoreProductInventory>>("/store/products").then((r) =>
     r.data.map((product) => ({
       ...product,
       imageAlt: product.imageAlt ?? product.name,
@@ -168,21 +186,22 @@ export function payStoreOrder(orderId: number) {
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 export function checkPhone(phone: string) {
-  return request<{ registered: boolean; has_password?: boolean }>("/auth/check-phone", {
+  return request<{ continuation: "choose_auth_method" }>("/auth/check-phone", {
     method: "POST",
     body: { phone },
-    auth: false,
   });
 }
 
-export async function loginWithPassword(phone: string, password: string) {
-  const result = await request<VerifyOtpResult>("/auth/login", {
+function customerDeviceLabel() {
+  const platform = typeof navigator === "undefined" ? "" : navigator.platform.trim();
+  return platform ? `BubbleIt customer web on ${platform}` : "BubbleIt customer web";
+}
+
+export function loginWithPassword(phone: string, password: string) {
+  return request<VerifyOtpResult>("/auth/login", {
     method: "POST",
-    body: { phone, password },
-    auth: false,
+    body: { phone, password, device_name: customerDeviceLabel() },
   });
-  setToken(result.token);
-  return result;
 }
 
 export async function register(payload: {
@@ -191,31 +210,26 @@ export async function register(payload: {
   password: string;
   code: string;
 }) {
-  const result = await request<VerifyOtpResult>("/auth/register", {
+  return request<VerifyOtpResult>("/auth/register", {
     method: "POST",
-    body: payload,
-    auth: false,
+    body: { ...payload, device_name: customerDeviceLabel() },
   });
-  setToken(result.token);
-  return result;
 }
 
-export function requestOtp(phone: string) {
+export type OtpPurpose = "authentication" | "registration";
+
+export function requestOtp(phone: string, purpose: OtpPurpose) {
   return request<null>("/auth/request-otp", {
     method: "POST",
-    body: { phone },
-    auth: false,
+    body: { phone, purpose },
   });
 }
 
-export async function verifyOtp(phone: string, code: string) {
-  const result = await request<VerifyOtpResult>("/auth/verify-otp", {
+export function verifyOtp(phone: string, code: string) {
+  return request<VerifyOtpResult>("/auth/verify-otp", {
     method: "POST",
-    body: { phone, code },
-    auth: false,
+    body: { phone, code, device_name: customerDeviceLabel() },
   });
-  setToken(result.token);
-  return result;
 }
 
 export function me() {
@@ -223,11 +237,7 @@ export function me() {
 }
 
 export async function logout() {
-  try {
-    await request<null>("/auth/logout", { method: "POST" });
-  } finally {
-    setToken(null);
-  }
+  await request<null>("/auth/logout", { method: "POST" });
 }
 
 export function updateProfile(payload: { name: string; email?: string; password?: string }) {
@@ -240,23 +250,36 @@ export function listVehicles() {
   return request<Paginated<Vehicle>>("/vehicles").then((r) => r.data);
 }
 
-export function createVehicle(payload: Omit<Vehicle, "id">) {
-  return request<Vehicle>("/vehicles", { method: "POST", body: payload });
+export function createVehicle(payload: Omit<Vehicle, "id">, idempotencyKey?: string) {
+  return request<Vehicle>("/vehicles", {
+    method: "POST",
+    body: payload,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+  });
 }
 
 export function deleteVehicle(id: number) {
   return request<null>(`/vehicles/${id}`, { method: "DELETE" });
 }
 
-export function createAddress(payload: Omit<Address, "id"> | Omit<Address, "id" | "latitude" | "longitude">) {
-  return request<Address>("/addresses", { method: "POST", body: payload });
+export type AddressPayload = Omit<Address, "id" | "service_area" | "latitude" | "longitude"> & {
+  latitude: number;
+  longitude: number;
+};
+
+export function createAddress(payload: AddressPayload, idempotencyKey?: string) {
+  return request<Address>("/addresses", {
+    method: "POST",
+    body: payload,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+  });
 }
 
 export function listAddresses() {
   return request<Paginated<Address>>("/addresses").then((r) => r.data);
 }
 
-export function updateAddress(id: number, payload: Omit<Address, "id">) {
+export function updateAddress(id: number, payload: AddressPayload) {
   return request<Address>(`/addresses/${id}`, { method: "PUT", body: payload });
 }
 
@@ -289,8 +312,19 @@ export function validatePromo(code: string, subtotal: number, serviceIds: number
   });
 }
 
-export function createBooking(payload: CreateBookingPayload) {
-  return request<Booking>("/bookings", { method: "POST", body: payload });
+export function createBooking(payload: CreateBookingPayload, idempotencyKey?: string) {
+  return request<Booking>("/bookings", {
+    method: "POST",
+    body: payload,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+  });
+}
+
+export function initializeBookingPayment(bookingId: number, idempotencyKey: string) {
+  return request<{ checkout_url: string; status: "ready" }>(`/bookings/${bookingId}/pay`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
 }
 
 // Server-side price preview: applies the customer's eligible memberships to the
@@ -298,7 +332,12 @@ export function createBooking(payload: CreateBookingPayload) {
 export function getQuote(payload: {
   scheduled_at: string;
   cars: QuoteCar[];
+  duration_version: string;
   use_membership?: boolean;
+  address_id?: number;
+  latitude?: number;
+  longitude?: number;
+  service_area_version: string;
 }) {
   return request<BookingQuote>("/bookings/quote", { method: "POST", body: payload });
 }
@@ -313,4 +352,29 @@ export function getBooking(id: number) {
 
 export function cancelBooking(id: number) {
   return request<Booking>(`/bookings/${id}/cancel`, { method: "POST" });
+}
+
+export function completeMockBookingPayment(id: number) {
+  return request<null>(`/bookings/${id}/mock-complete-payment`, { method: "POST" });
+}
+
+export function getBookingRescheduleOptions(id: number, date: string) {
+  return request<BookingRescheduleOptions>(`/bookings/${id}/reschedule-options?date=${encodeURIComponent(date)}`);
+}
+
+export function rescheduleBooking(
+  id: number,
+  payload: {
+    scheduled_at: string;
+    duration_version: string;
+    service_area_version: string;
+    slot_version: string;
+  },
+  idempotencyKey: string,
+) {
+  return request<Booking>(`/bookings/${id}/reschedule`, {
+    method: "POST",
+    body: payload,
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
 }
