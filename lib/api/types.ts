@@ -14,6 +14,26 @@ export type ServiceAreaSnapshot = {
   eligible: boolean;
 };
 
+export type DurationContribution = {
+  line_index: number;
+  kind: "service" | "add_on" | "fallback";
+  service_id: number | null;
+  add_on_id: number | null;
+  name: string;
+  configured_minutes: number;
+  contributes: boolean;
+  minutes: number;
+};
+
+export type DurationSnapshot = {
+  schema: "duration-v1" | string;
+  version: string;
+  total_minutes: number;
+  contributions: DurationContribution[];
+  status?: "accepted" | "deterministic_legacy" | "ambiguous_legacy";
+  ambiguous?: boolean;
+};
+
 export type Paginated<T> = {
   data: T[];
   meta: {
@@ -29,6 +49,7 @@ export type AddOn = {
   name: string;
   price: number;
   duration_minutes?: number;
+  extends_duration: boolean;
 };
 
 export type VehicleType = "sedan" | "suv" | "caravan" | "jet_ski" | "jet_boat";
@@ -59,6 +80,8 @@ export type Slot = {
 
 export type Availability = {
   date: string; // "YYYY-MM-DD"
+  duration_minutes: number;
+  duration: DurationSnapshot;
   slots: Slot[];
   service_area: ServiceAreaSnapshot;
 };
@@ -147,6 +170,7 @@ export type Booking = {
   timezone: "Asia/Qatar";
   duration_minutes?: number;
   duration_label?: string;
+  duration?: DurationSnapshot;
   time_range_label?: string | null;
   membership_applied?: boolean;
   payment_method: PaymentMethod;
@@ -176,6 +200,7 @@ export type VerifyOtpResult = {
 
 export type CreateBookingPayload = {
   scheduled_at: string;
+  duration_version: string;
   cars?: { vehicle_id: number; service_id: number; add_on_ids: number[] }[];
   membership_id?: number;
   vehicle_id?: number;
@@ -213,6 +238,7 @@ export type BookingQuote = {
   time_range_label: string;
   duration_minutes: number;
   duration_label: string;
+  duration: DurationSnapshot;
   base_price: number;
   discount_total: number;
   service_total: number;

@@ -36,6 +36,8 @@ import {
 import type {
   Booking,
   BookingQuote,
+  DurationContribution,
+  DurationSnapshot,
   Address,
   Service,
   Slot,
@@ -241,6 +243,7 @@ export function BookingWizard() {
   const days = useMemo(() => next7Days(), []);
   const [date, setDate] = useState(days[0].date);
   const [slots, setSlots] = useState<Slot[] | null>(null);
+  const [availabilityDuration, setAvailabilityDuration] = useState<DurationSnapshot | null>(null);
   const [slot, setSlot] = useState<string | null>(null);
   const [slotSelectedAt, setSlotSelectedAt] = useState<number | null>(null);
   const [serviceAreaVersion, setServiceAreaVersion] = useState<string | null>(null);
@@ -318,6 +321,7 @@ export function BookingWizard() {
       return;
     }
     setSlots(null);
+    setAvailabilityDuration(null);
     setSlot(null);
     setSlotSelectedAt(null);
     setNowMs(Date.now());
@@ -326,6 +330,7 @@ export function BookingWizard() {
         if (slotRequestRef.current === requestId) {
           setSlots(a.slots);
           setServiceAreaVersion(a.service_area.version);
+          setAvailabilityDuration(a.duration);
           setError(null);
         }
       })
@@ -333,6 +338,7 @@ export function BookingWizard() {
         if (slotRequestRef.current === requestId) {
           setSlots([]);
           setServiceAreaVersion(null);
+          setAvailabilityDuration(null);
           setError(caught instanceof ApiError ? caught.message : t("Could not validate this location."));
         }
       });
@@ -356,6 +362,7 @@ export function BookingWizard() {
     if (!slotSelectedAt || Date.now() - slotSelectedAt < STALE_SLOT_MS) return;
     setSlot(null);
     setSlots(null);
+    setAvailabilityDuration(null);
     setStep(1);
   }, [slotSelectedAt]);
 
@@ -452,7 +459,7 @@ export function BookingWizard() {
   const [quoteLoading, setQuoteLoading] = useState(false);
 
   useEffect(() => {
-    if (step !== 3 || !authed || !slot) return;
+    if (step !== 3 || !authed || !slot || !availabilityDuration) return;
     const quoteCars = cars
       .filter((c) => c.serviceId !== null)
       .map((c) => ({
@@ -474,6 +481,7 @@ export function BookingWizard() {
     getQuote({
       scheduled_at: serializeQatarBookingDateTime(date, slot),
       cars: quoteCars,
+      duration_version: availabilityDuration.version,
       use_membership: true,
       ...(selectedAddressId !== null
         ? { address_id: selectedAddressId }
@@ -490,6 +498,10 @@ export function BookingWizard() {
           setError(caught.message);
           setServiceAreaVersion(null);
           setStep(1);
+        } else if (caught instanceof ApiError && caught.code === "DURATION_VERSION_STALE") {
+          setError(t("Service timing changed. Please choose your time again."));
+          setStep(2);
+          loadSlots(date, availabilityCars);
         }
       })
       .finally(() => {
@@ -498,7 +510,7 @@ export function BookingWizard() {
     return () => {
       cancelled = true;
     };
-  }, [step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion]);
+  }, [step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, availabilityDuration, availabilityCars, loadSlots, t]);
 
   const membershipEligible = quote?.membership_eligible ?? false;
   const applyMembership = membershipEligible;
@@ -624,6 +636,11 @@ export function BookingWizard() {
       setStep(1);
       return;
     }
+    if (!quote?.duration.version) {
+      setError(t("Review the authoritative service timing before confirming."));
+      setStep(2);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -661,6 +678,7 @@ export function BookingWizard() {
 
       const booking = await createBooking({
         scheduled_at: serializeQatarBookingDateTime(date, slot),
+        duration_version: quote.duration.version,
         cars: carPayloads,
         address_id: addressId,
         service_area_version: serviceAreaVersion,
@@ -682,10 +700,15 @@ export function BookingWizard() {
       }
       setConfirmed(booking);
     } catch (e) {
-      if (e instanceof ApiError && e.code === "SERVICE_AREA_STALE") {
+      if (e instanceof ApiError && ["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR"].includes(e.code ?? "")) {
         setError(t("The Qatar service-area map changed or this saved location needs confirmation. Please reselect the location."));
         setServiceAreaVersion(null);
         setStep(1);
+      } else if (e instanceof ApiError && e.code === "DURATION_VERSION_STALE") {
+        setError(t("Service timing changed. Please review the updated time before confirming."));
+        setQuote(null);
+        setStep(2);
+        loadSlots(date, availabilityCars);
       } else if (e instanceof ApiError && e.status === 409) {
         // The backend sends distinct 409 reasons — a car that is already
         // booked must not be presented as a fleet-capacity problem.
@@ -1080,6 +1103,7 @@ export function BookingWizard() {
               washesLeftAfter={washesLeftAfter}
               timeRangeLabel={quote?.time_range_label ?? null}
               durationLabel={quote?.duration_label ?? null}
+              durationContributions={quote?.duration.contributions ?? []}
               products={bookingProducts}
               productQuantities={productQuantities}
               productTotal={activeProductTotal}
@@ -1153,7 +1177,7 @@ export function BookingWizard() {
               <button
                 type="button"
                 className="primary-button min-w-0 flex-1 px-5 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
-                disabled={submitting || !authed}
+                disabled={submitting || !authed || quoteLoading || !quote?.duration.version}
                 onClick={submit}
               >
                 {submitting
@@ -1830,6 +1854,7 @@ function Summary({
   washesLeftAfter,
   timeRangeLabel,
   durationLabel,
+  durationContributions,
   products,
   productQuantities,
   productTotal,
@@ -1849,6 +1874,7 @@ function Summary({
   washesLeftAfter?: number;
   timeRangeLabel: string | null;
   durationLabel: string | null;
+  durationContributions: DurationContribution[];
   products: StoreProductInventory[];
   productQuantities: Record<string, number>;
   productTotal: number;
@@ -1944,6 +1970,19 @@ function Summary({
             </span>
           </span>
         </li>
+        {durationContributions.map((contribution, index) => (
+          <li
+            key={`${contribution.line_index}-${contribution.kind}-${contribution.add_on_id ?? contribution.service_id ?? index}`}
+            className="flex justify-between text-xs text-[color:var(--muted-foreground)]"
+          >
+            <span>{contribution.name}</span>
+            <span>
+              {contribution.contributes
+                ? `+${contribution.minutes} ${t("min")}`
+                : t("No extra time")}
+            </span>
+          </li>
+        ))}
         <li className="flex justify-between">
           <span className="text-[color:var(--muted-foreground)]">
             {t("Payment")}

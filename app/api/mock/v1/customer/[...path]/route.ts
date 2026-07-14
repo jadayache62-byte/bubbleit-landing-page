@@ -27,7 +27,12 @@ import {
 
 function envelope(
   data: unknown,
-  init: { status?: number; message?: string; errors?: Record<string, string[]> | null } = {},
+  init: {
+    status?: number;
+    message?: string;
+    errors?: Record<string, string[]> | null;
+    code?: string;
+  } = {},
 ) {
   const status = init.status ?? 200;
   return NextResponse.json(
@@ -36,6 +41,7 @@ function envelope(
       message: init.message ?? "",
       data,
       errors: init.errors ?? null,
+      ...(init.code ? { code: init.code } : {}),
     },
     { status },
   );
@@ -48,8 +54,14 @@ function paginated<T>(items: T[]) {
   };
 }
 
-function fail(status: number, message: string, errors: Record<string, string[]> | null = null) {
-  return envelope(null, { status, message, errors });
+function fail(
+  status: number,
+  message: string,
+  errors: Record<string, string[]> | null = null,
+  data: unknown = null,
+  code?: string,
+) {
+  return envelope(data, { status, message, errors, code });
 }
 
 function authCustomer(req: NextRequest) {
@@ -84,6 +96,71 @@ function serviceAreaFailure(code: "SERVICE_AREA_OUTSIDE_QATAR" | "SERVICE_AREA_S
     errors: null,
     code,
   }, { status });
+}
+
+type DurationCartCar = { service_id: number; add_on_ids?: number[] };
+
+async function durationSnapshot(cars: DurationCartCar[]) {
+  const contributions = cars.length === 0
+    ? [{
+        line_index: 0,
+        kind: "fallback" as const,
+        service_id: null,
+        add_on_id: null,
+        name: "Default booking duration",
+        configured_minutes: 60,
+        contributes: true,
+        minutes: 60,
+      }]
+    : cars.flatMap((car, lineIndex) => {
+        const service = SERVICES.find((candidate) => candidate.id === Number(car.service_id));
+        if (!service) return [];
+        const selectedIds = [...new Set((car.add_on_ids ?? []).map(Number))].sort((a, b) => a - b);
+        const addOns = service.add_ons
+          .filter((addOn) => selectedIds.includes(addOn.id))
+          .sort((a, b) => a.id - b.id);
+
+        return [{
+          line_index: lineIndex,
+          kind: "service" as const,
+          service_id: service.id,
+          add_on_id: null,
+          name: service.name,
+          configured_minutes: service.duration_minutes,
+          contributes: true,
+          minutes: service.duration_minutes,
+        }, ...addOns.map((addOn) => ({
+          line_index: lineIndex,
+          kind: "add_on" as const,
+          service_id: service.id,
+          add_on_id: addOn.id,
+          name: addOn.name,
+          configured_minutes: addOn.duration_minutes ?? 0,
+          contributes: addOn.extends_duration,
+          minutes: addOn.extends_duration ? (addOn.duration_minutes ?? 0) : 0,
+        }))];
+      });
+  const schema = "duration-v1";
+  const canonical = JSON.stringify({ schema, contributions });
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+  return {
+    schema,
+    version: `${schema}:${hash.slice(0, 24)}`,
+    total_minutes: Math.max(1, contributions.reduce((sum, contribution) => sum + contribution.minutes, 0)),
+    contributions,
+  };
+}
+
+function staleDuration(current: Awaited<ReturnType<typeof durationSnapshot>>) {
+  return fail(
+    409,
+    "Service timing changed. Please refresh availability and review the updated duration.",
+    null,
+    { duration: current },
+    "DURATION_VERSION_STALE",
+  );
 }
 
 function toMinutes(hm: string) {
@@ -339,18 +416,10 @@ async function handle(req: NextRequest, segments: string[]) {
       }];
     });
     const serviceIds = req.nextUrl.searchParams.getAll("service_ids[]").map(Number);
-    const duration = cartCars.length
-      ? cartCars.reduce((sum, car) => {
-          const service = SERVICES.find((candidate) => candidate.id === car.serviceId);
-          if (!service) return sum;
-
-          return sum + service.duration_minutes + service.add_ons
-            .filter((addOn) => car.addOnIds.includes(addOn.id))
-            .reduce((addOnTotal, addOn) => addOnTotal + (addOn.duration_minutes ?? 0), 0);
-        }, 0) || 60
-      : serviceIds.length
-        ? serviceIds.reduce((sum, id) => sum + (SERVICES.find((s) => s.id === id)?.duration_minutes ?? 0), 0) || 60
-        : 60;
+    const durationContract = await durationSnapshot(cartCars.length
+      ? cartCars.map((car) => ({ service_id: car.serviceId, add_on_ids: car.addOnIds }))
+      : serviceIds.map((serviceId) => ({ service_id: serviceId, add_on_ids: [] })));
+    const duration = durationContract.total_minutes;
     const closing = toMinutes(grid[grid.length - 1]) + 15;
     const existing = store.bookings
       .filter((b) => b.service_date === date && !["cancelled_by_customer", "cancelled_by_admin"].includes(b.status))
@@ -371,6 +440,7 @@ async function handle(req: NextRequest, segments: string[]) {
     return envelope({
       date,
       duration_minutes: duration,
+      duration: durationContract,
       slots,
       service_area: { version: SERVICE_AREA_VERSION, eligible: true },
     });
@@ -640,6 +710,18 @@ async function handle(req: NextRequest, segments: string[]) {
     if (!quoteAddress && !mockQatarLand(body.latitude, body.longitude)) {
       return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
     }
+    if (typeof body.duration_version !== "string" || body.duration_version.length === 0) {
+      return fail(422, "Validation failed.", {
+        duration_version: ["The duration version field is required."],
+      });
+    }
+    const durationContract = await durationSnapshot(quoteCars.map((car: Record<string, unknown>) => ({
+      service_id: Number(car.service_id),
+      add_on_ids: Array.isArray(car.add_on_ids) ? car.add_on_ids.map(Number) : [],
+    })));
+    if (String(body.duration_version ?? "") !== durationContract.version) {
+      return staleDuration(durationContract);
+    }
 
     // Match the backend: auto-apply only for a single, add-on-free car.
     const singleAddonFree =
@@ -655,7 +737,7 @@ async function handle(req: NextRequest, segments: string[]) {
 
     let serviceTotal = 0;
     let membershipDiscount = 0;
-    let totalDuration = 0;
+    const totalDuration = durationContract.total_minutes;
     let firstService: (typeof SERVICES)[number] | undefined;
     const summary = new Map<number, { m: MockMembership; applied: number }>();
     const carsOut = norm.map((c: { service_id: number; type: string }, i: number) => {
@@ -663,7 +745,6 @@ async function handle(req: NextRequest, segments: string[]) {
       firstService ??= service;
       const base = service ? (c.type === "suv" ? service.price_suv : service.price) : 0;
       serviceTotal += base;
-      totalDuration += service?.duration_minutes ?? 0;
       const m = alloc[i];
       if (m) {
         membershipDiscount += base;
@@ -693,6 +774,7 @@ async function handle(req: NextRequest, segments: string[]) {
       time_range_label: `${startHm}–${endHm}`,
       duration_minutes: totalDuration,
       duration_label: formatDuration(totalDuration),
+      duration: durationContract,
       base_price: serviceTotal,
       discount_total: membershipDiscount,
       service_total: serviceTotal,
@@ -737,6 +819,11 @@ async function handle(req: NextRequest, segments: string[]) {
     if (!bookingAddress && !mockQatarLand(body.latitude, body.longitude)) {
       return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
     }
+    if (typeof body.duration_version !== "string" || body.duration_version.length === 0) {
+      return fail(422, "Validation failed.", {
+        duration_version: ["The duration version field is required."],
+      });
+    }
 
     // Membership redemption: single vehicle, plan-defined service, QR 0.
     if (body.membership_id) {
@@ -749,7 +836,11 @@ async function handle(req: NextRequest, segments: string[]) {
         return fail(422, "This membership is not active or has no washes remaining.");
       }
       const planService = SERVICES.find((sv) => sv.id === (membership.plan.scope === "full_wash" ? 1 : 1)) ?? SERVICES[0];
-      if (!hasFleetCapacity(scheduledAt, planService.duration_minutes)) {
+      const membershipDuration = await durationSnapshot([{ service_id: planService.id, add_on_ids: [] }]);
+      if (String(body.duration_version ?? "") !== membershipDuration.version) {
+        return staleDuration(membershipDuration);
+      }
+      if (!hasFleetCapacity(scheduledAt, membershipDuration.total_minutes)) {
         return fail(409, "This time slot is no longer available. Please pick another slot.");
       }
       membership.washes_used += 1;
@@ -765,8 +856,9 @@ async function handle(req: NextRequest, segments: string[]) {
         scheduled_at: new Date(scheduledAt).toISOString(),
         service_date: qatarServiceDate(scheduledAt),
         timezone: "Asia/Qatar",
-        scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (planService.duration_minutes * 60_000)).toISOString(),
-        duration_minutes: planService.duration_minutes,
+        scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (membershipDuration.total_minutes * 60_000)).toISOString(),
+        duration_minutes: membershipDuration.total_minutes,
+        duration: { ...membershipDuration, status: "accepted", ambiguous: false },
         payment_method: "membership",
         total: 0,
         address_area: String(body.address_area ?? "").trim(),
@@ -785,6 +877,13 @@ async function handle(req: NextRequest, segments: string[]) {
     }
 
     const cars = Array.isArray(body.cars) ? body.cars : [];
+    const bookingDurationContract = await durationSnapshot(cars.map((car: Record<string, unknown>) => ({
+      service_id: Number(car.service_id),
+      add_on_ids: Array.isArray(car.add_on_ids) ? car.add_on_ids.map(Number) : [],
+    })));
+    if (String(body.duration_version ?? "") !== bookingDurationContract.version) {
+      return staleDuration(bookingDurationContract);
+    }
     const paymentMethod = body.payment_method as PaymentMethod;
 
     if (!scheduledAt || cars.length === 0 || !["pay_on_site", "online"].includes(paymentMethod)) {
@@ -838,10 +937,7 @@ async function handle(req: NextRequest, segments: string[]) {
       productTotal += lineTotal;
     }
 
-    const bookingDuration = bookingCars.reduce(
-      (sum, car) => sum + (SERVICES.find((service) => service.id === car.service.id)?.duration_minutes ?? 0) + car.add_ons.reduce((addOnTotal, addOn) => addOnTotal + (addOn.duration_minutes ?? 0), 0),
-      0,
-    ) || 60;
+    const bookingDuration = bookingDurationContract.total_minutes;
     if (!hasFleetCapacity(scheduledAt, bookingDuration)) {
       return fail(409, "This time slot is no longer available. Please pick another slot.");
     }
@@ -910,6 +1006,7 @@ async function handle(req: NextRequest, segments: string[]) {
       timezone: "Asia/Qatar",
       scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (bookingDuration * 60_000)).toISOString(),
       duration_minutes: bookingDuration,
+      duration: { ...bookingDurationContract, status: "accepted", ambiguous: false },
       payment_method: fullyCovered ? "membership" : paymentMethod,
       total: Math.max(0, subtotal - discount + productTotal),
       product_total: productTotal,

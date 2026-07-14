@@ -1,5 +1,13 @@
 # Bubble It Landing Page — CLAUDE.md
 
+## Durable booking-duration rule
+
+The customer app never calculates operational scheduling duration. It must use
+the backend `duration-v1` snapshot from availability, echo its version to quote,
+echo the accepted quote version to booking commit, and recover
+`DURATION_VERSION_STALE` by reloading availability. Keep
+`docs/contracts/duration-v1.json` byte-identical with backend and mobile.
+
 Repository notes for agents working on the Bubble It marketing site and customer booking flow.
 
 ---

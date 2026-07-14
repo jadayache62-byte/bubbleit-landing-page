@@ -1,0 +1,54 @@
+{
+  "schema": "duration-v1",
+  "description": "Server-owned operational booking duration snapshot",
+  "snapshot": {
+    "schema": "duration-v1",
+    "version": "duration-v1:<24 lowercase hex characters>",
+    "total_minutes": 45,
+    "contributions": [
+      {
+        "line_index": 0,
+        "kind": "service",
+        "service_id": 101,
+        "add_on_id": null,
+        "name": "Standard Bubble",
+        "configured_minutes": 30,
+        "contributes": true,
+        "minutes": 30
+      },
+      {
+        "line_index": 0,
+        "kind": "add_on",
+        "service_id": 101,
+        "add_on_id": 201,
+        "name": "Operational steam extension",
+        "configured_minutes": 15,
+        "contributes": true,
+        "minutes": 15
+      },
+      {
+        "line_index": 0,
+        "kind": "add_on",
+        "service_id": 101,
+        "add_on_id": 202,
+        "name": "Fragrance",
+        "configured_minutes": 10,
+        "contributes": false,
+        "minutes": 0
+      }
+    ]
+  },
+  "accepted_booking_status": "accepted",
+  "legacy_statuses": ["deterministic_legacy", "ambiguous_legacy"],
+  "stale_error": {
+    "http_status": 409,
+    "code": "DURATION_VERSION_STALE",
+    "data_path": "data.duration"
+  },
+  "nullability": {
+    "accepted_version": "required",
+    "accepted_contributions": "required array",
+    "ambiguous_legacy_version": "null",
+    "ambiguous_legacy_contributions": "null"
+  }
+}

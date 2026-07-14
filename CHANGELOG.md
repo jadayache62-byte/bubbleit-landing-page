@@ -13,6 +13,16 @@
 
 ---
 
+## [2026-07-14] — Authoritative booking duration contract (MAD-68)
+
+- Availability now supplies a versioned `duration-v1` snapshot; the booking wizard carries that version through quote and commit and will not confirm without an authoritative quote.
+- Stale timing is handled separately from fleet-capacity conflicts: the wizard reloads availability and asks the customer to review the updated time.
+- Confirmation displays the backend’s total duration and each service/add-on timing contribution, including add-ons that add no operational time.
+- The development mock implements the same deterministic version, stale response, accepted snapshot, and contribution rules as Laravel.
+- Added the byte-identical cross-repository contract vector at `docs/contracts/duration-v1.json`.
+
+---
+
 ## [2026-07-13] — Production audit hardening (build guard + security headers)
 
 ### Fixed

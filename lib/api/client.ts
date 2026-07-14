@@ -334,6 +334,7 @@ export function createBooking(payload: CreateBookingPayload) {
 export function getQuote(payload: {
   scheduled_at: string;
   cars: QuoteCar[];
+  duration_version: string;
   use_membership?: boolean;
   address_id?: number;
   latitude?: number;
