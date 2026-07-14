@@ -86,7 +86,7 @@ export class ApiError extends Error {
 
 async function request<T>(
   path: string,
-  options: { method?: string; body?: unknown; auth?: boolean } = {},
+  options: { method?: string; body?: unknown; auth?: boolean; headers?: Record<string, string> } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -96,6 +96,7 @@ async function request<T>(
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
+  Object.assign(headers, options.headers);
 
   const res = await fetch(`${BASE}${path}`, {
     method: options.method ?? "GET",
@@ -271,8 +272,12 @@ export function listVehicles() {
   return request<Paginated<Vehicle>>("/vehicles").then((r) => r.data);
 }
 
-export function createVehicle(payload: Omit<Vehicle, "id">) {
-  return request<Vehicle>("/vehicles", { method: "POST", body: payload });
+export function createVehicle(payload: Omit<Vehicle, "id">, idempotencyKey?: string) {
+  return request<Vehicle>("/vehicles", {
+    method: "POST",
+    body: payload,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+  });
 }
 
 export function deleteVehicle(id: number) {
@@ -284,8 +289,12 @@ export type AddressPayload = Omit<Address, "id" | "service_area" | "latitude" | 
   longitude: number;
 };
 
-export function createAddress(payload: AddressPayload) {
-  return request<Address>("/addresses", { method: "POST", body: payload });
+export function createAddress(payload: AddressPayload, idempotencyKey?: string) {
+  return request<Address>("/addresses", {
+    method: "POST",
+    body: payload,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+  });
 }
 
 export function listAddresses() {
@@ -325,8 +334,19 @@ export function validatePromo(code: string, subtotal: number, serviceIds: number
   });
 }
 
-export function createBooking(payload: CreateBookingPayload) {
-  return request<Booking>("/bookings", { method: "POST", body: payload });
+export function createBooking(payload: CreateBookingPayload, idempotencyKey?: string) {
+  return request<Booking>("/bookings", {
+    method: "POST",
+    body: payload,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+  });
+}
+
+export function initializeBookingPayment(bookingId: number, idempotencyKey: string) {
+  return request<{ checkout_url: string; status: "ready" }>(`/bookings/${bookingId}/pay`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
 }
 
 // Server-side price preview: applies the customer's eligible memberships to the

@@ -79,6 +79,7 @@ function authCustomer(req: NextRequest) {
 const FLEET_CAPACITY = 2;
 const POST_BOOKING_BUFFER_MINUTES = 30;
 const SERVICE_AREA_VERSION = "qatar-cgis-land-2026-07-14-v1";
+const idempotencyResponses = new Map<string, { request: string; status: number; body: unknown }>();
 
 // Development-only approximation. Production eligibility is always decided
 // by the Laravel API's versioned official CGIS polygon snapshot.
@@ -1035,7 +1036,13 @@ async function handle(req: NextRequest, segments: string[]) {
     }
 
     const { customer_id: _c, ...pub } = booking;
-    return envelope(pub, { status: 201, message: "Booking created." });
+    return envelope({
+      ...pub,
+      payment: {
+        status: pub.payment_method === "online" && pub.total > 0 ? "not_started" : "not_required",
+        checkout_url: null,
+      },
+    }, { status: 201, message: "Booking created." });
   }
 
   const bookingMatch = path.match(/^bookings\/(\d+)(?:\/(cancel|pay|mock-complete-payment))?$/);
@@ -1070,7 +1077,7 @@ async function handle(req: NextRequest, segments: string[]) {
       if (booking.status !== "pending_payment" || booking.payment_method !== "online") {
         return fail(422, "This booking is not awaiting online payment.");
       }
-      return envelope({ checkout_url: `/book/checkout?booking=${booking.id}` });
+      return envelope({ checkout_url: `/book/checkout?booking=${booking.id}`, status: "ready" });
     }
 
     // Mock-only: the fake checkout page calls this to simulate a successful
@@ -1102,7 +1109,31 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   return handle(req, (await ctx.params).path);
 }
 export async function POST(req: NextRequest, ctx: Ctx) {
-  return handle(req, (await ctx.params).path);
+  const segments = (await ctx.params).path;
+  const key = req.headers.get("idempotency-key");
+  if (!key) return handle(req, segments);
+
+  const requestBody = await req.clone().json().catch(() => ({}));
+  const customerScope = authCustomer(req)?.id ?? "anonymous";
+  const cacheKey = `${customerScope}:${segments.join("/")}:${key}`;
+  const requestHash = JSON.stringify(requestBody);
+  const cached = idempotencyResponses.get(cacheKey);
+  if (cached) {
+    if (cached.request !== requestHash) {
+      return fail(409, "This idempotency key was already used for a different request.", null, null, "IDEMPOTENCY_KEY_REUSED");
+    }
+    return NextResponse.json(cached.body, { status: cached.status });
+  }
+
+  const response = await handle(req, segments);
+  if (response.ok) {
+    idempotencyResponses.set(cacheKey, {
+      request: requestHash,
+      status: response.status,
+      body: await response.clone().json(),
+    });
+  }
+  return response;
 }
 export async function PUT(req: NextRequest, ctx: Ctx) {
   return handle(req, (await ctx.params).path);

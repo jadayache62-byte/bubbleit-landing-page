@@ -29,6 +29,7 @@ import {
   getQuote,
   getServices,
   getToken,
+  initializeBookingPayment,
   listStoreProducts,
   me,
   validatePromo,
@@ -54,6 +55,7 @@ import { localized, useI18n } from "@/lib/i18n";
 
 const CURRENCY = "QR";
 const STALE_SLOT_MS = 15 * 60 * 1000;
+const BOOKING_ATTEMPT_KEY = "bubbleit.booking.idempotency";
 
 // The three vehicle cards. Jet ski & jet boat share one "Jet" card with a
 // sub-toggle; each vehicle in a booking can independently be any kind.
@@ -259,6 +261,23 @@ export function BookingWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Booking | null>(null);
+  const [paymentRecovery, setPaymentRecovery] = useState(false);
+  const [paymentRetrying, setPaymentRetrying] = useState(false);
+  const bookingAttemptRef = useRef<string | null>(null);
+
+  const bookingAttemptKey = useCallback(() => {
+    if (bookingAttemptRef.current) return bookingAttemptRef.current;
+    const stored = window.sessionStorage.getItem(BOOKING_ATTEMPT_KEY);
+    const key = stored || window.crypto.randomUUID();
+    window.sessionStorage.setItem(BOOKING_ATTEMPT_KEY, key);
+    bookingAttemptRef.current = key;
+    return key;
+  }, []);
+
+  const clearBookingAttempt = useCallback(() => {
+    bookingAttemptRef.current = null;
+    window.sessionStorage.removeItem(BOOKING_ATTEMPT_KEY);
+  }, []);
 
   useEffect(() => {
     if (!confirmed) return;
@@ -643,6 +662,7 @@ export function BookingWizard() {
     }
     setSubmitting(true);
     setError(null);
+    const attemptKey = bookingAttemptKey();
     try {
       const addressId = selectedAddressId ?? (await createAddress({
         label: "Home",
@@ -653,7 +673,7 @@ export function BookingWizard() {
         street_number: streetNumber.trim(),
         latitude: geo.lat,
         longitude: geo.lng,
-      })).id;
+      }, `${attemptKey}:address`)).id;
 
       const carPayloads = [];
       for (const car of cars) {
@@ -666,7 +686,7 @@ export function BookingWizard() {
             color: car.color.trim(),
             plate_number: car.plate.trim(),
             type: car.vtype,
-          });
+          }, `${attemptKey}:vehicle:${car.key}`);
           vehicleId = vehicle.id;
         }
         carPayloads.push({
@@ -691,23 +711,33 @@ export function BookingWizard() {
         product_lines: Object.entries(productQuantities)
           .filter(([, quantity]) => quantity > 0)
           .map(([product_id, quantity]) => ({ product_id, quantity })),
-      });
+      }, `${attemptKey}:booking`);
 
-      // Online-only: hand off to the SkipCash hosted checkout.
-      if (booking.payment?.checkout_url) {
-        window.location.assign(booking.payment.checkout_url);
-        return;
+      if (booking.payment?.status === "not_started") {
+        try {
+          const payment = await initializeBookingPayment(booking.id, `${attemptKey}:payment`);
+          clearBookingAttempt();
+          window.location.assign(payment.checkout_url);
+          return;
+        } catch {
+          setConfirmed(booking);
+          setPaymentRecovery(true);
+          return;
+        }
       }
+      clearBookingAttempt();
       setConfirmed(booking);
     } catch (e) {
       if (e instanceof ApiError && ["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR"].includes(e.code ?? "")) {
         setError(t("The Qatar service-area map changed or this saved location needs confirmation. Please reselect the location."));
         setServiceAreaVersion(null);
         setStep(1);
+        clearBookingAttempt();
       } else if (e instanceof ApiError && e.code === "DURATION_VERSION_STALE") {
         setError(t("Service timing changed. Please review the updated time before confirming."));
         setQuote(null);
         setStep(2);
+        clearBookingAttempt();
         loadSlots(date, availabilityCars);
       } else if (e instanceof ApiError && e.status === 409) {
         // The backend sends distinct 409 reasons — a car that is already
@@ -720,6 +750,7 @@ export function BookingWizard() {
             : t("That slot was just taken. Please pick another time."),
         );
         setStep(2);
+        clearBookingAttempt();
         loadSlots(date, availabilityCars);
       } else {
         setError(
@@ -730,6 +761,20 @@ export function BookingWizard() {
       }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function retryPayment() {
+    if (!confirmed) return;
+    setPaymentRetrying(true);
+    try {
+      const payment = await initializeBookingPayment(confirmed.id, `${bookingAttemptKey()}:payment`);
+      clearBookingAttempt();
+      window.location.assign(payment.checkout_url);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : t("Payment is still unavailable. Your booking remains saved."));
+    } finally {
+      setPaymentRetrying(false);
     }
   }
 
@@ -749,7 +794,13 @@ export function BookingWizard() {
   if (confirmed) {
     return (
       <div ref={topRef} className="mx-auto w-full max-w-3xl scroll-mt-24">
-        <SuccessPanel booking={confirmed} />
+        <SuccessPanel
+          booking={confirmed}
+          paymentRecovery={paymentRecovery}
+          paymentRetrying={paymentRetrying}
+          onRetryPayment={retryPayment}
+          error={error}
+        />
       </div>
     );
   }
@@ -2125,7 +2176,19 @@ function PromoField({
   );
 }
 
-function SuccessPanel({ booking }: { booking: Booking }) {
+function SuccessPanel({
+  booking,
+  paymentRecovery,
+  paymentRetrying,
+  onRetryPayment,
+  error,
+}: {
+  booking: Booking;
+  paymentRecovery: boolean;
+  paymentRetrying: boolean;
+  onRetryPayment: () => void;
+  error: string | null;
+}) {
   const { lang, t } = useI18n();
   const when = formatQatarDateTime(
     booking.scheduled_at,
@@ -2143,13 +2206,29 @@ function SuccessPanel({ booking }: { booking: Booking }) {
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl">
         ✓
       </div>
-      <h2 className="mt-6 text-2xl font-bold">{t("Booking confirmed!")}</h2>
+      <h2 className="mt-6 text-2xl font-bold">
+        {paymentRecovery ? t("Booking saved — payment pending") : t("Booking confirmed!")}
+      </h2>
       <p className="mt-2 text-[color:var(--muted-foreground)]">
         {t("Reference")}{" "}
         <span className="font-bold text-[color:var(--navy)]">
           {booking.reference}
         </span>
       </p>
+      {paymentRecovery && (
+        <div className="mt-6 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
+          <p>{t("Your booking was saved once. Retry payment without creating another booking.")}</p>
+          <button
+            type="button"
+            className="primary-button mt-4"
+            disabled={paymentRetrying}
+            onClick={onRetryPayment}
+          >
+            {paymentRetrying ? t("Retrying…") : t("Retry secure payment")}
+          </button>
+          {error && <p className="mt-3 text-xs font-semibold text-red-700">{error}</p>}
+        </div>
+      )}
       <p className="mt-4 text-sm leading-7 text-[color:var(--muted-foreground)]">
         {when}
         <br />

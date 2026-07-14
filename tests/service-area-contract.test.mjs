@@ -15,7 +15,7 @@ test("availability sends coordinates and returns the versioned service-area cont
 
 test("quote and booking carry one authoritative service-area version", () => {
   assert.match(wizard, /service_area_version: serviceAreaVersion/g);
-  assert.match(wizard, /code === "SERVICE_AREA_STALE"/);
+  assert.match(wizard, /\["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR"\]\.includes/);
 });
 
 test("store validates coordinates before creating an order", () => {
