@@ -159,9 +159,14 @@ export type Booking = {
 };
 
 export type VerifyOtpResult = {
-  token: string;
   customer: Customer;
   is_new: boolean;
+  session?: {
+    label: string;
+    created_at: string | null;
+    last_used_at: string | null;
+    expires_at: string;
+  };
 };
 
 export type CreateBookingPayload = {

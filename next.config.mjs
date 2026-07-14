@@ -3,12 +3,16 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Fail the production build when the customer API base is missing, rather than
-// silently shipping a bundle that falls back to the in-repo mock API (which
-// would take fake bookings and payments that never reach the backend).
-if (process.env.NODE_ENV === "production" && !process.env.NEXT_PUBLIC_API_BASE) {
+// The server-only BFF owns the upstream URL and bearer token. Keep the former
+// NEXT_PUBLIC name as a deployment-compatible fallback, but client code never
+// reads either value.
+if (
+  process.env.NODE_ENV === "production" &&
+  !process.env.CUSTOMER_API_BASE &&
+  !process.env.NEXT_PUBLIC_API_BASE
+) {
   throw new Error(
-    "NEXT_PUBLIC_API_BASE must be set for a production build — without it the " +
+    "CUSTOMER_API_BASE must be set for a production build — without it the " +
       "site serves the local mock API instead of the real Laravel backend.",
   );
 }

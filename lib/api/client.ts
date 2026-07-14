@@ -22,45 +22,9 @@ import type {
   VerifyOtpResult,
 } from "@/lib/api/types";
 
-// The mock API is a DEV-ONLY fallback. Production builds fail in
-// next.config.mjs when NEXT_PUBLIC_API_BASE is unset, so a deployed bundle
-// never silently serves mock data. Point it at the real backend, e.g.
-// NEXT_PUBLIC_API_BASE=https://bubbleit-backend.on-forge.com/api/v1/customer
-const BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "/api/mock/v1/customer";
-
-const TOKEN_KEY = "bubbleit.customer_token";
-const TOKEN_COOKIE = "bubbleit_customer_token";
-const TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
-
-function readTokenCookie(): string | null {
-  if (typeof document === "undefined") return null;
-  const token = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(`${TOKEN_COOKIE}=`))
-    ?.split("=")[1];
-  return token ? decodeURIComponent(token) : null;
-}
-
-function writeTokenCookie(token: string | null) {
-  if (typeof document === "undefined") return;
-  const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = token
-    ? `${TOKEN_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=${TOKEN_MAX_AGE_SECONDS}; SameSite=Lax${secure}`
-    : `${TOKEN_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
-}
-
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return readTokenCookie() ?? window.localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string | null) {
-  if (typeof window === "undefined") return;
-  writeTokenCookie(token);
-  if (token) window.localStorage.setItem(TOKEN_KEY, token);
-  else window.localStorage.removeItem(TOKEN_KEY);
-}
+// The browser only calls this same-origin BFF. The BFF owns the backend bearer
+// token in an HttpOnly cookie, so application JavaScript can never read it.
+const BASE = "/api/customer";
 
 export class ApiError extends Error {
   status: number;
@@ -86,16 +50,12 @@ export class ApiError extends Error {
 
 async function request<T>(
   path: string,
-  options: { method?: string; body?: unknown; auth?: boolean } = {},
+  options: { method?: string; body?: unknown } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
-  if (options.auth !== false) {
-    const token = getToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-  }
 
   const res = await fetch(`${BASE}${path}`, {
     method: options.method ?? "GET",
@@ -109,6 +69,22 @@ async function request<T>(
     envelope = (await res.json()) as Envelope<T>;
   } catch {
     throw new ApiError(res.status, "Unexpected server response.");
+  }
+
+  if (
+    res.status === 401 &&
+    res.headers.get("x-session-ended") === "true" &&
+    typeof window !== "undefined"
+  ) {
+    window.sessionStorage.setItem(
+      "bubbleit.auth.return_to",
+      `${window.location.pathname}${window.location.search}`,
+    );
+    window.dispatchEvent(
+      new CustomEvent("bubbleit:session-ended", {
+        detail: { message: envelope.message || "Your session has ended. Please sign in again." },
+      }),
+    );
   }
 
   if (!res.ok || !envelope.success) {
@@ -127,7 +103,7 @@ async function request<T>(
 // ── Public catalog ───────────────────────────────────────────────────────────
 
 export function getServices() {
-  return request<Paginated<Service>>("/services", { auth: false }).then((r) => r.data);
+  return request<Paginated<Service>>("/services").then((r) => r.data);
 }
 
 export type AvailabilityCar = {
@@ -154,15 +130,15 @@ export function getAvailability(
     });
   }
 
-  return request<Availability>(`/availability?${params.toString()}`, { auth: false });
+  return request<Availability>(`/availability?${params.toString()}`);
 }
 
 export function getMembershipPlans() {
-  return request<Paginated<MembershipPlan>>("/membership-plans", { auth: false }).then((r) => r.data);
+  return request<Paginated<MembershipPlan>>("/membership-plans").then((r) => r.data);
 }
 
 export function listStoreProducts() {
-  return request<Paginated<StoreProductInventory>>("/store/products", { auth: false }).then((r) =>
+  return request<Paginated<StoreProductInventory>>("/store/products").then((r) =>
     r.data.map((product) => ({
       ...product,
       imageAlt: product.imageAlt ?? product.name,
@@ -189,18 +165,19 @@ export function checkPhone(phone: string) {
   return request<{ continuation: "choose_auth_method" }>("/auth/check-phone", {
     method: "POST",
     body: { phone },
-    auth: false,
   });
 }
 
-export async function loginWithPassword(phone: string, password: string) {
-  const result = await request<VerifyOtpResult>("/auth/login", {
+function customerDeviceLabel() {
+  const platform = typeof navigator === "undefined" ? "" : navigator.platform.trim();
+  return platform ? `BubbleIt customer web on ${platform}` : "BubbleIt customer web";
+}
+
+export function loginWithPassword(phone: string, password: string) {
+  return request<VerifyOtpResult>("/auth/login", {
     method: "POST",
-    body: { phone, password },
-    auth: false,
+    body: { phone, password, device_name: customerDeviceLabel() },
   });
-  setToken(result.token);
-  return result;
 }
 
 export async function register(payload: {
@@ -209,13 +186,10 @@ export async function register(payload: {
   password: string;
   code: string;
 }) {
-  const result = await request<VerifyOtpResult>("/auth/register", {
+  return request<VerifyOtpResult>("/auth/register", {
     method: "POST",
-    body: payload,
-    auth: false,
+    body: { ...payload, device_name: customerDeviceLabel() },
   });
-  setToken(result.token);
-  return result;
 }
 
 export type OtpPurpose = "authentication" | "registration";
@@ -224,18 +198,14 @@ export function requestOtp(phone: string, purpose: OtpPurpose) {
   return request<null>("/auth/request-otp", {
     method: "POST",
     body: { phone, purpose },
-    auth: false,
   });
 }
 
-export async function verifyOtp(phone: string, code: string) {
-  const result = await request<VerifyOtpResult>("/auth/verify-otp", {
+export function verifyOtp(phone: string, code: string) {
+  return request<VerifyOtpResult>("/auth/verify-otp", {
     method: "POST",
-    body: { phone, code },
-    auth: false,
+    body: { phone, code, device_name: customerDeviceLabel() },
   });
-  setToken(result.token);
-  return result;
 }
 
 export function me() {
@@ -243,11 +213,7 @@ export function me() {
 }
 
 export async function logout() {
-  try {
-    await request<null>("/auth/logout", { method: "POST" });
-  } finally {
-    setToken(null);
-  }
+  await request<null>("/auth/logout", { method: "POST" });
 }
 
 export function updateProfile(payload: { name: string; email?: string; password?: string }) {
@@ -333,4 +299,8 @@ export function getBooking(id: number) {
 
 export function cancelBooking(id: number) {
   return request<Booking>(`/bookings/${id}/cancel`, { method: "POST" });
+}
+
+export function completeMockBookingPayment(id: number) {
+  return request<null>(`/bookings/${id}/mock-complete-payment`, { method: "POST" });
 }

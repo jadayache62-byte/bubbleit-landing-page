@@ -11,7 +11,6 @@ import {
   ApiError,
   createAddress,
   deleteAddress,
-  getToken,
   listAddresses,
   me,
   updateAddress,
@@ -89,8 +88,7 @@ export default function AccountLocationsPage() {
   }, []);
 
   useEffect(() => {
-    const check = getToken() ? me() : Promise.reject();
-    check
+    me()
       .then((c) => {
         setCustomer(c);
         refresh();

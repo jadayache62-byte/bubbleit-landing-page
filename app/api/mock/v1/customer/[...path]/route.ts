@@ -1,6 +1,6 @@
 // Mock implementation of customer-contract-v1 (bubbleit-mobile/docs/api-contract/).
 // Response envelope, paginator shape, and status semantics match the contract so
-// the frontend swaps to the real Laravel backend via NEXT_PUBLIC_API_BASE only.
+// the server-side BFF swaps to the real Laravel backend via CUSTOMER_API_BASE.
 
 import { NextRequest, NextResponse } from "next/server";
 import type {
@@ -53,10 +53,7 @@ function fail(status: number, message: string, errors: Record<string, string[]> 
 
 function authCustomer(req: NextRequest) {
   const header = req.headers.get("authorization") ?? "";
-  const token =
-    header.replace(/^Bearer\s+/i, "") ||
-    req.cookies.get("bubbleit_customer_token")?.value ||
-    "";
+  const token = header.replace(/^Bearer\s+/i, "");
   const customerId = db().tokens.get(token);
   if (!customerId) return null;
   return db().customers.find((c) => c.id === customerId) ?? null;
@@ -433,10 +430,7 @@ async function handle(req: NextRequest, segments: string[]) {
 
   if (method === "POST" && path === "auth/logout") {
     const header = req.headers.get("authorization") ?? "";
-    const token =
-      header.replace(/^Bearer\s+/i, "") ||
-      req.cookies.get("bubbleit_customer_token")?.value ||
-      "";
+    const token = header.replace(/^Bearer\s+/i, "");
     if (token) store.tokens.delete(token);
     return envelope(null, { message: "Logged out." });
   }
@@ -444,9 +438,21 @@ async function handle(req: NextRequest, segments: string[]) {
   if (method === "PUT" && path === "profile") {
     if (typeof body.name === "string") customer.name = body.name.trim();
     if (typeof body.email === "string") customer.email = body.email.trim() || null;
-    if (typeof body.password === "string" && body.password) customer.password = body.password;
+    const passwordChanged = typeof body.password === "string" && body.password;
+    if (passwordChanged) {
+      customer.password = body.password;
+      for (const [token, customerId] of store.tokens.entries()) {
+        if (customerId === customer.id) store.tokens.delete(token);
+      }
+    }
     const { vehicles: _v, addresses: _a, password: _pw, ...publicCustomer } = customer;
-    return envelope(publicCustomer);
+    const response = envelope(publicCustomer, {
+      message: passwordChanged
+        ? "Password updated. Please sign in again."
+        : "Profile updated.",
+    });
+    if (passwordChanged) response.headers.set("X-Reauthentication-Required", "true");
+    return response;
   }
 
   // ── Vehicles ──

@@ -60,6 +60,7 @@ export function AuthPanel({
   const [newPassword, setNewPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   function fail(e: unknown) {
     setError(e instanceof ApiError ? e.message : t("Something went wrong. Please try again."));
@@ -146,7 +147,11 @@ export function AuthPanel({
       if (newPassword.length >= 6) {
         await updateProfile({ name: result.customer.name || "-", password: newPassword });
       }
-      onAuthed(result.customer);
+      setPassword("");
+      setNewPassword("");
+      setCode("");
+      setNotice(t("Your password was reset. Sign in again on this device."));
+      setStage("password");
     } catch (e) {
       fail(e);
     } finally {
@@ -376,6 +381,11 @@ export function AuthPanel({
         {error && (
           <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             {error}
+          </p>
+        )}
+        {notice && (
+          <p role="status" className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+            {notice}
           </p>
         )}
       </div>

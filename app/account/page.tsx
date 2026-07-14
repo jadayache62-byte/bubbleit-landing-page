@@ -11,7 +11,6 @@ import {
   ApiError,
   cancelBooking,
   deleteVehicle,
-  getToken,
   listAddresses,
   listBookings,
   listMemberships,
@@ -62,6 +61,7 @@ export default function AccountPage() {
   const [memberships, setMemberships] = useState<CustomerMembership[] | null>(null);
   const [tab, setTab] = useState<"overview" | "bookings" | "memberships" | "vehicles">("overview");
   const [error, setError] = useState<string | null>(null);
+  const [sessionEnded, setSessionEnded] = useState(false);
 
   const refresh = useCallback(() => {
     listBookings().then(setBookings).catch(() => setBookings([]));
@@ -71,8 +71,10 @@ export default function AccountPage() {
   }, []);
 
   useEffect(() => {
-    const check = getToken() ? me() : Promise.reject();
-    check
+    queueMicrotask(() => {
+      setSessionEnded(new URLSearchParams(window.location.search).get("session") === "expired");
+    });
+    me()
       .then((c) => {
         setCustomer(c);
         refresh();
@@ -80,6 +82,20 @@ export default function AccountPage() {
       .catch(() => setCustomer(null))
       .finally(() => setChecked(true));
   }, [refresh]);
+
+  useEffect(() => {
+    function handleSessionEnded() {
+      setCustomer(null);
+      setBookings(null);
+      setVehicles(null);
+      setAddresses(null);
+      setMemberships(null);
+      setSessionEnded(true);
+    }
+
+    window.addEventListener("bubbleit:session-ended", handleSessionEnded);
+    return () => window.removeEventListener("bubbleit:session-ended", handleSessionEnded);
+  }, []);
 
   async function handleCancel(id: number) {
     if (!window.confirm(t("Cancel this booking?"))) return;
@@ -145,10 +161,22 @@ export default function AccountPage() {
           </div>
         ) : !customer ? (
           <div className="mx-auto max-w-md">
+            {sessionEnded && (
+              <p role="alert" className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                {t("Your session has ended. Sign in again to continue.")}
+              </p>
+            )}
             <AuthPanel
               title={t("Welcome back")}
               onAuthed={(c) => {
+                const destination = window.sessionStorage.getItem("bubbleit.auth.return_to");
+                window.sessionStorage.removeItem("bubbleit.auth.return_to");
+                if (destination && !destination.startsWith("/account")) {
+                  window.location.assign(destination);
+                  return;
+                }
                 setCustomer(c);
+                setSessionEnded(false);
                 refresh();
               }}
             />

@@ -9,7 +9,7 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Framework: Next.js app router
 - Scope: landing pages, customer booking web flow, memberships pages, account pages, and the local mock customer API
 - Backend integration target: `https://bubbleit-backend.on-forge.com/api/v1/customer`
-- **Production builds require `NEXT_PUBLIC_API_BASE`** (the real customer API base). `next.config.mjs` throws when it is missing so a deploy never silently serves the dev-only mock API at `/api/mock/v1/customer`.
+- **Production builds require server-only `CUSTOMER_API_BASE`** (the real customer API base). Browser code calls `/api/customer`; that BFF alone holds the backend bearer token in an HttpOnly, Secure, SameSite=Lax cookie. Never restore script-readable auth cookies, localStorage bearer tokens, or direct browser-to-backend authorization headers. `next.config.mjs` throws when the upstream is missing so a deploy never silently serves the dev-only mock API at `/api/mock/v1/customer`.
 
 ## Booking Flow Notes
 
