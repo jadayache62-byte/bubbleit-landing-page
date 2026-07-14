@@ -1,7 +1,6 @@
-// Bubble It operates only in Doha, Qatar (UTC+3, no DST). Booking times are
-// Qatar wall-clock everywhere: API responses may label the wall-clock digits
-// with `+00:00`, while the local mock returns them without an offset. Neither
-// representation should be converted to the viewer's browser time zone.
+// Booking selections are Qatar wall-clock; the API contract carries an
+// explicit offset and returns canonical UTC instants. Rendering always targets
+// Asia/Qatar, independent of the browser/device timezone.
 
 export const QATAR_UTC_OFFSET = "+03:00";
 
@@ -10,18 +9,15 @@ const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$
 
 /**
  * Serialize a Qatar wall-clock booking slot for the customer API. The API
- * contract intentionally uses a timezone-naive string: YYYY-MM-DDTHH:mm:ss.
+ * contract is RFC 3339 with Qatar's explicit UTC+03:00 offset.
  */
 export function serializeQatarBookingDateTime(date: string, time: string): string {
-  return `${date}T${time}:00`;
+  return `${date}T${time}:00${QATAR_UTC_OFFSET}`;
 }
 
 /**
- * Format a booking datetime from the API as Qatar wall-clock, regardless of
- * the viewer's time zone. The API normally labels Qatar wall-clock digits as
- * +00:00, while the local mock returns the same digits without an offset. A
- * naive value is therefore anchored to UTC before rendering so its digits are
- * preserved instead of being interpreted in the viewer's local time zone.
+ * Offset-less values are supported only as a temporary read compatibility
+ * path and are interpreted as Qatar wall-clock.
  */
 export function formatQatarDateTime(
   iso: string,
@@ -30,9 +26,11 @@ export function formatQatarDateTime(
 ): string {
   const normalized = iso.trim().replace(" ", "T");
   const date = new Date(
-    NAIVE_DATETIME.test(normalized) ? `${normalized}Z` : normalized,
+    NAIVE_DATETIME.test(normalized)
+      ? `${normalized}${QATAR_UTC_OFFSET}`
+      : normalized,
   );
-  return date.toLocaleString(locale, { ...options, timeZone: "UTC" });
+  return date.toLocaleString(locale, { ...options, timeZone: "Asia/Qatar" });
 }
 
 /**
@@ -41,6 +39,18 @@ export function formatQatarDateTime(
  */
 export function qatarSlotMs(date: string, start: string): number {
   return new Date(`${date}T${start}:00${QATAR_UTC_OFFSET}`).getTime();
+}
+
+/** Qatar calendar date (YYYY-MM-DD) for an RFC 3339 instant. */
+export function qatarServiceDate(iso: string): string {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Qatar",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(iso));
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
 }
 
 /**

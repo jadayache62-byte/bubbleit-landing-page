@@ -135,6 +135,8 @@ export type Booking = {
   status_label: string;
   scheduled_at: string; // ISO
   scheduled_end_at?: string;
+  service_date: string; // Qatar YYYY-MM-DD
+  timezone: "Asia/Qatar";
   duration_minutes?: number;
   duration_label?: string;
   time_range_label?: string | null;
