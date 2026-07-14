@@ -11,6 +11,7 @@ import type {
   StoreOrderLine,
   Vehicle,
 } from "@/lib/api/types";
+import { formatQatarDateTime, qatarServiceDate } from "@/lib/datetime";
 import {
   MEMBERSHIP_PLANS,
   MIDNIGHT_SLOT_GRID,
@@ -70,15 +71,23 @@ function toMinutes(hm: string) {
   return Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
 }
 
+function qatarMinutes(iso: string) {
+  return toMinutes(formatQatarDateTime(iso, "en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }));
+}
+
 function hasFleetCapacity(dateTime: string, durationMinutes: number) {
-  const date = dateTime.slice(0, 10);
-  const start = toMinutes(dateTime.slice(11, 16));
-  const end = start + durationMinutes + POST_BOOKING_BUFFER_MINUTES;
+  const date = qatarServiceDate(dateTime);
+  const start = new Date(dateTime).getTime();
+  const end = start + (durationMinutes + POST_BOOKING_BUFFER_MINUTES) * 60_000;
   const overlaps = db().bookings.filter((booking) => {
-    if (booking.scheduled_at.slice(0, 10) !== date) return false;
+    if (booking.service_date !== date) return false;
     if (["cancelled_by_customer", "cancelled_by_admin"].includes(booking.status)) return false;
-    const bookingStart = toMinutes(booking.scheduled_at.slice(11, 16));
-    const bookingEnd = bookingStart + (booking.duration_minutes ?? 60) + POST_BOOKING_BUFFER_MINUTES;
+    const bookingStart = new Date(booking.scheduled_at).getTime();
+    const bookingEnd = bookingStart + ((booking.duration_minutes ?? 60) + POST_BOOKING_BUFFER_MINUTES) * 60_000;
     return bookingStart < end && bookingEnd > start;
   }).length;
   return overlaps < FLEET_CAPACITY;
@@ -275,7 +284,8 @@ async function handle(req: NextRequest, segments: string[]) {
       return fail(422, "Validation failed.", { date: ["A valid date is required."] });
     }
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
+    const todayStr = qatarServiceDate(now.toISOString());
+    const qatarNowMinutes = qatarMinutes(now.toISOString());
     const grid = req.nextUrl.searchParams.get("window") === "midnight" ? MIDNIGHT_SLOT_GRID : SLOT_GRID;
     // Match the live endpoint's structured cart query. Keep service_ids[] as
     // a legacy fallback for membership and older clients.
@@ -305,9 +315,9 @@ async function handle(req: NextRequest, segments: string[]) {
         : 60;
     const closing = toMinutes(grid[grid.length - 1]) + 15;
     const existing = store.bookings
-      .filter((b) => b.scheduled_at.slice(0, 10) === date && !["cancelled_by_customer", "cancelled_by_admin"].includes(b.status))
+      .filter((b) => b.service_date === date && !["cancelled_by_customer", "cancelled_by_admin"].includes(b.status))
       .map((b) => {
-        const s = toMinutes(b.scheduled_at.slice(11, 16));
+        const s = qatarMinutes(b.scheduled_at);
         return [s, s + (b.duration_minutes ?? 60) + POST_BOOKING_BUFFER_MINUTES] as const;
       });
     const slots = grid.map((start) => {
@@ -315,7 +325,7 @@ async function handle(req: NextRequest, segments: string[]) {
       const serviceEnd = s + duration;
       const occupancyEnd = serviceEnd + POST_BOOKING_BUFFER_MINUTES;
       const endHm = `${String(Math.floor(serviceEnd / 60)).padStart(2, "0")}:${String(serviceEnd % 60).padStart(2, "0")}`;
-      const isPast = date < todayStr || (date === todayStr && start <= now.toTimeString().slice(0, 5));
+      const isPast = date < todayStr || (date === todayStr && s <= qatarNowMinutes);
       const overlaps = existing.filter(([es, ee]) => es < occupancyEnd && ee > s).length;
       const available = !isPast && occupancyEnd <= closing && overlaps < FLEET_CAPACITY;
       return { start, end: endHm, available };
@@ -683,7 +693,9 @@ async function handle(req: NextRequest, segments: string[]) {
         reference: makeReference(id),
         status: "paid",
         status_label: STATUS_LABELS.paid,
-        scheduled_at: scheduledAt,
+        scheduled_at: new Date(scheduledAt).toISOString(),
+        service_date: qatarServiceDate(scheduledAt),
+        timezone: "Asia/Qatar",
         scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (planService.duration_minutes * 60_000)).toISOString(),
         duration_minutes: planService.duration_minutes,
         payment_method: "membership",
@@ -824,7 +836,9 @@ async function handle(req: NextRequest, segments: string[]) {
       reference,
       status: fullyCovered ? "paid" : "pending_payment",
       status_label: fullyCovered ? STATUS_LABELS.paid : STATUS_LABELS.pending_payment,
-      scheduled_at: scheduledAt,
+      scheduled_at: new Date(scheduledAt).toISOString(),
+      service_date: qatarServiceDate(scheduledAt),
+      timezone: "Asia/Qatar",
       scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (bookingDuration * 60_000)).toISOString(),
       duration_minutes: bookingDuration,
       payment_method: fullyCovered ? "membership" : paymentMethod,
