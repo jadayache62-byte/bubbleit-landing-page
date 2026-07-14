@@ -121,8 +121,8 @@ export default function AccountLocationsPage() {
   }
 
   async function saveLocation() {
-    if (!form.area.trim() || !form.building_number.trim()) {
-      setError(t("Building number and area are required."));
+    if (!form.area.trim() || !form.building_number.trim() || !geo) {
+      setError(t("Building number, area, and a confirmed map pin are required."));
       return;
     }
     setSaving(true);
@@ -136,8 +136,8 @@ export default function AccountLocationsPage() {
         building_number: form.building_number.trim(),
         zone_number: form.zone_number.trim() || null,
         street_number: form.street_number.trim() || null,
-        latitude: form.latitude,
-        longitude: form.longitude,
+        latitude: geo.lat,
+        longitude: geo.lng,
       };
       if (form.id) await updateAddress(form.id, payload);
       else await createAddress(payload);

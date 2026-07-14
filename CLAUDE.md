@@ -1,5 +1,13 @@
 # Bubble It Landing Page — CLAUDE.md
 
+## Durable booking-duration rule
+
+The customer app never calculates operational scheduling duration. It must use
+the backend `duration-v1` snapshot from availability, echo its version to quote,
+echo the accepted quote version to booking commit, and recover
+`DURATION_VERSION_STALE` by reloading availability. Keep
+`docs/contracts/duration-v1.json` byte-identical with backend and mobile.
+
 Repository notes for agents working on the Bubble It marketing site and customer booking flow.
 
 ---
@@ -54,6 +62,20 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Store checkout uses the same Qatar address card as booking: map pin/current location, mandatory building number, optional zone/street, optional area and extra details.
 - Guest checkout is the default and does not require an account. Require a name and valid eight-digit Qatar phone number, normalize it to `+974`, and preserve the contact step as the future OTP insertion point.
 - A created/pending order must be retained when payment initialization fails so Retry payment does not create a duplicate order.
+
+## Service Area Contract
+
+- Service eligibility is Qatar-wide land territory, not a city, municipality,
+  label, or custom-zone allowlist. The Laravel backend's versioned official
+  CGIS polygon is authoritative; client-side copy and the development mock are
+  never production eligibility evidence.
+- Availability validates the pinned coordinates and returns a
+  `service_area.version`. Quote, booking creation, and store order creation must
+  carry that exact version. Handle `SERVICE_AREA_STALE` by returning the
+  customer to Location for confirmation; display `SERVICE_AREA_OUTSIDE_QATAR`
+  as a recoverable location error.
+- Saved addresses without current eligibility evidence must be edited and
+  revalidated. Never infer eligibility from an address containing “Qatar”.
 
 ## Navigation, Account, and Accessibility
 

@@ -11,6 +11,7 @@ import {
   listStoreProducts,
   me,
   payStoreOrder,
+  validateServiceArea,
 } from "@/lib/api/client";
 import type {
   Customer,
@@ -409,6 +410,12 @@ export function StoreCheckoutClient() {
     setError(null);
     setPaymentNotice(null);
     try {
+      if (!geo) {
+        setError("Confirm the delivery pin before checkout.");
+        setStep("location");
+        return;
+      }
+      const serviceArea = await validateServiceArea(geo.lat, geo.lng);
       const order = await createStoreOrder({
         customer_name: contactName,
         customer_phone: contactPhone,
@@ -422,8 +429,9 @@ export function StoreCheckoutClient() {
         building_number: buildingNumber.trim(),
         zone_number: zoneNumber.trim(),
         street_number: streetNumber.trim(),
-        latitude: geo?.lat ?? null,
-        longitude: geo?.lng ?? null,
+        latitude: geo.lat,
+        longitude: geo.lng,
+        service_area_version: serviceArea.version,
         lines: items.map(({ product, quantity }) => ({
           product_id: product.id,
           inventory_item_id:

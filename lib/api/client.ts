@@ -5,6 +5,7 @@ import type {
   Availability,
   Booking,
   BookingQuote,
+  BookingRescheduleOptions,
   CreateStoreOrderPayload,
   CreateBookingPayload,
   Customer,
@@ -15,6 +16,7 @@ import type {
   PromoValidation,
   QuoteCar,
   Service,
+  ServiceAreaSnapshot,
   StoreOrder,
   StoreOrderPayment,
   StoreProductInventory,
@@ -30,12 +32,16 @@ export class ApiError extends Error {
   status: number;
   errors: Record<string, string[]> | null;
   retryAfterSeconds: number | null;
+  code: string | null;
+  data: unknown;
 
   constructor(
     status: number,
     message: string,
     errors: Record<string, string[]> | null = null,
     retryAfterSeconds: number | null = null,
+    code: string | null = null,
+    data: unknown = null,
   ) {
     super(
       retryAfterSeconds !== null && retryAfterSeconds > 0
@@ -45,17 +51,20 @@ export class ApiError extends Error {
     this.status = status;
     this.errors = errors;
     this.retryAfterSeconds = retryAfterSeconds;
+    this.code = code;
+    this.data = data;
   }
 }
 
 async function request<T>(
   path: string,
-  options: { method?: string; body?: unknown } = {},
+  options: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  Object.assign(headers, options.headers);
 
   const res = await fetch(`${BASE}${path}`, {
     method: options.method ?? "GET",
@@ -95,6 +104,8 @@ async function request<T>(
       envelope.message || "Request failed.",
       envelope.errors,
       Number.isFinite(retryAfter) ? retryAfter : null,
+      envelope.code ?? null,
+      envelope.data,
     );
   }
   return envelope.data;
@@ -113,10 +124,16 @@ export type AvailabilityCar = {
 
 export function getAvailability(
   date: string,
-  window: "standard" | "midnight" = "standard",
+  window: "standard" | "midnight",
+  coordinates: { latitude: number; longitude: number },
   cartOrServiceIds: AvailabilityCar[] | number[] = [],
 ) {
-  const params = new URLSearchParams({ date, window });
+  const params = new URLSearchParams({
+    date,
+    window,
+    latitude: String(coordinates.latitude),
+    longitude: String(coordinates.longitude),
+  });
   if (cartOrServiceIds.every((value) => typeof value === "number")) {
     (cartOrServiceIds as number[]).forEach((serviceId) => {
       params.append("service_ids[]", String(serviceId));
@@ -131,6 +148,13 @@ export function getAvailability(
   }
 
   return request<Availability>(`/availability?${params.toString()}`);
+}
+
+export function validateServiceArea(latitude: number, longitude: number) {
+  return request<ServiceAreaSnapshot>("/service-area/validate", {
+    method: "POST",
+    body: { latitude, longitude },
+  });
 }
 
 export function getMembershipPlans() {
@@ -226,23 +250,36 @@ export function listVehicles() {
   return request<Paginated<Vehicle>>("/vehicles").then((r) => r.data);
 }
 
-export function createVehicle(payload: Omit<Vehicle, "id">) {
-  return request<Vehicle>("/vehicles", { method: "POST", body: payload });
+export function createVehicle(payload: Omit<Vehicle, "id">, idempotencyKey?: string) {
+  return request<Vehicle>("/vehicles", {
+    method: "POST",
+    body: payload,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+  });
 }
 
 export function deleteVehicle(id: number) {
   return request<null>(`/vehicles/${id}`, { method: "DELETE" });
 }
 
-export function createAddress(payload: Omit<Address, "id"> | Omit<Address, "id" | "latitude" | "longitude">) {
-  return request<Address>("/addresses", { method: "POST", body: payload });
+export type AddressPayload = Omit<Address, "id" | "service_area" | "latitude" | "longitude"> & {
+  latitude: number;
+  longitude: number;
+};
+
+export function createAddress(payload: AddressPayload, idempotencyKey?: string) {
+  return request<Address>("/addresses", {
+    method: "POST",
+    body: payload,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+  });
 }
 
 export function listAddresses() {
   return request<Paginated<Address>>("/addresses").then((r) => r.data);
 }
 
-export function updateAddress(id: number, payload: Omit<Address, "id">) {
+export function updateAddress(id: number, payload: AddressPayload) {
   return request<Address>(`/addresses/${id}`, { method: "PUT", body: payload });
 }
 
@@ -275,8 +312,19 @@ export function validatePromo(code: string, subtotal: number, serviceIds: number
   });
 }
 
-export function createBooking(payload: CreateBookingPayload) {
-  return request<Booking>("/bookings", { method: "POST", body: payload });
+export function createBooking(payload: CreateBookingPayload, idempotencyKey?: string) {
+  return request<Booking>("/bookings", {
+    method: "POST",
+    body: payload,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+  });
+}
+
+export function initializeBookingPayment(bookingId: number, idempotencyKey: string) {
+  return request<{ checkout_url: string; status: "ready" }>(`/bookings/${bookingId}/pay`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
 }
 
 // Server-side price preview: applies the customer's eligible memberships to the
@@ -284,7 +332,12 @@ export function createBooking(payload: CreateBookingPayload) {
 export function getQuote(payload: {
   scheduled_at: string;
   cars: QuoteCar[];
+  duration_version: string;
   use_membership?: boolean;
+  address_id?: number;
+  latitude?: number;
+  longitude?: number;
+  service_area_version: string;
 }) {
   return request<BookingQuote>("/bookings/quote", { method: "POST", body: payload });
 }
@@ -303,4 +356,25 @@ export function cancelBooking(id: number) {
 
 export function completeMockBookingPayment(id: number) {
   return request<null>(`/bookings/${id}/mock-complete-payment`, { method: "POST" });
+}
+
+export function getBookingRescheduleOptions(id: number, date: string) {
+  return request<BookingRescheduleOptions>(`/bookings/${id}/reschedule-options?date=${encodeURIComponent(date)}`);
+}
+
+export function rescheduleBooking(
+  id: number,
+  payload: {
+    scheduled_at: string;
+    duration_version: string;
+    service_area_version: string;
+    slot_version: string;
+  },
+  idempotencyKey: string,
+) {
+  return request<Booking>(`/bookings/${id}/reschedule`, {
+    method: "POST",
+    body: payload,
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
 }

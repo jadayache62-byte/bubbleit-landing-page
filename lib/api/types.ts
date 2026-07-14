@@ -6,6 +6,32 @@ export type Envelope<T> = {
   message: string;
   data: T;
   errors: Record<string, string[]> | null;
+  code?: string;
+};
+
+export type ServiceAreaSnapshot = {
+  version: string;
+  eligible: boolean;
+};
+
+export type DurationContribution = {
+  line_index: number;
+  kind: "service" | "add_on" | "fallback";
+  service_id: number | null;
+  add_on_id: number | null;
+  name: string;
+  configured_minutes: number;
+  contributes: boolean;
+  minutes: number;
+};
+
+export type DurationSnapshot = {
+  schema: "duration-v1" | string;
+  version: string;
+  total_minutes: number;
+  contributions: DurationContribution[];
+  status?: "accepted" | "deterministic_legacy" | "ambiguous_legacy";
+  ambiguous?: boolean;
 };
 
 export type Paginated<T> = {
@@ -23,6 +49,7 @@ export type AddOn = {
   name: string;
   price: number;
   duration_minutes?: number;
+  extends_duration: boolean;
 };
 
 export type VehicleType = "sedan" | "suv" | "caravan" | "jet_ski" | "jet_boat";
@@ -53,7 +80,10 @@ export type Slot = {
 
 export type Availability = {
   date: string; // "YYYY-MM-DD"
+  duration_minutes: number;
+  duration: DurationSnapshot;
   slots: Slot[];
+  service_area: ServiceAreaSnapshot;
 };
 
 export type Customer = {
@@ -83,6 +113,7 @@ export type Address = {
   street_number?: string | null;
   latitude: number | null;
   longitude: number | null;
+  service_area: ServiceAreaSnapshot & { stale: boolean };
 };
 
 export type PaymentMethod = "pay_on_site" | "online" | "membership";
@@ -135,8 +166,11 @@ export type Booking = {
   status_label: string;
   scheduled_at: string; // ISO
   scheduled_end_at?: string;
+  service_date: string; // Qatar YYYY-MM-DD
+  timezone: "Asia/Qatar";
   duration_minutes?: number;
   duration_label?: string;
+  duration?: DurationSnapshot;
   time_range_label?: string | null;
   membership_applied?: boolean;
   payment_method: PaymentMethod;
@@ -150,12 +184,20 @@ export type Booking = {
     unit_price: number;
     line_total: number;
   }[];
+  address_label?: string | null;
   address_area: string;
+  address_street?: string | null;
+  building_number?: string | null;
+  zone_number?: string | null;
+  street_number?: string | null;
   notes: string;
   cars: BookingCar[];
   created_at: string;
   // Present on create for online bookings: the SkipCash hosted-checkout URL.
-  payment?: { checkout_url: string | null };
+  payment?: {
+    status: "not_started" | "not_required" | "ready" | "retryable";
+    checkout_url: string | null;
+  };
 };
 
 export type VerifyOtpResult = {
@@ -171,6 +213,7 @@ export type VerifyOtpResult = {
 
 export type CreateBookingPayload = {
   scheduled_at: string;
+  duration_version: string;
   cars?: { vehicle_id: number; service_id: number; add_on_ids: number[] }[];
   membership_id?: number;
   vehicle_id?: number;
@@ -178,11 +221,22 @@ export type CreateBookingPayload = {
   address_area?: string;
   latitude?: number;
   longitude?: number;
+  service_area_version: string;
   payment_method?: PaymentMethod;
   use_membership?: boolean;
   notes?: string;
   promo_code?: string;
   product_lines?: { product_id: string | number; quantity: number }[];
+};
+
+export type BookingRescheduleOptions = {
+  date: string;
+  timezone: "Asia/Qatar";
+  duration: DurationSnapshot;
+  service_area: ServiceAreaSnapshot;
+  policy_version: string;
+  cutoff_hours: number;
+  slots: (Slot & { slot_version: string })[];
 };
 
 // Server-side price preview. The confirm page renders this instead of computing
@@ -207,6 +261,7 @@ export type BookingQuote = {
   time_range_label: string;
   duration_minutes: number;
   duration_label: string;
+  duration: DurationSnapshot;
   base_price: number;
   discount_total: number;
   service_total: number;
@@ -229,6 +284,7 @@ export type BookingQuote = {
     washes_applied: number;
     remaining_after: number;
   }[];
+  service_area: ServiceAreaSnapshot;
 };
 
 // Result of validating a promo code against the current cart. All rule
@@ -297,6 +353,7 @@ export type StoreOrder = {
   street_number?: string | null;
   latitude: number | null;
   longitude: number | null;
+  service_area: ServiceAreaSnapshot;
   subtotal: number;
   total: number;
   lines: StoreOrderLine[];
@@ -311,8 +368,9 @@ export type CreateStoreOrderPayload = {
   building_number?: string;
   zone_number?: string;
   street_number?: string;
-  latitude?: number | null;
-  longitude?: number | null;
+  latitude: number;
+  longitude: number;
+  service_area_version: string;
   notes?: string;
   lines: { product_id: string | number; inventory_item_id?: number; quantity: number }[];
 };

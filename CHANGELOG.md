@@ -29,6 +29,27 @@
 
 ---
 
+ ## [2026-07-14] — Qatar-wide service-area enforcement
+
+### Changed
+- Booking availability now validates the selected map pin against the backend's versioned Qatar land boundary; quote and booking creation carry the same boundary version.
+- Store checkout validates the delivery pin before reserving stock, and saved locations require a confirmed coordinate.
+
+### Fixed
+- Spoofed Qatar address labels, offshore pins, stale saved-address eligibility, and replayed boundary versions now produce recoverable location errors instead of proceeding to capacity, stock, or payment.
+
+---
+
+## [2026-07-14] — Authoritative booking duration contract (MAD-68)
+
+- Availability now supplies a versioned `duration-v1` snapshot; the booking wizard carries that version through quote and commit and will not confirm without an authoritative quote.
+- Stale timing is handled separately from fleet-capacity conflicts: the wizard reloads availability and asks the customer to review the updated time.
+ - Confirmation displays the backend’s total duration and each service/add-on timing contribution, including add-ons that add no operational time.
+ - The development mock implements the same deterministic version, stale response, accepted snapshot, and contribution rules as Laravel.
+ - Added the byte-identical cross-repository contract vector at `docs/contracts/duration-v1.json`.
+
+---
+
 ## [2026-07-13] — Production audit hardening (build guard + security headers)
 
 ### Fixed

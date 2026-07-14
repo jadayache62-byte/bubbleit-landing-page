@@ -28,6 +28,7 @@ import {
   listVehicles,
   getQuote,
   getServices,
+  initializeBookingPayment,
   listStoreProducts,
   me,
   validatePromo,
@@ -35,6 +36,8 @@ import {
 import type {
   Booking,
   BookingQuote,
+  DurationContribution,
+  DurationSnapshot,
   Address,
   Service,
   Slot,
@@ -51,6 +54,7 @@ import { localized, useI18n } from "@/lib/i18n";
 
 const CURRENCY = "QR";
 const STALE_SLOT_MS = 15 * 60 * 1000;
+const BOOKING_ATTEMPT_KEY = "bubbleit.booking.idempotency";
 
 // The three vehicle cards. Jet ski & jet boat share one "Jet" card with a
 // sub-toggle; each vehicle in a booking can independently be any kind.
@@ -240,8 +244,10 @@ export function BookingWizard() {
   const days = useMemo(() => next7Days(), []);
   const [date, setDate] = useState(days[0].date);
   const [slots, setSlots] = useState<Slot[] | null>(null);
+  const [availabilityDuration, setAvailabilityDuration] = useState<DurationSnapshot | null>(null);
   const [slot, setSlot] = useState<string | null>(null);
   const [slotSelectedAt, setSlotSelectedAt] = useState<number | null>(null);
+  const [serviceAreaVersion, setServiceAreaVersion] = useState<string | null>(null);
 
   // Step 4 — payment
   const [notes, setNotes] = useState("");
@@ -254,6 +260,23 @@ export function BookingWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Booking | null>(null);
+  const [paymentRecovery, setPaymentRecovery] = useState(false);
+  const [paymentRetrying, setPaymentRetrying] = useState(false);
+  const bookingAttemptRef = useRef<string | null>(null);
+
+  const bookingAttemptKey = useCallback(() => {
+    if (bookingAttemptRef.current) return bookingAttemptRef.current;
+    const stored = window.sessionStorage.getItem(BOOKING_ATTEMPT_KEY);
+    const key = stored || window.crypto.randomUUID();
+    window.sessionStorage.setItem(BOOKING_ATTEMPT_KEY, key);
+    bookingAttemptRef.current = key;
+    return key;
+  }, []);
+
+  const clearBookingAttempt = useCallback(() => {
+    bookingAttemptRef.current = null;
+    window.sessionStorage.removeItem(BOOKING_ATTEMPT_KEY);
+  }, []);
 
   useEffect(() => {
     if (!confirmed) return;
@@ -307,18 +330,35 @@ export function BookingWizard() {
     cart: { service_id: number; add_on_ids: number[] }[] = [],
     requestId = ++slotRequestRef.current,
   ) => {
+    if (!geo) {
+      setSlots([]);
+      setServiceAreaVersion(null);
+      setError(t("Confirm your map location before checking availability."));
+      return;
+    }
     setSlots(null);
+    setAvailabilityDuration(null);
     setSlot(null);
     setSlotSelectedAt(null);
     setNowMs(Date.now());
-    getAvailability(d, "standard", cart)
+    getAvailability(d, "standard", { latitude: geo.lat, longitude: geo.lng }, cart)
       .then((a) => {
-        if (slotRequestRef.current === requestId) setSlots(a.slots);
+        if (slotRequestRef.current === requestId) {
+          setSlots(a.slots);
+          setServiceAreaVersion(a.service_area.version);
+          setAvailabilityDuration(a.duration);
+          setError(null);
+        }
       })
-      .catch(() => {
-        if (slotRequestRef.current === requestId) setSlots([]);
+      .catch((caught) => {
+        if (slotRequestRef.current === requestId) {
+          setSlots([]);
+          setServiceAreaVersion(null);
+          setAvailabilityDuration(null);
+          setError(caught instanceof ApiError ? caught.message : t("Could not validate this location."));
+        }
       });
-  }, []);
+  }, [geo, t]);
 
   useEffect(() => {
     if (step !== 2) return;
@@ -338,6 +378,7 @@ export function BookingWizard() {
     if (!slotSelectedAt || Date.now() - slotSelectedAt < STALE_SLOT_MS) return;
     setSlot(null);
     setSlots(null);
+    setAvailabilityDuration(null);
     setStep(1);
   }, [slotSelectedAt]);
 
@@ -434,7 +475,7 @@ export function BookingWizard() {
   const [quoteLoading, setQuoteLoading] = useState(false);
 
   useEffect(() => {
-    if (step !== 3 || !authed || !slot) return;
+    if (step !== 3 || !authed || !slot || !availabilityDuration) return;
     const quoteCars = cars
       .filter((c) => c.serviceId !== null)
       .map((c) => ({
@@ -442,7 +483,7 @@ export function BookingWizard() {
         service_id: c.serviceId as number,
         add_on_ids: c.addOnIds,
       }));
-    if (quoteCars.length === 0) return;
+    if (quoteCars.length === 0 || !serviceAreaVersion || !geo) return;
 
     let cancelled = false;
     queueMicrotask(() => {
@@ -456,13 +497,28 @@ export function BookingWizard() {
     getQuote({
       scheduled_at: serializeQatarBookingDateTime(date, slot),
       cars: quoteCars,
+      duration_version: availabilityDuration.version,
       use_membership: true,
+      ...(selectedAddressId !== null
+        ? { address_id: selectedAddressId }
+        : { latitude: geo.lat, longitude: geo.lng }),
+      service_area_version: serviceAreaVersion,
     })
       .then((q) => {
         if (!cancelled) setQuote(q);
       })
-      .catch(() => {
-        if (!cancelled) setQuote(null);
+      .catch((caught) => {
+        if (cancelled) return;
+        setQuote(null);
+        if (caught instanceof ApiError && ["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR"].includes(caught.code ?? "")) {
+          setError(caught.message);
+          setServiceAreaVersion(null);
+          setStep(1);
+        } else if (caught instanceof ApiError && caught.code === "DURATION_VERSION_STALE") {
+          setError(t("Service timing changed. Please choose your time again."));
+          setStep(2);
+          loadSlots(date, availabilityCars);
+        }
       })
       .finally(() => {
         if (!cancelled) setQuoteLoading(false);
@@ -470,7 +526,7 @@ export function BookingWizard() {
     return () => {
       cancelled = true;
     };
-  }, [step, authed, slot, date, cars]);
+  }, [step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, availabilityDuration, availabilityCars, loadSlots, t]);
 
   const membershipEligible = quote?.membership_eligible ?? false;
   const applyMembership = membershipEligible;
@@ -591,9 +647,19 @@ export function BookingWizard() {
   }
 
   async function submit() {
-    if (!slot) return;
+    if (!slot || !geo || !serviceAreaVersion) {
+      setError(t("Confirm an eligible Qatar location and refresh availability."));
+      setStep(1);
+      return;
+    }
+    if (!quote?.duration.version) {
+      setError(t("Review the authoritative service timing before confirming."));
+      setStep(2);
+      return;
+    }
     setSubmitting(true);
     setError(null);
+    const attemptKey = bookingAttemptKey();
     try {
       const addressId = selectedAddressId ?? (await createAddress({
         label: "Home",
@@ -602,9 +668,9 @@ export function BookingWizard() {
         building_number: buildingNumber.trim(),
         zone_number: zoneNumber.trim(),
         street_number: streetNumber.trim(),
-        latitude: geo?.lat ?? null,
-        longitude: geo?.lng ?? null,
-      })).id;
+        latitude: geo.lat,
+        longitude: geo.lng,
+      }, `${attemptKey}:address`)).id;
 
       const carPayloads = [];
       for (const car of cars) {
@@ -617,7 +683,7 @@ export function BookingWizard() {
             color: car.color.trim(),
             plate_number: car.plate.trim(),
             type: car.vtype,
-          });
+          }, `${attemptKey}:vehicle:${car.key}`);
           vehicleId = vehicle.id;
         }
         carPayloads.push({
@@ -629,8 +695,10 @@ export function BookingWizard() {
 
       const booking = await createBooking({
         scheduled_at: serializeQatarBookingDateTime(date, slot),
+        duration_version: quote.duration.version,
         cars: carPayloads,
         address_id: addressId,
+        service_area_version: serviceAreaVersion,
         payment_method: "online",
         // Server re-prices and applies memberships; false lets the customer
         // pay and keep the wash. Promo only applies when paying.
@@ -640,16 +708,35 @@ export function BookingWizard() {
         product_lines: Object.entries(productQuantities)
           .filter(([, quantity]) => quantity > 0)
           .map(([product_id, quantity]) => ({ product_id, quantity })),
-      });
+      }, `${attemptKey}:booking`);
 
-      // Online-only: hand off to the SkipCash hosted checkout.
-      if (booking.payment?.checkout_url) {
-        window.location.assign(booking.payment.checkout_url);
-        return;
+      if (booking.payment?.status === "not_started") {
+        try {
+          const payment = await initializeBookingPayment(booking.id, `${attemptKey}:payment`);
+          clearBookingAttempt();
+          window.location.assign(payment.checkout_url);
+          return;
+        } catch {
+          setConfirmed(booking);
+          setPaymentRecovery(true);
+          return;
+        }
       }
+      clearBookingAttempt();
       setConfirmed(booking);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
+      if (e instanceof ApiError && ["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR"].includes(e.code ?? "")) {
+        setError(t("The Qatar service-area map changed or this saved location needs confirmation. Please reselect the location."));
+        setServiceAreaVersion(null);
+        setStep(1);
+        clearBookingAttempt();
+      } else if (e instanceof ApiError && e.code === "DURATION_VERSION_STALE") {
+        setError(t("Service timing changed. Please review the updated time before confirming."));
+        setQuote(null);
+        setStep(2);
+        clearBookingAttempt();
+        loadSlots(date, availabilityCars);
+      } else if (e instanceof ApiError && e.status === 409) {
         // The backend sends distinct 409 reasons — a car that is already
         // booked must not be presented as a fleet-capacity problem.
         setError(
@@ -660,6 +747,7 @@ export function BookingWizard() {
             : t("That slot was just taken. Please pick another time."),
         );
         setStep(2);
+        clearBookingAttempt();
         loadSlots(date, availabilityCars);
       } else {
         setError(
@@ -670,6 +758,20 @@ export function BookingWizard() {
       }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function retryPayment() {
+    if (!confirmed) return;
+    setPaymentRetrying(true);
+    try {
+      const payment = await initializeBookingPayment(confirmed.id, `${bookingAttemptKey()}:payment`);
+      clearBookingAttempt();
+      window.location.assign(payment.checkout_url);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : t("Payment is still unavailable. Your booking remains saved."));
+    } finally {
+      setPaymentRetrying(false);
     }
   }
 
@@ -689,7 +791,13 @@ export function BookingWizard() {
   if (confirmed) {
     return (
       <div ref={topRef} className="mx-auto w-full max-w-3xl scroll-mt-24">
-        <SuccessPanel booking={confirmed} />
+        <SuccessPanel
+          booking={confirmed}
+          paymentRecovery={paymentRecovery}
+          paymentRetrying={paymentRetrying}
+          onRetryPayment={retryPayment}
+          error={error}
+        />
       </div>
     );
   }
@@ -1043,6 +1151,7 @@ export function BookingWizard() {
               washesLeftAfter={washesLeftAfter}
               timeRangeLabel={quote?.time_range_label ?? null}
               durationLabel={quote?.duration_label ?? null}
+              durationContributions={quote?.duration.contributions ?? []}
               products={bookingProducts}
               productQuantities={productQuantities}
               productTotal={activeProductTotal}
@@ -1116,7 +1225,7 @@ export function BookingWizard() {
               <button
                 type="button"
                 className="primary-button min-w-0 flex-1 px-5 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
-                disabled={submitting || !authed}
+                disabled={submitting || !authed || quoteLoading || !quote?.duration.version}
                 onClick={submit}
               >
                 {submitting
@@ -1793,6 +1902,7 @@ function Summary({
   washesLeftAfter,
   timeRangeLabel,
   durationLabel,
+  durationContributions,
   products,
   productQuantities,
   productTotal,
@@ -1812,6 +1922,7 @@ function Summary({
   washesLeftAfter?: number;
   timeRangeLabel: string | null;
   durationLabel: string | null;
+  durationContributions: DurationContribution[];
   products: StoreProductInventory[];
   productQuantities: Record<string, number>;
   productTotal: number;
@@ -1907,6 +2018,19 @@ function Summary({
             </span>
           </span>
         </li>
+        {durationContributions.map((contribution, index) => (
+          <li
+            key={`${contribution.line_index}-${contribution.kind}-${contribution.add_on_id ?? contribution.service_id ?? index}`}
+            className="flex justify-between text-xs text-[color:var(--muted-foreground)]"
+          >
+            <span>{contribution.name}</span>
+            <span>
+              {contribution.contributes
+                ? `+${contribution.minutes} ${t("min")}`
+                : t("No extra time")}
+            </span>
+          </li>
+        ))}
         <li className="flex justify-between">
           <span className="text-[color:var(--muted-foreground)]">
             {t("Payment")}
@@ -2049,7 +2173,19 @@ function PromoField({
   );
 }
 
-function SuccessPanel({ booking }: { booking: Booking }) {
+function SuccessPanel({
+  booking,
+  paymentRecovery,
+  paymentRetrying,
+  onRetryPayment,
+  error,
+}: {
+  booking: Booking;
+  paymentRecovery: boolean;
+  paymentRetrying: boolean;
+  onRetryPayment: () => void;
+  error: string | null;
+}) {
   const { lang, t } = useI18n();
   const when = formatQatarDateTime(
     booking.scheduled_at,
@@ -2067,13 +2203,29 @@ function SuccessPanel({ booking }: { booking: Booking }) {
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl">
         ✓
       </div>
-      <h2 className="mt-6 text-2xl font-bold">{t("Booking confirmed!")}</h2>
+      <h2 className="mt-6 text-2xl font-bold">
+        {paymentRecovery ? t("Booking saved — payment pending") : t("Booking confirmed!")}
+      </h2>
       <p className="mt-2 text-[color:var(--muted-foreground)]">
         {t("Reference")}{" "}
         <span className="font-bold text-[color:var(--navy)]">
           {booking.reference}
         </span>
       </p>
+      {paymentRecovery && (
+        <div className="mt-6 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
+          <p>{t("Your booking was saved once. Retry payment without creating another booking.")}</p>
+          <button
+            type="button"
+            className="primary-button mt-4"
+            disabled={paymentRetrying}
+            onClick={onRetryPayment}
+          >
+            {paymentRetrying ? t("Retrying…") : t("Retry secure payment")}
+          </button>
+          {error && <p className="mt-3 text-xs font-semibold text-red-700">{error}</p>}
+        </div>
+      )}
       <p className="mt-4 text-sm leading-7 text-[color:var(--muted-foreground)]">
         {when}
         <br />
