@@ -100,7 +100,7 @@ export function AuthPanel({
     setBusy(true);
     setError(null);
     try {
-      await requestOtp(normalizeQatarPhone(phone));
+      await requestOtp(normalizeQatarPhone(phone), "registration");
       setStage("register_code");
     } catch (e) {
       fail(e);
@@ -131,7 +131,7 @@ export function AuthPanel({
     setBusy(true);
     setError(null);
     try {
-      await requestOtp(normalizeQatarPhone(phone));
+      await requestOtp(normalizeQatarPhone(phone), "authentication");
       setCode("");
       setStage("forgot");
     } catch (e) {

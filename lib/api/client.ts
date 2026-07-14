@@ -65,11 +65,22 @@ export function setToken(token: string | null) {
 export class ApiError extends Error {
   status: number;
   errors: Record<string, string[]> | null;
+  retryAfterSeconds: number | null;
 
-  constructor(status: number, message: string, errors: Record<string, string[]> | null = null) {
-    super(message);
+  constructor(
+    status: number,
+    message: string,
+    errors: Record<string, string[]> | null = null,
+    retryAfterSeconds: number | null = null,
+  ) {
+    super(
+      retryAfterSeconds !== null && retryAfterSeconds > 0
+        ? `${message} Try again in ${retryAfterSeconds} seconds.`
+        : message,
+    );
     this.status = status;
     this.errors = errors;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -101,7 +112,14 @@ async function request<T>(
   }
 
   if (!res.ok || !envelope.success) {
-    throw new ApiError(res.status, envelope.message || "Request failed.", envelope.errors);
+    const retryAfterHeader = res.headers.get("retry-after");
+    const retryAfter = retryAfterHeader === null ? null : Number.parseInt(retryAfterHeader, 10);
+    throw new ApiError(
+      res.status,
+      envelope.message || "Request failed.",
+      envelope.errors,
+      Number.isFinite(retryAfter) ? retryAfter : null,
+    );
   }
   return envelope.data;
 }
@@ -200,10 +218,12 @@ export async function register(payload: {
   return result;
 }
 
-export function requestOtp(phone: string) {
+export type OtpPurpose = "authentication" | "registration";
+
+export function requestOtp(phone: string, purpose: OtpPurpose) {
   return request<null>("/auth/request-otp", {
     method: "POST",
-    body: { phone },
+    body: { phone, purpose },
     auth: false,
   });
 }

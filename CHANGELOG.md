@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-07-14] — Purpose-bound customer OTPs (MAD-55)
+
+### Security
+- Registration and password-recovery requests now send an explicit OTP purpose, and the development mock enforces the same single-purpose consumption contract as the backend.
+- API errors preserve `Retry-After` so throttled customers see the remaining wait instead of an indefinite retry message.
+
+---
+
 ## [2026-07-13] — Production audit hardening (build guard + security headers)
 
 ### Fixed

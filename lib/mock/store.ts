@@ -46,7 +46,7 @@ export type MockDB = {
   customers: (Customer & { password: string | null; vehicles: Vehicle[]; addresses: Address[] })[];
   memberships: (CustomerMembership & { customer_id: number })[];
   tokens: Map<string, number>; // token -> customer id
-  otps: Map<string, string>; // phone -> code
+  otps: Map<string, string>; // phone + purpose -> code
   bookings: (Booking & { customer_id: number })[];
   storeProducts: StoreProductInventory[];
   storeOrders: StoreOrder[];

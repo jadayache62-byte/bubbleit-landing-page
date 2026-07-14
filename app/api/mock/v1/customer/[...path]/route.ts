@@ -66,6 +66,10 @@ function authCustomer(req: NextRequest) {
 const FLEET_CAPACITY = 2;
 const POST_BOOKING_BUFFER_MINUTES = 30;
 
+function otpKey(phone: string, purpose: "authentication" | "registration") {
+  return `${phone}|${purpose}`;
+}
+
 function toMinutes(hm: string) {
   return Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
 }
@@ -345,10 +349,11 @@ async function handle(req: NextRequest, segments: string[]) {
 
   if (method === "POST" && path === "auth/register") {
     const phone = String(body.phone ?? "").trim();
-    if (store.otps.get(phone) !== String(body.code ?? "").trim()) {
+    const key = otpKey(phone, "registration");
+    if (store.otps.get(key) !== String(body.code ?? "").trim()) {
       return fail(422, "The verification code is invalid or has expired.");
     }
-    store.otps.delete(phone);
+    store.otps.delete(key);
     let existing = store.customers.find((c) => c.phone === phone);
     if (existing && existing.password) {
       return fail(422, "This phone number is already registered. Please sign in.");
@@ -376,20 +381,25 @@ async function handle(req: NextRequest, segments: string[]) {
 
   if (method === "POST" && path === "auth/request-otp") {
     const phone = String(body.phone ?? "").trim();
+    const purpose = String(body.purpose ?? "");
     if (!/^\+?\d{7,15}$/.test(phone)) {
       return fail(422, "Validation failed.", { phone: ["A valid phone number is required."] });
     }
-    store.otps.set(phone, MOCK_OTP);
+    if (purpose !== "authentication" && purpose !== "registration") {
+      return fail(422, "Validation failed.", { purpose: ["A valid OTP purpose is required."] });
+    }
+    store.otps.set(otpKey(phone, purpose), MOCK_OTP);
     return envelope(null, { message: "Verification code sent." });
   }
 
   if (method === "POST" && path === "auth/verify-otp") {
     const phone = String(body.phone ?? "").trim();
     const code = String(body.code ?? "").trim();
-    if (store.otps.get(phone) !== code) {
+    const key = otpKey(phone, "authentication");
+    if (store.otps.get(key) !== code) {
       return fail(422, "The verification code is invalid or has expired.");
     }
-    store.otps.delete(phone);
+    store.otps.delete(key);
     let customer = store.customers.find((c) => c.phone === phone);
     const isNew = !customer;
     if (!customer) {

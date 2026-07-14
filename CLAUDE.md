@@ -30,6 +30,8 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Make the confirmation-step product trigger visually distinct and easy to notice, but keep attention animation finite and disable it through the global reduced-motion rule; never use a continuous decorative animation at checkout.
 - Customer totals must include service add-ons and selected booking products. A selected quarter-hour must remain visible on its hour pill.
 - Customer phone lookup must distinguish `registered` from `has_password`: registered customers sign in, while only an explicit `has_password: false` enters the legacy/manager-created account-claim flow. Keep the local mock response aligned with this contract.
+- OTP requests must include `purpose=registration` for signup/account claim and
+  `purpose=authentication` for credential recovery. The local mock must reject cross-purpose reuse.
 
 ## Membership Rules
 
