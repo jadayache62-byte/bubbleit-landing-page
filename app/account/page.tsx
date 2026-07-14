@@ -12,23 +12,26 @@ import {
   cancelBooking,
   deleteVehicle,
   getToken,
+  getBookingRescheduleOptions,
   listAddresses,
   listBookings,
   listMemberships,
   listVehicles,
   logout,
   me,
+  rescheduleBooking,
 } from "@/lib/api/client";
 import type {
   Booking,
   BookingStatus,
+  BookingRescheduleOptions,
   Address,
   Customer,
   CustomerMembership,
   Vehicle,
   VehicleType,
 } from "@/lib/api/types";
-import { formatQatarDateTime } from "@/lib/datetime";
+import { formatQatarDateTime, qatarServiceDate, qatarToday, serializeQatarBookingDateTime } from "@/lib/datetime";
 
 const STATUS_STYLES: Record<BookingStatus, string> = {
   pending_payment: "bg-amber-100 text-amber-700",
@@ -62,6 +65,15 @@ export default function AccountPage() {
   const [memberships, setMemberships] = useState<CustomerMembership[] | null>(null);
   const [tab, setTab] = useState<"overview" | "bookings" | "memberships" | "vehicles">("overview");
   const [error, setError] = useState<string | null>(null);
+  const [reschedule, setReschedule] = useState<{
+    booking: Booking;
+    date: string;
+    options: BookingRescheduleOptions | null;
+    slot: string | null;
+    key: string;
+    busy: boolean;
+    error: string | null;
+  } | null>(null);
 
   const refresh = useCallback(() => {
     listBookings().then(setBookings).catch(() => setBookings([]));
@@ -89,6 +101,48 @@ export default function AccountPage() {
       refresh();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not cancel the booking.");
+    }
+  }
+
+  async function loadRescheduleOptions(booking: Booking, date: string, key = window.crypto.randomUUID()) {
+    setError(null);
+    setReschedule({ booking, date, options: null, slot: null, key, busy: true, error: null });
+    try {
+      const options = await getBookingRescheduleOptions(booking.id, date);
+      setReschedule({ booking, date, options, slot: null, key, busy: false, error: null });
+    } catch (caught) {
+      setReschedule({
+        booking,
+        date,
+        options: null,
+        slot: null,
+        key,
+        busy: false,
+        error: caught instanceof ApiError ? caught.message : t("Could not load reschedule options."),
+      });
+    }
+  }
+
+  async function commitReschedule() {
+    if (!reschedule?.options || !reschedule.slot) return;
+    const selected = reschedule.options.slots.find((slot) => slot.start === reschedule.slot);
+    if (!selected) return;
+    setReschedule({ ...reschedule, busy: true });
+    try {
+      await rescheduleBooking(reschedule.booking.id, {
+        scheduled_at: serializeQatarBookingDateTime(reschedule.date, selected.start),
+        duration_version: reschedule.options.duration.version,
+        service_area_version: reschedule.options.service_area.version,
+        slot_version: selected.slot_version,
+      }, reschedule.key);
+      setReschedule(null);
+      refresh();
+    } catch (caught) {
+      setReschedule({
+        ...reschedule,
+        busy: false,
+        error: caught instanceof ApiError ? caught.message : t("Could not reschedule the booking."),
+      });
     }
   }
 
@@ -186,11 +240,11 @@ export default function AccountPage() {
 
             <div key={tab} id={`account-panel-${tab}`} role="tabpanel" aria-labelledby={`account-tab-${tab}`} tabIndex={0} className="checkout-step mt-6 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-4">
               {tab === "overview" && <div className="grid gap-5 lg:grid-cols-2">
-                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} onCancel={() => handleCancel(activeBookings[0].id)} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
+                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} onCancel={() => handleCancel(activeBookings[0].id)} onReschedule={() => loadRescheduleOptions(activeBookings[0], qatarServiceDate(activeBookings[0].scheduled_at))} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
                 <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Savings")}</p><h2 className="mt-1 text-xl font-bold">{t("Membership")}</h2></div><button type="button" aria-label={t("View all memberships")} onClick={() => setTab("memberships")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{memberships === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeMemberships.length > 0 ? <MembershipCard membership={activeMemberships[0]} /> : <EmptyState title={t("Wash more, pay less")} copy={t("Prepaid wash bundles make every booking faster.")} action={t("See memberships")} href="/memberships" />}</section>
               </div>}
 
-              {tab === "bookings" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My bookings")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Review upcoming and previous wash appointments.")}</p></div><Link href="/book" className="primary-button shrink-0 px-4">{t("New booking")}</Link></div>{bookings === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : bookings.length === 0 ? <EmptyState title={t("No bookings yet")} copy={t("Your first sparkling-clean car is a few taps away.")} action={t("Book your first wash")} href="/book" /> : <div className="grid gap-4 md:grid-cols-2">{bookings.map((booking) => <BookingCard key={booking.id} booking={booking} onCancel={() => handleCancel(booking.id)} />)}</div>}</section>}
+              {tab === "bookings" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My bookings")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Review upcoming and previous wash appointments.")}</p></div><Link href="/book" className="primary-button shrink-0 px-4">{t("New booking")}</Link></div>{bookings === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : bookings.length === 0 ? <EmptyState title={t("No bookings yet")} copy={t("Your first sparkling-clean car is a few taps away.")} action={t("Book your first wash")} href="/book" /> : <div className="grid gap-4 md:grid-cols-2">{bookings.map((booking) => <BookingCard key={booking.id} booking={booking} onCancel={() => handleCancel(booking.id)} onReschedule={() => loadRescheduleOptions(booking, qatarServiceDate(booking.scheduled_at))} />)}</div>}</section>}
 
               {tab === "memberships" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My memberships")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("See remaining washes, validity, and book with a plan.")}</p></div><Link href="/memberships" className="primary-button shrink-0 px-4">{t("Browse plans")}</Link></div>{memberships === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-44 animate-pulse bg-slate-100" />)}</div> : memberships.length === 0 ? <EmptyState title={t("No memberships yet")} copy={t("Save more when you wash regularly.")} action={t("See memberships")} href="/memberships" /> : <div className="grid gap-4 md:grid-cols-2">{memberships.map((membership) => <MembershipCard key={membership.id} membership={membership} />)}</div>}</section>}
 
@@ -199,6 +253,20 @@ export default function AccountPage() {
           </>
         )}
       </main>
+      {reschedule && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-label={t("Reschedule booking")}>
+          <section className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between gap-4"><h2 className="text-xl font-bold">{t("Choose a new time")}</h2><button type="button" className="secondary-button" onClick={() => setReschedule(null)}>{t("Close")}</button></div>
+            <label className="mt-5 block text-sm font-semibold">{t("Date")}<input type="date" min={qatarToday()} value={reschedule.date} className="mt-2 w-full rounded-xl border p-3" onChange={(event) => loadRescheduleOptions(reschedule.booking, event.target.value, reschedule.key)} /></label>
+            {reschedule.busy && !reschedule.options ? <p className="mt-5 text-sm">{t("Loading available times…")}</p> : (
+              <div className="mt-5 grid grid-cols-3 gap-2">{reschedule.options?.slots.filter((slot) => slot.available).map((slot) => <button key={slot.start} type="button" className={clsx("rounded-xl border p-3 text-sm font-bold", reschedule.slot === slot.start && "border-[color:var(--blue)] bg-sky-50")} onClick={() => setReschedule({ ...reschedule, slot: slot.start })}>{slot.start}</button>)}</div>
+            )}
+            {reschedule.error && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{reschedule.error}</p>}
+            <p className="mt-4 text-xs text-[color:var(--muted-foreground)]">{t("Your payment, membership wash, products, and total stay attached to this booking.")}</p>
+            <button type="button" className="primary-button mt-5 w-full" disabled={!reschedule.slot || reschedule.busy} onClick={commitReschedule}>{reschedule.busy ? t("Rescheduling…") : t("Confirm new time")}</button>
+          </section>
+        </div>
+      )}
       <Footer />
     </>
   );
@@ -249,9 +317,11 @@ function MembershipCard({ membership }: { membership: CustomerMembership }) {
 function BookingCard({
   booking,
   onCancel,
+  onReschedule,
 }: {
   booking: Booking;
   onCancel: () => void;
+  onReschedule: () => void;
 }) {
   const when = formatQatarDateTime(booking.scheduled_at, "en", {
     weekday: "short",
@@ -292,6 +362,9 @@ function BookingCard({
           <Link href="/book" className="secondary-button min-h-9 px-4 py-2 text-xs">
             {t("Book again")}
           </Link>
+          {CANCELLABLE.includes(booking.status) && (
+            <button type="button" className="secondary-button min-h-9 px-4 py-2 text-xs" onClick={onReschedule}>{t("Reschedule")}</button>
+          )}
           {CANCELLABLE.includes(booking.status) && (
             <button
               type="button"

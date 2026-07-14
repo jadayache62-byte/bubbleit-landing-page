@@ -5,6 +5,7 @@ import type {
   Availability,
   Booking,
   BookingQuote,
+  BookingRescheduleOptions,
   CreateStoreOrderPayload,
   CreateBookingPayload,
   Customer,
@@ -374,4 +375,25 @@ export function getBooking(id: number) {
 
 export function cancelBooking(id: number) {
   return request<Booking>(`/bookings/${id}/cancel`, { method: "POST" });
+}
+
+export function getBookingRescheduleOptions(id: number, date: string) {
+  return request<BookingRescheduleOptions>(`/bookings/${id}/reschedule-options?date=${encodeURIComponent(date)}`);
+}
+
+export function rescheduleBooking(
+  id: number,
+  payload: {
+    scheduled_at: string;
+    duration_version: string;
+    service_area_version: string;
+    slot_version: string;
+  },
+  idempotencyKey: string,
+) {
+  return request<Booking>(`/bookings/${id}/reschedule`, {
+    method: "POST",
+    body: payload,
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
 }

@@ -219,6 +219,16 @@ export type CreateBookingPayload = {
   product_lines?: { product_id: string | number; quantity: number }[];
 };
 
+export type BookingRescheduleOptions = {
+  date: string;
+  timezone: "Asia/Qatar";
+  duration: DurationSnapshot;
+  service_area: ServiceAreaSnapshot;
+  policy_version: string;
+  cutoff_hours: number;
+  slots: (Slot & { slot_version: string })[];
+};
+
 // Server-side price preview. The confirm page renders this instead of computing
 // a total locally — the server applies eligible memberships and is the source
 // of truth for the amount charged.

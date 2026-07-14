@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type {
   Booking,
   BookingStatus,
+  DurationSnapshot,
   PaymentMethod,
   StoreOrder,
   StoreOrderLine,
@@ -154,7 +155,7 @@ async function durationSnapshot(cars: DurationCartCar[]) {
   };
 }
 
-function staleDuration(current: Awaited<ReturnType<typeof durationSnapshot>>) {
+function staleDuration(current: DurationSnapshot) {
   return fail(
     409,
     "Service timing changed. Please refresh availability and review the updated duration.",
@@ -176,11 +177,12 @@ function qatarMinutes(iso: string) {
   }));
 }
 
-function hasFleetCapacity(dateTime: string, durationMinutes: number) {
+function hasFleetCapacity(dateTime: string, durationMinutes: number, ignoredBookingId?: number) {
   const date = qatarServiceDate(dateTime);
   const start = new Date(dateTime).getTime();
   const end = start + (durationMinutes + POST_BOOKING_BUFFER_MINUTES) * 60_000;
   const overlaps = db().bookings.filter((booking) => {
+    if (booking.id === ignoredBookingId) return false;
     if (booking.service_date !== date) return false;
     if (["cancelled_by_customer", "cancelled_by_admin"].includes(booking.status)) return false;
     const bookingStart = new Date(booking.scheduled_at).getTime();
@@ -188,6 +190,10 @@ function hasFleetCapacity(dateTime: string, durationMinutes: number) {
     return bookingStart < end && bookingEnd > start;
   }).length;
   return overlaps < FLEET_CAPACITY;
+}
+
+function mockRescheduleSlotVersion(booking: Booking, date: string, start: string) {
+  return `reschedule-v1:${booking.id}:${date}:${start}:${booking.duration?.version ?? booking.duration_minutes ?? 60}:${SERVICE_AREA_VERSION}`;
 }
 
 // Which services each membership scope redeems (mirrors the backend's
@@ -1045,7 +1051,7 @@ async function handle(req: NextRequest, segments: string[]) {
     }, { status: 201, message: "Booking created." });
   }
 
-  const bookingMatch = path.match(/^bookings\/(\d+)(?:\/(cancel|pay|mock-complete-payment))?$/);
+  const bookingMatch = path.match(/^bookings\/(\d+)(?:\/(cancel|pay|mock-complete-payment|reschedule-options|reschedule))?$/);
   if (bookingMatch) {
     const booking = store.bookings.find(
       (b) => b.id === Number(bookingMatch[1]) && b.customer_id === customer.id,
@@ -1056,6 +1062,79 @@ async function handle(req: NextRequest, segments: string[]) {
     if (method === "GET" && !action) {
       const { customer_id: _c, ...pub } = booking;
       return envelope(pub);
+    }
+
+
+    if (method === "GET" && action === "reschedule-options") {
+      if (!["pending_payment", "paid", "assigned"].includes(booking.status)) {
+        return fail(409, "This booking requires manual support to reschedule.", null, null, "RESCHEDULE_MANUAL_REQUIRED");
+      }
+      if (new Date(booking.scheduled_at).getTime() - Date.now() < 2 * 60 * 60 * 1000) {
+        return fail(409, "Customer rescheduling closes two hours before service.", null, null, "RESCHEDULE_CUTOFF_PASSED");
+      }
+      const date = req.nextUrl.searchParams.get("date") ?? booking.service_date;
+      const duration = booking.duration ?? await durationSnapshot([]);
+      const slots = SLOT_GRID.map((start) => {
+        const scheduledAt = `${date}T${start}:00+03:00`;
+        const end = new Date(new Date(scheduledAt).getTime() + (duration.total_minutes * 60_000));
+        const endTime = formatQatarDateTime(end.toISOString(), "en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23",
+        });
+        return {
+          start,
+          end: endTime,
+          available: new Date(scheduledAt).getTime() > Date.now()
+            && hasFleetCapacity(scheduledAt, duration.total_minutes, booking.id),
+          slot_version: mockRescheduleSlotVersion(booking, date, start),
+        };
+      });
+      return envelope({
+        date,
+        timezone: "Asia/Qatar",
+        duration,
+        service_area: { version: SERVICE_AREA_VERSION, eligible: true },
+        policy_version: "reschedule-v1",
+        cutoff_hours: 2,
+        slots,
+      });
+    }
+
+    if (method === "POST" && action === "reschedule") {
+      if (!["pending_payment", "paid", "assigned"].includes(booking.status)) {
+        return fail(409, "This booking requires manual support to reschedule.", null, null, "RESCHEDULE_MANUAL_REQUIRED");
+      }
+      if (new Date(booking.scheduled_at).getTime() - Date.now() < 2 * 60 * 60 * 1000) {
+        return fail(409, "Customer rescheduling closes two hours before service.", null, null, "RESCHEDULE_CUTOFF_PASSED");
+      }
+      const scheduledAt = String(body.scheduled_at ?? "");
+      const date = qatarServiceDate(scheduledAt);
+      const start = formatQatarDateTime(scheduledAt, "en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      });
+      const duration = booking.duration ?? await durationSnapshot([]);
+      if (body.duration_version !== duration.version) return staleDuration(duration);
+      if (body.service_area_version !== SERVICE_AREA_VERSION) {
+        return serviceAreaFailure("SERVICE_AREA_STALE", "The service-area map changed. Please confirm the location again.", 409);
+      }
+      if (body.slot_version !== mockRescheduleSlotVersion(booking, date, start)) {
+        return fail(409, "Availability changed. Please refresh the available times.", null, null, "SLOT_VERSION_STALE");
+      }
+      if (!hasFleetCapacity(scheduledAt, duration.total_minutes, booking.id)) {
+        return fail(409, "This time slot is no longer available. Please pick another slot.", null, null, "SLOT_UNAVAILABLE");
+      }
+      booking.scheduled_at = new Date(scheduledAt).toISOString();
+      booking.scheduled_end_at = new Date(new Date(scheduledAt).getTime() + (duration.total_minutes * 60_000)).toISOString();
+      booking.service_date = date;
+      if (booking.status === "assigned") {
+        booking.status = "paid";
+        booking.status_label = STATUS_LABELS.paid;
+      }
+      const { customer_id: _c, ...pub } = booking;
+      return envelope(pub, { message: "Booking rescheduled." });
     }
 
     if (method === "POST" && action === "cancel") {

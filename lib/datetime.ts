@@ -7,6 +7,12 @@ export const QATAR_UTC_OFFSET = "+03:00";
 const QATAR_OFFSET_MS = 3 * 60 * 60 * 1000;
 const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/;
 
+/** Current Qatar calendar date (YYYY-MM-DD), independent of device timezone. */
+export function qatarToday(): string {
+  const qatarNow = new Date(Date.now() + QATAR_OFFSET_MS);
+  return `${qatarNow.getUTCFullYear()}-${String(qatarNow.getUTCMonth() + 1).padStart(2, "0")}-${String(qatarNow.getUTCDate()).padStart(2, "0")}`;
+}
+
 /**
  * Serialize a Qatar wall-clock booking slot for the customer API. The API
  * contract is RFC 3339 with Qatar's explicit UTC+03:00 offset.
