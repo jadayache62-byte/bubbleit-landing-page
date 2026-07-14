@@ -66,6 +66,25 @@ function authCustomer(req: NextRequest) {
 // Mock fleet capacity: 2 buses → a slot is unavailable once 2 active bookings hold it.
 const FLEET_CAPACITY = 2;
 const POST_BOOKING_BUFFER_MINUTES = 30;
+const SERVICE_AREA_VERSION = "qatar-cgis-land-2026-07-14-v1";
+
+// Development-only approximation. Production eligibility is always decided
+// by the Laravel API's versioned official CGIS polygon snapshot.
+function mockQatarLand(latitude: unknown, longitude: unknown) {
+  return typeof latitude === "number" && typeof longitude === "number"
+    && latitude >= 24.471111 && latitude <= 26.15875
+    && longitude >= 50.750034 && longitude <= 51.660696;
+}
+
+function serviceAreaFailure(code: "SERVICE_AREA_OUTSIDE_QATAR" | "SERVICE_AREA_STALE", message: string, status = 422) {
+  return NextResponse.json({
+    success: false,
+    message,
+    data: { service_area: { version: SERVICE_AREA_VERSION, eligible: false } },
+    errors: null,
+    code,
+  }, { status });
+}
 
 function toMinutes(hm: string) {
   return Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
@@ -174,6 +193,12 @@ async function handle(req: NextRequest, segments: string[]) {
   if (method === "GET" && path === "service-categories") {
     return envelope(paginated([...new Set(SERVICES.map((s) => s.category))].map((name, i) => ({ id: i + 1, name }))));
   }
+  if (method === "POST" && path === "service-area/validate") {
+    if (!mockQatarLand(body.latitude, body.longitude)) {
+      return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
+    }
+    return envelope({ version: SERVICE_AREA_VERSION, eligible: true });
+  }
 
   // ── Store inventory ──
   if (method === "GET" && path === "store/products") {
@@ -190,6 +215,13 @@ async function handle(req: NextRequest, segments: string[]) {
     const buildingNumber = String(body.building_number ?? "").trim();
     const zoneNumber = String(body.zone_number ?? "").trim();
     const streetNumber = String(body.street_number ?? "").trim();
+
+    if (body.service_area_version !== SERVICE_AREA_VERSION) {
+      return serviceAreaFailure("SERVICE_AREA_STALE", "The service-area map changed. Please confirm the location again.", 409);
+    }
+    if (!mockQatarLand(body.latitude, body.longitude)) {
+      return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
+    }
 
     if (!customerName || !customerPhone || !deliveryArea || !buildingNumber || linesInput.length === 0) {
       return fail(422, "Validation failed.", {
@@ -246,6 +278,7 @@ async function handle(req: NextRequest, segments: string[]) {
       street_number: streetNumber || null,
       latitude: typeof body.latitude === "number" ? body.latitude : null,
       longitude: typeof body.longitude === "number" ? body.longitude : null,
+      service_area: { version: SERVICE_AREA_VERSION, eligible: true },
       subtotal,
       total: subtotal,
       lines: orderLines,
@@ -282,6 +315,11 @@ async function handle(req: NextRequest, segments: string[]) {
     const date = req.nextUrl.searchParams.get("date");
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return fail(422, "Validation failed.", { date: ["A valid date is required."] });
+    }
+    const latitude = Number(req.nextUrl.searchParams.get("latitude"));
+    const longitude = Number(req.nextUrl.searchParams.get("longitude"));
+    if (!mockQatarLand(latitude, longitude)) {
+      return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
     }
     const now = new Date();
     const todayStr = qatarServiceDate(now.toISOString());
@@ -330,7 +368,12 @@ async function handle(req: NextRequest, segments: string[]) {
       const available = !isPast && occupancyEnd <= closing && overlaps < FLEET_CAPACITY;
       return { start, end: endHm, available };
     });
-    return envelope({ date, duration_minutes: duration, slots });
+    return envelope({
+      date,
+      duration_minutes: duration,
+      slots,
+      service_area: { version: SERVICE_AREA_VERSION, eligible: true },
+    });
   }
 
   // ── Auth ──
@@ -481,10 +524,11 @@ async function handle(req: NextRequest, segments: string[]) {
   if (method === "POST" && path === "addresses") {
     const area = String(body.area ?? "").trim();
     const buildingNumber = String(body.building_number ?? "").trim();
-    if (!area || !buildingNumber) {
+    if (!area || !buildingNumber || !mockQatarLand(body.latitude, body.longitude)) {
       return fail(422, "Validation failed.", {
         ...(area ? {} : { area: ["The area field is required."] }),
         ...(buildingNumber ? {} : { building_number: ["The building number field is required."] }),
+        ...(mockQatarLand(body.latitude, body.longitude) ? {} : { latitude: ["Confirm a location on Qatar land territory."] }),
       });
     }
     const address = {
@@ -497,6 +541,7 @@ async function handle(req: NextRequest, segments: string[]) {
       street_number: String(body.street_number ?? "").trim() || null,
       latitude: typeof body.latitude === "number" ? body.latitude : null,
       longitude: typeof body.longitude === "number" ? body.longitude : null,
+      service_area: { version: SERVICE_AREA_VERSION, eligible: true, stale: false },
     };
     customer.addresses.push(address);
     return envelope(address, { status: 201, message: "Address added." });
@@ -513,10 +558,11 @@ async function handle(req: NextRequest, segments: string[]) {
 
     const area = String(body.area ?? "").trim();
     const buildingNumber = String(body.building_number ?? "").trim();
-    if (!area || !buildingNumber) {
+    if (!area || !buildingNumber || !mockQatarLand(body.latitude, body.longitude)) {
       return fail(422, "Validation failed.", {
         ...(area ? {} : { area: ["The area field is required."] }),
         ...(buildingNumber ? {} : { building_number: ["The building number field is required."] }),
+        ...(mockQatarLand(body.latitude, body.longitude) ? {} : { latitude: ["Confirm a location on Qatar land territory."] }),
       });
     }
 
@@ -530,6 +576,7 @@ async function handle(req: NextRequest, segments: string[]) {
       street_number: String(body.street_number ?? "").trim() || null,
       latitude: typeof body.latitude === "number" ? body.latitude : null,
       longitude: typeof body.longitude === "number" ? body.longitude : null,
+      service_area: { version: SERVICE_AREA_VERSION, eligible: true, stale: false },
     };
     customer.addresses[index] = updated;
     return envelope(updated, { message: "Address updated." });
@@ -581,6 +628,18 @@ async function handle(req: NextRequest, segments: string[]) {
     const scheduledAt = String(body.scheduled_at ?? "");
     const quoteCars = Array.isArray(body.cars) ? body.cars : [];
     const useMembership = body.use_membership !== false;
+    if (body.service_area_version !== SERVICE_AREA_VERSION) {
+      return serviceAreaFailure("SERVICE_AREA_STALE", "The service-area map changed. Please confirm the location again.", 409);
+    }
+    const quoteAddress = body.address_id
+      ? customer.addresses.find((address) => address.id === Number(body.address_id))
+      : null;
+    if (quoteAddress?.service_area.stale) {
+      return serviceAreaFailure("SERVICE_AREA_STALE", "This saved address must be revalidated.", 409);
+    }
+    if (!quoteAddress && !mockQatarLand(body.latitude, body.longitude)) {
+      return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
+    }
 
     // Match the backend: auto-apply only for a single, add-on-free car.
     const singleAddonFree =
@@ -650,6 +709,7 @@ async function handle(req: NextRequest, segments: string[]) {
         washes_applied: applied,
         remaining_after: Math.max(0, m.washes_remaining - applied),
       })),
+      service_area: { version: SERVICE_AREA_VERSION, eligible: true },
     });
   }
 
@@ -668,6 +728,15 @@ async function handle(req: NextRequest, segments: string[]) {
 
   if (method === "POST" && path === "bookings") {
     const scheduledAt = String(body.scheduled_at ?? "");
+    if (body.service_area_version !== SERVICE_AREA_VERSION) {
+      return serviceAreaFailure("SERVICE_AREA_STALE", "The service-area map changed. Please confirm the location again.", 409);
+    }
+    const bookingAddress = body.address_id
+      ? customer.addresses.find((address) => address.id === Number(body.address_id))
+      : null;
+    if (!bookingAddress && !mockQatarLand(body.latitude, body.longitude)) {
+      return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
+    }
 
     // Membership redemption: single vehicle, plan-defined service, QR 0.
     if (body.membership_id) {

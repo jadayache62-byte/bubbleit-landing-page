@@ -6,6 +6,12 @@ export type Envelope<T> = {
   message: string;
   data: T;
   errors: Record<string, string[]> | null;
+  code?: string;
+};
+
+export type ServiceAreaSnapshot = {
+  version: string;
+  eligible: boolean;
 };
 
 export type Paginated<T> = {
@@ -54,6 +60,7 @@ export type Slot = {
 export type Availability = {
   date: string; // "YYYY-MM-DD"
   slots: Slot[];
+  service_area: ServiceAreaSnapshot;
 };
 
 export type Customer = {
@@ -83,6 +90,7 @@ export type Address = {
   street_number?: string | null;
   latitude: number | null;
   longitude: number | null;
+  service_area: ServiceAreaSnapshot & { stale: boolean };
 };
 
 export type PaymentMethod = "pay_on_site" | "online" | "membership";
@@ -175,6 +183,7 @@ export type CreateBookingPayload = {
   address_area?: string;
   latitude?: number;
   longitude?: number;
+  service_area_version: string;
   payment_method?: PaymentMethod;
   use_membership?: boolean;
   notes?: string;
@@ -226,6 +235,7 @@ export type BookingQuote = {
     washes_applied: number;
     remaining_after: number;
   }[];
+  service_area: ServiceAreaSnapshot;
 };
 
 // Result of validating a promo code against the current cart. All rule
@@ -294,6 +304,7 @@ export type StoreOrder = {
   street_number?: string | null;
   latitude: number | null;
   longitude: number | null;
+  service_area: ServiceAreaSnapshot;
   subtotal: number;
   total: number;
   lines: StoreOrderLine[];
@@ -308,8 +319,9 @@ export type CreateStoreOrderPayload = {
   building_number?: string;
   zone_number?: string;
   street_number?: string;
-  latitude?: number | null;
-  longitude?: number | null;
+  latitude: number;
+  longitude: number;
+  service_area_version: string;
   notes?: string;
   lines: { product_id: string | number; inventory_item_id?: number; quantity: number }[];
 };

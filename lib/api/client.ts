@@ -15,6 +15,7 @@ import type {
   PromoValidation,
   QuoteCar,
   Service,
+  ServiceAreaSnapshot,
   StoreOrder,
   StoreOrderPayment,
   StoreProductInventory,
@@ -65,11 +66,21 @@ export function setToken(token: string | null) {
 export class ApiError extends Error {
   status: number;
   errors: Record<string, string[]> | null;
+  code: string | null;
+  data: unknown;
 
-  constructor(status: number, message: string, errors: Record<string, string[]> | null = null) {
+  constructor(
+    status: number,
+    message: string,
+    errors: Record<string, string[]> | null = null,
+    code: string | null = null,
+    data: unknown = null,
+  ) {
     super(message);
     this.status = status;
     this.errors = errors;
+    this.code = code;
+    this.data = data;
   }
 }
 
@@ -101,7 +112,13 @@ async function request<T>(
   }
 
   if (!res.ok || !envelope.success) {
-    throw new ApiError(res.status, envelope.message || "Request failed.", envelope.errors);
+    throw new ApiError(
+      res.status,
+      envelope.message || "Request failed.",
+      envelope.errors,
+      envelope.code ?? null,
+      envelope.data,
+    );
   }
   return envelope.data;
 }
@@ -119,10 +136,16 @@ export type AvailabilityCar = {
 
 export function getAvailability(
   date: string,
-  window: "standard" | "midnight" = "standard",
+  window: "standard" | "midnight",
+  coordinates: { latitude: number; longitude: number },
   cartOrServiceIds: AvailabilityCar[] | number[] = [],
 ) {
-  const params = new URLSearchParams({ date, window });
+  const params = new URLSearchParams({
+    date,
+    window,
+    latitude: String(coordinates.latitude),
+    longitude: String(coordinates.longitude),
+  });
   if (cartOrServiceIds.every((value) => typeof value === "number")) {
     (cartOrServiceIds as number[]).forEach((serviceId) => {
       params.append("service_ids[]", String(serviceId));
@@ -137,6 +160,14 @@ export function getAvailability(
   }
 
   return request<Availability>(`/availability?${params.toString()}`, { auth: false });
+}
+
+export function validateServiceArea(latitude: number, longitude: number) {
+  return request<ServiceAreaSnapshot>("/service-area/validate", {
+    method: "POST",
+    body: { latitude, longitude },
+    auth: false,
+  });
 }
 
 export function getMembershipPlans() {
@@ -248,7 +279,12 @@ export function deleteVehicle(id: number) {
   return request<null>(`/vehicles/${id}`, { method: "DELETE" });
 }
 
-export function createAddress(payload: Omit<Address, "id"> | Omit<Address, "id" | "latitude" | "longitude">) {
+export type AddressPayload = Omit<Address, "id" | "service_area" | "latitude" | "longitude"> & {
+  latitude: number;
+  longitude: number;
+};
+
+export function createAddress(payload: AddressPayload) {
   return request<Address>("/addresses", { method: "POST", body: payload });
 }
 
@@ -256,7 +292,7 @@ export function listAddresses() {
   return request<Paginated<Address>>("/addresses").then((r) => r.data);
 }
 
-export function updateAddress(id: number, payload: Omit<Address, "id">) {
+export function updateAddress(id: number, payload: AddressPayload) {
   return request<Address>(`/addresses/${id}`, { method: "PUT", body: payload });
 }
 
@@ -299,6 +335,10 @@ export function getQuote(payload: {
   scheduled_at: string;
   cars: QuoteCar[];
   use_membership?: boolean;
+  address_id?: number;
+  latitude?: number;
+  longitude?: number;
+  service_area_version: string;
 }) {
   return request<BookingQuote>("/bookings/quote", { method: "POST", body: payload });
 }

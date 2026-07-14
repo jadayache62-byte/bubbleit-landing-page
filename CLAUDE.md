@@ -51,6 +51,20 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Guest checkout is the default and does not require an account. Require a name and valid eight-digit Qatar phone number, normalize it to `+974`, and preserve the contact step as the future OTP insertion point.
 - A created/pending order must be retained when payment initialization fails so Retry payment does not create a duplicate order.
 
+## Service Area Contract
+
+- Service eligibility is Qatar-wide land territory, not a city, municipality,
+  label, or custom-zone allowlist. The Laravel backend's versioned official
+  CGIS polygon is authoritative; client-side copy and the development mock are
+  never production eligibility evidence.
+- Availability validates the pinned coordinates and returns a
+  `service_area.version`. Quote, booking creation, and store order creation must
+  carry that exact version. Handle `SERVICE_AREA_STALE` by returning the
+  customer to Location for confirmation; display `SERVICE_AREA_OUTSIDE_QATAR`
+  as a recoverable location error.
+- Saved addresses without current eligibility evidence must be edited and
+  revalidated. Never infer eligibility from an address containing “Qatar”.
+
 ## Navigation, Account, and Accessibility
 
 - Global navigation is organized around **Services, Memberships, Store, Account**, with one dominant **Book a Wash** CTA. The closed mobile menu must remain `aria-hidden` and `inert` so its links cannot receive focus.

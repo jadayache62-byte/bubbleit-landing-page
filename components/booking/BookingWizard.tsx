@@ -243,6 +243,7 @@ export function BookingWizard() {
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [slot, setSlot] = useState<string | null>(null);
   const [slotSelectedAt, setSlotSelectedAt] = useState<number | null>(null);
+  const [serviceAreaVersion, setServiceAreaVersion] = useState<string | null>(null);
 
   // Step 4 — payment
   const [notes, setNotes] = useState("");
@@ -310,18 +311,32 @@ export function BookingWizard() {
     cart: { service_id: number; add_on_ids: number[] }[] = [],
     requestId = ++slotRequestRef.current,
   ) => {
+    if (!geo) {
+      setSlots([]);
+      setServiceAreaVersion(null);
+      setError(t("Confirm your map location before checking availability."));
+      return;
+    }
     setSlots(null);
     setSlot(null);
     setSlotSelectedAt(null);
     setNowMs(Date.now());
-    getAvailability(d, "standard", cart)
+    getAvailability(d, "standard", { latitude: geo.lat, longitude: geo.lng }, cart)
       .then((a) => {
-        if (slotRequestRef.current === requestId) setSlots(a.slots);
+        if (slotRequestRef.current === requestId) {
+          setSlots(a.slots);
+          setServiceAreaVersion(a.service_area.version);
+          setError(null);
+        }
       })
-      .catch(() => {
-        if (slotRequestRef.current === requestId) setSlots([]);
+      .catch((caught) => {
+        if (slotRequestRef.current === requestId) {
+          setSlots([]);
+          setServiceAreaVersion(null);
+          setError(caught instanceof ApiError ? caught.message : t("Could not validate this location."));
+        }
       });
-  }, []);
+  }, [geo, t]);
 
   useEffect(() => {
     if (step !== 2) return;
@@ -445,7 +460,7 @@ export function BookingWizard() {
         service_id: c.serviceId as number,
         add_on_ids: c.addOnIds,
       }));
-    if (quoteCars.length === 0) return;
+    if (quoteCars.length === 0 || !serviceAreaVersion || !geo) return;
 
     let cancelled = false;
     queueMicrotask(() => {
@@ -460,12 +475,22 @@ export function BookingWizard() {
       scheduled_at: serializeQatarBookingDateTime(date, slot),
       cars: quoteCars,
       use_membership: true,
+      ...(selectedAddressId !== null
+        ? { address_id: selectedAddressId }
+        : { latitude: geo.lat, longitude: geo.lng }),
+      service_area_version: serviceAreaVersion,
     })
       .then((q) => {
         if (!cancelled) setQuote(q);
       })
-      .catch(() => {
-        if (!cancelled) setQuote(null);
+      .catch((caught) => {
+        if (cancelled) return;
+        setQuote(null);
+        if (caught instanceof ApiError && ["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR"].includes(caught.code ?? "")) {
+          setError(caught.message);
+          setServiceAreaVersion(null);
+          setStep(1);
+        }
       })
       .finally(() => {
         if (!cancelled) setQuoteLoading(false);
@@ -473,7 +498,7 @@ export function BookingWizard() {
     return () => {
       cancelled = true;
     };
-  }, [step, authed, slot, date, cars]);
+  }, [step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion]);
 
   const membershipEligible = quote?.membership_eligible ?? false;
   const applyMembership = membershipEligible;
@@ -594,7 +619,11 @@ export function BookingWizard() {
   }
 
   async function submit() {
-    if (!slot) return;
+    if (!slot || !geo || !serviceAreaVersion) {
+      setError(t("Confirm an eligible Qatar location and refresh availability."));
+      setStep(1);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -605,8 +634,8 @@ export function BookingWizard() {
         building_number: buildingNumber.trim(),
         zone_number: zoneNumber.trim(),
         street_number: streetNumber.trim(),
-        latitude: geo?.lat ?? null,
-        longitude: geo?.lng ?? null,
+        latitude: geo.lat,
+        longitude: geo.lng,
       })).id;
 
       const carPayloads = [];
@@ -634,6 +663,7 @@ export function BookingWizard() {
         scheduled_at: serializeQatarBookingDateTime(date, slot),
         cars: carPayloads,
         address_id: addressId,
+        service_area_version: serviceAreaVersion,
         payment_method: "online",
         // Server re-prices and applies memberships; false lets the customer
         // pay and keep the wash. Promo only applies when paying.
@@ -652,7 +682,11 @@ export function BookingWizard() {
       }
       setConfirmed(booking);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
+      if (e instanceof ApiError && e.code === "SERVICE_AREA_STALE") {
+        setError(t("The Qatar service-area map changed or this saved location needs confirmation. Please reselect the location."));
+        setServiceAreaVersion(null);
+        setStep(1);
+      } else if (e instanceof ApiError && e.status === 409) {
         // The backend sends distinct 409 reasons — a car that is already
         // booked must not be presented as a fleet-capacity problem.
         setError(
