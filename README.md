@@ -13,6 +13,8 @@ If `CUSTOMER_API_BASE` is not set in development, the server-side BFF falls back
 
 Booking, membership, and store payments use separate idempotent create/payment commands. The browser persists the current command keys and pending subject before redirecting, so double taps, a lost response, or returning to an interrupted checkout resumes the same server-side payment attempt. The development mock returns a deterministic checkout attempt per subject; production settlement remains entirely server-authoritative.
 
+A captured payment received after its booking, membership, or store reservation closes is exposed as `reconciliation_required`. The closed product is not reinstated and the customer is not offered another payment attempt while the required refund is being arranged.
+
 To run against the real backend:
 
 ```bash

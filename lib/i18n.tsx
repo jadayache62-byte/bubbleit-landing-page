@@ -228,6 +228,11 @@ const AR: Record<string, string> = {
   "Expired": "منتهي",
   "Used up": "مستهلك",
   "Cancelled": "ملغي",
+  "Payment under review": "الدفع قيد المراجعة",
+  "Payment received after this membership closed. It was not reactivated, and our team is arranging the required refund.":
+    "تم استلام الدفعة بعد إغلاق هذا الاشتراك. لم تتم إعادة تفعيله، ويعمل فريقنا على ترتيب الاسترداد المطلوب.",
+  "Payment received after this booking closed. It was not reinstated, and our team is arranging the required refund.":
+    "تم استلام الدفعة بعد إغلاق هذا الحجز. لم تتم إعادة الحجز، ويعمل فريقنا على ترتيب الاسترداد المطلوب.",
   "Expires": "ينتهي",
   "Book with membership": "احجز باشتراكك",
   "Sign in to buy a membership.": "سجّل الدخول لشراء اشتراك.",

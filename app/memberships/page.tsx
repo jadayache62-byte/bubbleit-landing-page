@@ -231,12 +231,17 @@ export default function MembershipsPage() {
                       </span>
                     )}
                   </p>
+                  {m.payment?.status === "reconciliation_required" && (
+                    <p role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+                      {t("Payment received after this membership closed. It was not reactivated, and our team is arranging the required refund.")}
+                    </p>
+                  )}
                   {m.status === "active" && m.washes_remaining > 0 && (
                     <Link href="/book" className="primary-button mt-auto">
                       {t("Book a Wash")}
                     </Link>
                   )}
-                  {m.status === "pending_payment" && (
+                  {m.status === "pending_payment" && m.payment?.status !== "reconciliation_required" && (
                     <button type="button" className="primary-button mt-auto" disabled={busy} onClick={() => retryMembershipPayment(m)}>
                       {t("Continue Payment")}
                     </button>
