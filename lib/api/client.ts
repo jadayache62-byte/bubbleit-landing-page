@@ -331,7 +331,7 @@ export function createBooking(payload: CreateBookingPayload, idempotencyKey?: st
 }
 
 export function initializeBookingPayment(bookingId: number, idempotencyKey: string) {
-  return request<{ checkout_url: string; status: "ready" }>(`/bookings/${bookingId}/pay`, {
+  return request<{ checkout_url: string | null; status: "ready" }>(`/bookings/${bookingId}/pay`, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
   });

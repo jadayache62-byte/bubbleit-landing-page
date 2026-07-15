@@ -126,6 +126,8 @@ export type PaymentState = {
     | "retryable"
     | "pending"
     | "paid"
+    | "partially_refunded"
+    | "refunded"
     | "reconciliation_required";
   captured: boolean;
   reconciliation_reason: string | null;
@@ -208,7 +210,8 @@ export type Booking = {
   notes: string;
   cars: BookingCar[];
   created_at: string;
-  // Present on create for online bookings: the SkipCash hosted-checkout URL.
+  // Server-authoritative payment state. Checkout URLs are returned only by the
+  // separate idempotent payment-initialization command.
   payment?: PaymentState;
 };
 

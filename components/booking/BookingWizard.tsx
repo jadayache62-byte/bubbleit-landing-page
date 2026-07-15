@@ -50,6 +50,11 @@ import {
   nextQatarDays,
   serializeQatarBookingDateTime,
 } from "@/lib/datetime";
+import {
+  bookingPaymentUiState,
+  canRetryBookingPayment,
+  usableCheckoutUrl,
+} from "@/lib/booking/payment-flow";
 import { localized, useI18n } from "@/lib/i18n";
 
 const CURRENCY = "QR";
@@ -260,7 +265,6 @@ export function BookingWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Booking | null>(null);
-  const [paymentRecovery, setPaymentRecovery] = useState(false);
   const [paymentRetrying, setPaymentRetrying] = useState(false);
   const bookingAttemptRef = useRef<string | null>(null);
 
@@ -473,6 +477,8 @@ export function BookingWizard() {
   // memberships applied; the toggle lets them pay instead and keep the wash.
   const [quote, setQuote] = useState<BookingQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quoteRetryVersion, setQuoteRetryVersion] = useState(0);
 
   useEffect(() => {
     if (step !== 3 || !authed || !slot || !availabilityDuration) return;
@@ -489,6 +495,7 @@ export function BookingWizard() {
     queueMicrotask(() => {
       if (!cancelled) {
         setQuote(null);
+        setQuoteError(null);
         setQuoteLoading(true);
       }
     });
@@ -505,7 +512,10 @@ export function BookingWizard() {
       service_area_version: serviceAreaVersion,
     })
       .then((q) => {
-        if (!cancelled) setQuote(q);
+        if (!cancelled) {
+          setQuote(q);
+          setQuoteError(null);
+        }
       })
       .catch((caught) => {
         if (cancelled) return;
@@ -518,6 +528,10 @@ export function BookingWizard() {
           setError(t("Service timing changed. Please choose your time again."));
           setStep(2);
           loadSlots(date, availabilityCars);
+        } else {
+          setQuoteError(
+            t("We couldn't verify the current price and coverage. Retry the quote before confirming."),
+          );
         }
       })
       .finally(() => {
@@ -526,7 +540,7 @@ export function BookingWizard() {
     return () => {
       cancelled = true;
     };
-  }, [step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, availabilityDuration, availabilityCars, loadSlots, t]);
+  }, [step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, availabilityDuration, availabilityCars, loadSlots, quoteRetryVersion, t]);
 
   const membershipEligible = quote?.membership_eligible ?? false;
   const applyMembership = membershipEligible;
@@ -542,7 +556,7 @@ export function BookingWizard() {
         Infinity,
       )
     : undefined;
-  const showPromo = authed && !applyMembership && total > 0;
+  const showPromo = authed && quote !== null && !applyMembership && total > 0;
 
   const carsValid = cars.every((c) => c.serviceId !== null && c.plate.trim());
 
@@ -710,15 +724,23 @@ export function BookingWizard() {
           .map(([product_id, quantity]) => ({ product_id, quantity })),
       }, `${attemptKey}:booking`);
 
-      if (booking.payment?.status === "not_started") {
+      if (canRetryBookingPayment(bookingPaymentUiState(booking.payment?.status))) {
         try {
           const payment = await initializeBookingPayment(booking.id, `${attemptKey}:payment`);
+          const checkoutUrl = usableCheckoutUrl(payment.checkout_url);
+          if (!checkoutUrl) {
+            throw new Error("Payment provider did not return a usable checkout link.");
+          }
           clearBookingAttempt();
-          window.location.assign(payment.checkout_url);
+          window.location.assign(checkoutUrl);
           return;
-        } catch {
+        } catch (caught) {
           setConfirmed(booking);
-          setPaymentRecovery(true);
+          setError(
+            caught instanceof ApiError
+              ? caught.message
+              : t("Payment is not ready yet. Your booking is saved once and has not been confirmed as paid."),
+          );
           return;
         }
       }
@@ -766,8 +788,12 @@ export function BookingWizard() {
     setPaymentRetrying(true);
     try {
       const payment = await initializeBookingPayment(confirmed.id, `${bookingAttemptKey()}:payment`);
+      const checkoutUrl = usableCheckoutUrl(payment.checkout_url);
+      if (!checkoutUrl) {
+        throw new Error("Payment provider did not return a usable checkout link.");
+      }
       clearBookingAttempt();
-      window.location.assign(payment.checkout_url);
+      window.location.assign(checkoutUrl);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : t("Payment is still unavailable. Your booking remains saved."));
     } finally {
@@ -793,7 +819,6 @@ export function BookingWizard() {
       <div ref={topRef} className="mx-auto w-full max-w-3xl scroll-mt-24">
         <SuccessPanel
           booking={confirmed}
-          paymentRecovery={paymentRecovery}
           paymentRetrying={paymentRetrying}
           onRetryPayment={retryPayment}
           error={error}
@@ -1082,7 +1107,21 @@ export function BookingWizard() {
               </div>
             )}
 
-            {authed && !quoteLoading && applyMembership && (
+            {authed && !quoteLoading && quoteError && !quote && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5" role="alert">
+                <h3 className="font-bold text-amber-950">{t("Price confirmation required")}</h3>
+                <p className="mt-1 text-sm leading-6 text-amber-900">{quoteError}</p>
+                <button
+                  type="button"
+                  className="secondary-button mt-4"
+                  onClick={() => setQuoteRetryVersion((version) => version + 1)}
+                >
+                  {t("Retry quote")}
+                </button>
+              </div>
+            )}
+
+            {authed && !quoteLoading && quote && applyMembership && (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5" role="status">
                 <div className="flex items-start gap-3">
                   <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-600 text-lg font-bold text-white" aria-hidden="true">✓</span>
@@ -1098,7 +1137,7 @@ export function BookingWizard() {
               </div>
             )}
 
-            {authed && !quoteLoading && !applyMembership && (
+            {authed && !quoteLoading && quote && !applyMembership && (
               <PayOption active onClick={() => {}} title={t("Pay online (SkipCash)")} />
             )}
 
@@ -1135,27 +1174,29 @@ export function BookingWizard() {
               />
             </Field>
 
-            <Summary
-              cars={cars}
-              services={services}
-              area={area}
-              details={details}
-              date={date}
-              slot={slot}
-              total={total}
-              discount={discount}
-              promoCode={promoActive ? applied.code : null}
-              membershipApplied={applyMembership}
-              membershipDiscount={membershipDiscount}
-              dueTotal={dueTotal}
-              washesLeftAfter={washesLeftAfter}
-              timeRangeLabel={quote?.time_range_label ?? null}
-              durationLabel={quote?.duration_label ?? null}
-              durationContributions={quote?.duration.contributions ?? []}
-              products={bookingProducts}
-              productQuantities={productQuantities}
-              productTotal={activeProductTotal}
-            />
+            {quote && (
+              <Summary
+                cars={cars}
+                services={services}
+                area={area}
+                details={details}
+                date={date}
+                slot={slot}
+                total={total}
+                discount={discount}
+                promoCode={promoActive ? applied.code : null}
+                membershipApplied={applyMembership}
+                membershipDiscount={membershipDiscount}
+                dueTotal={dueTotal}
+                washesLeftAfter={washesLeftAfter}
+                timeRangeLabel={quote.time_range_label ?? null}
+                durationLabel={quote.duration_label ?? null}
+                durationContributions={quote.duration.contributions ?? []}
+                products={bookingProducts}
+                productQuantities={productQuantities}
+                productTotal={activeProductTotal}
+              />
+            )}
           </StepPanel>
         )}
 
@@ -1174,23 +1215,29 @@ export function BookingWizard() {
           <div className="mx-auto flex w-full max-w-3xl items-center gap-3">
           <div className="min-w-0 flex-1 text-xs text-[color:var(--muted-foreground)] sm:text-sm">
             {step === 3 ? (
-              <>
-                {t("Total")}{" "}
-                <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
-                  {fmt(dueTotal)}
-                </span>
-                {applyMembership ? (
-                  <span className="ms-2 text-xs font-semibold text-emerald-600">
-                    ({productTotal > 0 ? t("wash covered · products only") : t("covered by membership")})
+              quote ? (
+                <>
+                  {t("Total")}{" "}
+                  <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
+                    {fmt(dueTotal)}
                   </span>
-                ) : (
-                  discount > 0 && (
-                    <span className="ms-2 text-xs font-medium text-emerald-600">
-                      ({t("saved")} {fmt(discount)})
+                  {applyMembership ? (
+                    <span className="ms-2 text-xs font-semibold text-emerald-600">
+                      ({productTotal > 0 ? t("wash covered · products only") : t("covered by membership")})
                     </span>
-                  )
-                )}
-              </>
+                  ) : (
+                    discount > 0 && (
+                      <span className="ms-2 text-xs font-medium text-emerald-600">
+                        ({t("saved")} {fmt(discount)})
+                      </span>
+                    )
+                  )}
+                </>
+              ) : (
+                <span className="font-semibold text-amber-700">
+                  {t("Authoritative quote required")}
+                </span>
+              )
             ) : (
               total > 0 && (
                 <>
@@ -2175,18 +2222,22 @@ function PromoField({
 
 function SuccessPanel({
   booking,
-  paymentRecovery,
   paymentRetrying,
   onRetryPayment,
   error,
 }: {
   booking: Booking;
-  paymentRecovery: boolean;
   paymentRetrying: boolean;
   onRetryPayment: () => void;
   error: string | null;
 }) {
   const { lang, t } = useI18n();
+  const paymentState = bookingPaymentUiState(booking.payment?.status);
+  const paymentConfirmed =
+    paymentState === "covered_confirmed" || paymentState === "paid_confirmed";
+  const paymentUnderReview = paymentState === "payment_reconciliation";
+  const paymentClosed = paymentState === "payment_closed";
+  const showPaymentRetry = canRetryBookingPayment(paymentState);
   const when = formatQatarDateTime(
     booking.scheduled_at,
     lang === "ar" ? "ar" : "en",
@@ -2200,11 +2251,22 @@ function SuccessPanel({
   );
   return (
     <div className="glass-panel mx-auto max-w-lg rounded-[var(--radius-card)] p-8 text-center sm:p-12">
-      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl">
-        ✓
+      <div className={clsx(
+        "mx-auto flex h-16 w-16 items-center justify-center rounded-full text-3xl",
+        paymentConfirmed ? "bg-emerald-100" : paymentUnderReview || paymentClosed ? "bg-red-100" : "bg-amber-100",
+      )}>
+        {paymentConfirmed ? "✓" : paymentUnderReview || paymentClosed ? "!" : "…"}
       </div>
       <h2 className="mt-6 text-2xl font-bold">
-        {paymentRecovery ? t("Booking saved — payment pending") : t("Booking confirmed!")}
+        {paymentState === "covered_confirmed"
+          ? t("Booking confirmed — membership covered")
+          : paymentState === "paid_confirmed"
+            ? t("Booking confirmed — payment received")
+            : paymentUnderReview
+              ? t("Payment under review")
+              : paymentClosed
+                ? t("Payment closed")
+              : t("Booking saved — payment pending")}
       </h2>
       <p className="mt-2 text-[color:var(--muted-foreground)]">
         {t("Reference")}{" "}
@@ -2212,7 +2274,7 @@ function SuccessPanel({
           {booking.reference}
         </span>
       </p>
-      {paymentRecovery && (
+      {showPaymentRetry && (
         <div className="mt-6 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
           <p>{t("Your booking was saved once. Retry payment without creating another booking.")}</p>
           <button
@@ -2231,11 +2293,15 @@ function SuccessPanel({
         <br />
         {booking.address_area}
         <br />
-        {booking.total <= 0
-          ? "Covered by your membership."
-          : booking.status === "paid"
-            ? `Paid ${fmt(booking.total)} online.`
-            : `A secure payment link for ${fmt(booking.total)} will follow to confirm your booking.`}
+        {paymentState === "covered_confirmed"
+          ? t("Covered by your membership. No payment is required.")
+          : paymentState === "paid_confirmed"
+            ? `${t("Paid")} ${fmt(booking.total)} ${t("online.")}`
+            : paymentUnderReview
+              ? t("A captured payment needs review. This booking is not being shown as paid or reinstated.")
+              : paymentClosed
+                ? t("This payment is closed and cannot be retried.")
+              : t("Payment is still required. This saved booking is not confirmed as paid.")}
       </p>
       <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
         <Link href="/account" className="primary-button">

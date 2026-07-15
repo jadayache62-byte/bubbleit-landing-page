@@ -170,6 +170,31 @@ const AR: Record<string, string> = {
   "Confirm & Pay": "تأكيد ودفع",
   "Confirm Booking": "تأكيد الحجز",
   "Booking confirmed!": "تم تأكيد الحجز!",
+  "Price confirmation required": "يلزم تأكيد السعر",
+  "We couldn't verify the current price and coverage. Retry the quote before confirming.":
+    "تعذّر التحقق من السعر الحالي وتغطية الاشتراك. أعد محاولة عرض السعر قبل التأكيد.",
+  "Retry quote": "إعادة محاولة عرض السعر",
+  "Authoritative quote required": "يلزم عرض سعر مؤكّد",
+  "Booking confirmed — membership covered": "تم تأكيد الحجز — مغطّى بالاشتراك",
+  "Booking confirmed — payment received": "تم تأكيد الحجز — تم استلام الدفع",
+  "Booking saved — payment pending": "تم حفظ الحجز — الدفع معلّق",
+  "Your booking was saved once. Retry payment without creating another booking.":
+    "تم حفظ حجزك مرة واحدة. أعد محاولة الدفع من دون إنشاء حجز آخر.",
+  "Retry secure payment": "إعادة محاولة الدفع الآمن",
+  "Retrying…": "جارٍ إعادة المحاولة…",
+  "Payment is not ready yet. Your booking is saved once and has not been confirmed as paid.":
+    "الدفع غير جاهز بعد. تم حفظ حجزك مرة واحدة ولم يتم تأكيده كمدفوع.",
+  "Covered by your membership. No payment is required.":
+    "مغطّى باشتراكك. لا يلزم دفع.",
+  "Paid": "تم دفع",
+  "online.": "إلكترونياً.",
+  "A captured payment needs review. This booking is not being shown as paid or reinstated.":
+    "تحتاج الدفعة المستلمة إلى مراجعة. لا يظهر هذا الحجز كمدفوع أو معاد التفعيل.",
+  "Payment is still required. This saved booking is not confirmed as paid.":
+    "لا يزال الدفع مطلوباً. هذا الحجز المحفوظ غير مؤكّد كمدفوع.",
+  "Payment closed": "الدفع مغلق",
+  "This payment is closed and cannot be retried.":
+    "تم إغلاق هذه الدفعة ولا يمكن إعادة محاولتها.",
   "Reference": "رقم المرجع",
   "View my bookings": "عرض حجوزاتي",
   "Back to home": "العودة للرئيسية",

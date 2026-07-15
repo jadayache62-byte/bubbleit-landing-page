@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-15] — Authoritative booking and payment UI states (MAD-53)
+
+### Fixed
+- Quote timeout or server failure now blocks the final summary and submission with an explicit quote retry instead of falling back to client-calculated confirmation data.
+- A saved payable booking is presented as payment pending until the server reports `paid`; membership-covered, paid, retryable, and reconciliation states now use distinct truthful headings, copy, and actions.
+- Missing, blank, insecure, or protocol-relative checkout URLs fail closed and preserve the same saved booking for payment retry.
+
+### Added
+- Added deterministic state-contract tests for quote failure, provider unavailability, null checkout URL, membership coverage, paid success, and reconciliation behavior.
+
 ## [2026-07-14] — HttpOnly customer sessions and recovery (MAD-54)
 
 ### Security

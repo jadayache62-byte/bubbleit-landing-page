@@ -17,7 +17,7 @@ test("one persisted attempt key is derived for every booking command", () => {
 test("booking persistence and payment initialization are separate API commands", () => {
   assert.match(client, /initializeBookingPayment/);
   assert.match(client, /bookings\/\$\{bookingId\}\/pay/);
-  assert.match(wizard, /booking\.payment\?\.status === "not_started"/);
+  assert.match(wizard, /canRetryBookingPayment\(bookingPaymentUiState\(booking\.payment\?\.status\)\)/);
   assert.match(wizard, /Booking saved — payment pending/);
 });
 
