@@ -170,16 +170,18 @@ export function listStoreProducts() {
   );
 }
 
-export function createStoreOrder(payload: CreateStoreOrderPayload) {
+export function createStoreOrder(payload: CreateStoreOrderPayload, idempotencyKey: string) {
   return request<StoreOrder>("/store/orders", {
     method: "POST",
     body: payload,
+    headers: { "Idempotency-Key": idempotencyKey },
   });
 }
 
-export function payStoreOrder(orderId: number) {
+export function payStoreOrder(orderId: number, idempotencyKey: string) {
   return request<StoreOrderPayment>(`/store/orders/${orderId}/pay`, {
     method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
   });
 }
 
@@ -293,10 +295,18 @@ export function listMemberships() {
   return request<Paginated<CustomerMembership>>("/memberships").then((r) => r.data);
 }
 
-export function buyMembership(planId: number) {
-  return request<CustomerMembership & { pay_url: string | null }>("/memberships", {
+export function buyMembership(planId: number, idempotencyKey: string) {
+  return request<CustomerMembership>("/memberships", {
     method: "POST",
     body: { plan_id: planId },
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
+}
+
+export function initializeMembershipPayment(membershipId: number, idempotencyKey: string) {
+  return request<StoreOrderPayment>(`/memberships/${membershipId}/pay`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
   });
 }
 

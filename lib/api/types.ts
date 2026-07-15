@@ -140,6 +140,10 @@ export type CustomerMembership = {
   activated_at: string | null;
   expires_at: string | null;
   plan: MembershipPlan;
+  payment?: {
+    status: "not_started" | "ready" | "retryable";
+    checkout_url: string | null;
+  };
 };
 
 export type BookingStatus =
@@ -376,6 +380,10 @@ export type CreateStoreOrderPayload = {
 };
 
 export type StoreOrderPayment = {
-  checkout_url: string | null;
-  payment_reference?: string;
+  purchase_id: number;
+  attempt_id: number;
+  merchant_reference: string;
+  checkout_url: string;
+  payment_reference: string;
+  status: "ready" | "retryable" | "pending";
 };
