@@ -370,7 +370,7 @@ export type StoreOrderLine = {
 
 export type StoreOrder = {
   id: number;
-  customer_id: number | null;
+  customer_id: number;
   reference: string;
   status:
     | "pending_payment"
@@ -400,12 +400,11 @@ export type StoreOrder = {
   subtotal: number;
   total: number;
   lines: StoreOrderLine[];
+  expires_at: string;
   created_at: string;
 };
 
 export type CreateStoreOrderPayload = {
-  customer_name?: string;
-  customer_phone?: string;
   delivery_area: string;
   delivery_details: string;
   building_number?: string;
