@@ -2,6 +2,13 @@
 
 ---
 
+## [2026-07-15] — Store price reconfirmation (MAD-49)
+
+### Fixed
+- Checkout now sends the exact QAR minor-unit cart reviewed by the customer and verifies the created order still matches before starting payment.
+- A server price or delivery-fee change replaces the review with the versioned authoritative total and requires a second explicit confirmation.
+- The development simulator mirrors the conflict-before-reservation contract, and stock or availability failures cannot advance to payment.
+
 ## [2026-07-15] — Authenticated store checkout contract (MAD-48)
 
 ### Fixed

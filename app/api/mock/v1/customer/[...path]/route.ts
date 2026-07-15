@@ -10,6 +10,7 @@ import type {
   PaymentMethod,
   StoreOrder,
   StoreOrderLine,
+  StorePricingConfirmation,
   Vehicle,
 } from "@/lib/api/types";
 import { formatQatarDateTime, qatarServiceDate } from "@/lib/datetime";
@@ -77,6 +78,7 @@ function authCustomer(req: NextRequest) {
 const FLEET_CAPACITY = 2;
 const POST_BOOKING_BUFFER_MINUTES = 30;
 const SERVICE_AREA_VERSION = "qatar-cgis-land-2026-07-14-v1";
+const STORE_DELIVERY_FEE_MINOR = 0;
 const idempotencyResponses = new Map<string, { request: string; status: number; body: unknown }>();
 const paymentAttempts = new Map<string, {
   purchase_id: number;
@@ -107,6 +109,58 @@ function mockPayment(subject: "BKG" | "MEM" | "STO", id: number) {
   };
   paymentAttempts.set(key, payment);
   return payment;
+}
+
+async function storePricing(lines: StoreOrderLine[]): Promise<StorePricingConfirmation> {
+  const pricedLines = lines.map((line) => ({
+    product_id: line.product_id,
+    sku: line.sku,
+    name: line.name,
+    quantity: line.quantity,
+    unit_price_minor: Math.round(line.unit_price * 100),
+    line_total_minor: Math.round(line.unit_price * 100) * line.quantity,
+  }));
+  const subtotalMinor = pricedLines.reduce((sum, line) => sum + line.line_total_minor, 0);
+  const snapshot = {
+    schema: "store-cart-pricing:v1" as const,
+    currency: "QAR" as const,
+    lines: pricedLines,
+    subtotal_minor: subtotalMinor,
+    delivery_fee_minor: STORE_DELIVERY_FEE_MINOR,
+    total_minor: subtotalMinor + STORE_DELIVERY_FEE_MINOR,
+  };
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(snapshot)),
+  );
+  const version = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+  return { version, ...snapshot };
+}
+
+function storePricingMatches(confirmation: unknown, pricing: StorePricingConfirmation) {
+  if (!confirmation || typeof confirmation !== "object") return false;
+  const candidate = confirmation as Partial<StorePricingConfirmation>;
+  const normalizedLines = Array.isArray(candidate.lines)
+    ? candidate.lines.map((line) => ({
+        product_id: line.product_id,
+        quantity: line.quantity,
+        unit_price_minor: line.unit_price_minor,
+      }))
+    : [];
+  const authoritativeLines = pricing.lines.map((line) => ({
+    product_id: line.product_id,
+    quantity: line.quantity,
+    unit_price_minor: line.unit_price_minor,
+  }));
+
+  return candidate.schema === pricing.schema
+    && candidate.currency === pricing.currency
+    && candidate.subtotal_minor === pricing.subtotal_minor
+    && candidate.delivery_fee_minor === pricing.delivery_fee_minor
+    && candidate.total_minor === pricing.total_minor
+    && JSON.stringify(normalizedLines) === JSON.stringify(authoritativeLines)
+    && (candidate.version == null || candidate.version === pricing.version);
 }
 
 // Development-only approximation. Production eligibility is always decided
@@ -353,10 +407,10 @@ async function handle(req: NextRequest, segments: string[]) {
     for (const input of linesInput) {
       const product = store.storeProducts.find((item) => item.id === String(input.product_id));
       const quantity = Number(input.quantity ?? 0);
-      if (!product || !Number.isInteger(quantity) || quantity < 1) {
+      if (!product || product.is_available === false || !Number.isInteger(quantity) || quantity < 1) {
         return fail(422, "Validation failed.", { lines: ["Invalid product or quantity."] });
       }
-      if (product.stock_quantity < quantity) {
+      if (product.stock_quantity - product.reserved_quantity < quantity) {
         return fail(409, `${product.name} does not have enough stock for that quantity.`);
       }
       orderLines.push({
@@ -370,6 +424,17 @@ async function handle(req: NextRequest, segments: string[]) {
       });
     }
 
+    const pricing = await storePricing(orderLines);
+    if (!storePricingMatches(body.pricing_confirmation, pricing)) {
+      return fail(
+        409,
+        "Store pricing changed. Review and confirm the updated total.",
+        null,
+        { pricing },
+        "STORE_PRICING_CHANGED",
+      );
+    }
+
     for (const line of orderLines) {
       const product = store.storeProducts.find((item) => item.id === line.product_id);
       if (!product) continue;
@@ -377,7 +442,7 @@ async function handle(req: NextRequest, segments: string[]) {
     }
 
     const id = store.nextId++;
-    const subtotal = orderLines.reduce((sum, line) => sum + line.line_total, 0);
+    const subtotal = pricing.subtotal_minor / 100;
     const order: StoreOrder = {
       id,
       customer_id: linkedCustomer.id,
@@ -386,6 +451,7 @@ async function handle(req: NextRequest, segments: string[]) {
       payment_status: "unpaid",
       payment_method: "online",
       accounting_status: "pending_sync" as const,
+      pricing,
       customer_name: customerName,
       customer_phone: customerPhone,
       delivery_area: deliveryArea,
@@ -397,7 +463,8 @@ async function handle(req: NextRequest, segments: string[]) {
       longitude: typeof body.longitude === "number" ? body.longitude : null,
       service_area: { version: SERVICE_AREA_VERSION, eligible: true },
       subtotal,
-      total: subtotal,
+      delivery_fee: pricing.delivery_fee_minor / 100,
+      total: pricing.total_minor / 100,
       lines: orderLines,
       expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       created_at: new Date().toISOString(),

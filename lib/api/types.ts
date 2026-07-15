@@ -364,8 +364,29 @@ export type StoreOrderLine = {
   name: string;
   quantity: number;
   unit_price: number;
+  unit_price_minor?: number;
   line_total: number;
+  line_total_minor?: number;
   accounting_code: string | null;
+};
+
+export type StorePricingLine = {
+  product_id: string | number;
+  sku?: string;
+  name?: string;
+  quantity: number;
+  unit_price_minor: number;
+  line_total_minor?: number;
+};
+
+export type StorePricingConfirmation = {
+  schema: "store-cart-pricing:v1";
+  version: string | null;
+  currency: "QAR";
+  lines: StorePricingLine[];
+  subtotal_minor: number;
+  delivery_fee_minor: number;
+  total_minor: number;
 };
 
 export type StoreOrder = {
@@ -387,6 +408,7 @@ export type StoreOrder = {
   payment_method?: string;
   payment?: PaymentState;
   accounting_status: "pending_sync" | "synced" | "sync_failed" | "not_required" | "failed";
+  pricing: StorePricingConfirmation;
   customer_name: string;
   customer_phone: string;
   delivery_area: string;
@@ -398,6 +420,7 @@ export type StoreOrder = {
   longitude: number | null;
   service_area: ServiceAreaSnapshot;
   subtotal: number;
+  delivery_fee: number;
   total: number;
   lines: StoreOrderLine[];
   expires_at: string;
@@ -414,6 +437,7 @@ export type CreateStoreOrderPayload = {
   longitude: number;
   service_area_version: string;
   notes?: string;
+  pricing_confirmation: StorePricingConfirmation;
   lines: { product_id: string | number; inventory_item_id?: number; quantity: number }[];
 };
 
