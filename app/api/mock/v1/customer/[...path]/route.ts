@@ -324,8 +324,8 @@ async function handle(req: NextRequest, segments: string[]) {
     const linkedCustomer = authCustomer(req);
     if (!linkedCustomer) return fail(401, "Unauthenticated.");
     const linesInput = Array.isArray(body.lines) ? body.lines : [];
-    const customerName = String(body.customer_name ?? linkedCustomer?.name ?? "").trim();
-    const customerPhone = String(body.customer_phone ?? linkedCustomer?.phone ?? "").trim();
+    const customerName = String(linkedCustomer.name ?? "").trim();
+    const customerPhone = String(linkedCustomer.phone ?? "").trim();
     const deliveryArea = String(body.delivery_area ?? "").trim();
     const deliveryDetails = String(body.delivery_details ?? "").trim();
     const buildingNumber = String(body.building_number ?? "").trim();
@@ -399,6 +399,7 @@ async function handle(req: NextRequest, segments: string[]) {
       subtotal,
       total: subtotal,
       lines: orderLines,
+      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       created_at: new Date().toISOString(),
     };
     store.storeOrders.push(order);

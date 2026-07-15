@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -38,6 +38,7 @@ type Cart = Record<string, number>;
 type PendingCheckout = {
   order: StoreOrder;
   cart: Cart;
+  customerId: number;
   orderKey: string;
   paymentKey: string;
 };
@@ -90,12 +91,14 @@ function readPendingCheckout(): PendingCheckout | null {
     if (!raw) return null;
 
     const pending = JSON.parse(raw) as Partial<PendingCheckout>;
+    const customerId = pending.customerId ?? pending.order?.customer_id;
     if (
       !pending ||
       typeof pending !== "object" ||
       !pending.order ||
       typeof pending.order.id !== "number" ||
       typeof pending.order.reference !== "string" ||
+      typeof customerId !== "number" ||
       !pending.cart ||
       typeof pending.cart !== "object"
     ) {
@@ -104,6 +107,7 @@ function readPendingCheckout(): PendingCheckout | null {
 
     return {
       ...pending,
+      customerId,
       orderKey: typeof pending.orderKey === "string"
         ? pending.orderKey
         : `store-order:${pending.order.id}:legacy-create`,
@@ -121,6 +125,15 @@ function writePendingCheckout(pending: PendingCheckout) {
     window.localStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pending));
   } catch {
     // The in-memory checkout state still prevents a duplicate order this visit.
+  }
+}
+
+function clearPendingCheckoutStorage() {
+  try {
+    window.localStorage.removeItem(PENDING_CHECKOUT_KEY);
+    window.localStorage.removeItem(CHECKOUT_ATTEMPT_KEY);
+  } catch {
+    // The cart itself remains available for a new authenticated checkout.
   }
 }
 
@@ -158,21 +171,10 @@ function isCompletedOrder(order: StoreOrder) {
   return COMPLETED_ORDER_STATUSES.has(order.status);
 }
 
-function normalizeQatarPhone(value: string) {
-  let digits = value.replace(/\D/g, "");
-  if (digits.startsWith("00")) digits = digits.slice(2);
-  if (digits.startsWith("974")) digits = digits.slice(3);
-  return digits.length === 8 ? `+974${digits}` : value.trim();
-}
-
-function isValidQatarPhone(value: string) {
-  const digits = value.replace(/\D/g, "");
-  return digits.length === 8 || (digits.length === 11 && digits.startsWith("974"));
-}
-
 export function StoreCheckoutClient() {
   const topRef = useRef<HTMLDivElement | null>(null);
   const checkoutInFlightRef = useRef(false);
+  const pendingCheckoutRef = useRef<PendingCheckout | null>(null);
   // Keep the server and first browser render identical. Browser storage is
   // restored after hydration below so saved carts do not cause a mismatch.
   const [cart, setCart] = useState<Cart>({});
@@ -201,9 +203,26 @@ export function StoreCheckoutClient() {
     fallbackProducts(),
   );
   const [step, setStep] = useState<"location" | "contact" | "review">("location");
-  const [contactMode, setContactMode] = useState<"guest" | "signin">("guest");
-  const [guestName, setGuestName] = useState("");
-  const [guestPhone, setGuestPhone] = useState("");
+
+  const acceptAuthenticatedCustomer = useCallback((current: Customer) => {
+    setCustomer(current);
+    const pending = pendingCheckoutRef.current;
+    if (pending && pending.customerId !== current.id) {
+      // A browser cart may survive account changes, but a server-created
+      // pending order is private to the customer who created it.
+      clearPendingCheckoutStorage();
+      pendingCheckoutRef.current = null;
+      setPendingCheckout(null);
+      setArea("");
+      setBuildingNumber("");
+      setZoneNumber("");
+      setStreetNumber("");
+      setAddressDetails("");
+      setGeo(null);
+      setPaymentNotice(null);
+      setStep("location");
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,6 +238,7 @@ export function StoreCheckoutClient() {
         return;
       }
 
+      pendingCheckoutRef.current = pending;
       setPendingCheckout(pending);
       setCart(pending.cart);
       setArea(pending.order.delivery_area);
@@ -226,8 +246,6 @@ export function StoreCheckoutClient() {
       setZoneNumber(pending.order.zone_number ?? "");
       setStreetNumber(pending.order.street_number ?? "");
       setAddressDetails(pending.order.delivery_details);
-      setGuestName(pending.order.customer_name);
-      setGuestPhone(pending.order.customer_phone);
       setStep("review");
       if (
         typeof pending.order.latitude === "number" &&
@@ -260,13 +278,14 @@ export function StoreCheckoutClient() {
     me()
       .then((current) => {
         if (!cancelled) {
-          setCustomer(current);
-          setGuestName(current.name ?? "");
-          setGuestPhone(current.phone);
+          acceptAuthenticatedCustomer(current);
         }
       })
       .catch(() => {
-        if (!cancelled) setCustomer(null);
+        if (!cancelled) {
+          setCustomer(null);
+          if (pendingCheckoutRef.current) setStep("contact");
+        }
       })
       .finally(() => {
         if (!cancelled) setAuthChecked(true);
@@ -274,7 +293,7 @@ export function StoreCheckoutClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [acceptAuthenticatedCustomer]);
 
   useEffect(() => {
     if (!submitted) return;
@@ -364,7 +383,17 @@ export function StoreCheckoutClient() {
   }
 
   function savePendingCheckout(order: StoreOrder, attempt: CheckoutAttempt) {
-    const next = { order, cart, orderKey: attempt.orderKey, paymentKey: attempt.paymentKey };
+    if (typeof order.customer_id !== "number") {
+      throw new Error("The store order response is missing its customer owner.");
+    }
+    const next = {
+      order,
+      cart,
+      customerId: order.customer_id,
+      orderKey: attempt.orderKey,
+      paymentKey: attempt.paymentKey,
+    };
+    pendingCheckoutRef.current = next;
     setPendingCheckout(next);
     writePendingCheckout(next);
     return next;
@@ -379,6 +408,7 @@ export function StoreCheckoutClient() {
       // Navigation can still continue when browser storage is unavailable.
     }
     setCart({});
+    pendingCheckoutRef.current = null;
     setPendingCheckout(null);
   }
 
@@ -441,10 +471,8 @@ export function StoreCheckoutClient() {
       return;
     }
     if (checkoutInFlightRef.current) return;
-    const contactName = customer?.name?.trim() || guestName.trim();
-    const contactPhone = customer?.phone || normalizeQatarPhone(guestPhone);
-    if (!contactName || !isValidQatarPhone(contactPhone)) {
-      setError("Enter a valid name and Qatar phone number before checkout.");
+    if (!customer) {
+      setError("Sign in or create your verified account before checkout.");
       setStep("contact");
       return;
     }
@@ -462,8 +490,6 @@ export function StoreCheckoutClient() {
       }
       const serviceArea = await validateServiceArea(geo.lat, geo.lng);
       const payload = {
-        customer_name: contactName,
-        customer_phone: contactPhone,
         delivery_area: area.trim() || "Qatar",
         delivery_details: [
           `Building ${buildingNumber.trim()}`,
@@ -553,9 +579,7 @@ export function StoreCheckoutClient() {
   }
 
   const locationValid = geo !== null && buildingNumber.trim().length > 0;
-  const contactValid = customer
-    ? Boolean(customer.phone)
-    : guestName.trim().length > 1 && isValidQatarPhone(guestPhone);
+  const contactValid = Boolean(customer?.phone);
   const steps = [
     { id: "location", label: "Location" },
     { id: "contact", label: "Contact" },
@@ -639,8 +663,8 @@ export function StoreCheckoutClient() {
             {step === "contact" && (
               <section className="commerce-card p-5 sm:p-7">
                 <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">Step 2 of 3</span>
-                <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">How can we reach you?</h1>
-                <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">No account required. We only need a valid phone number for this delivery.</p>
+                <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">Verify your account</h1>
+                <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">Store checkout requires a signed-in customer account. Your cart stays here while you sign in or verify a new account by OTP.</p>
 
                 {!authChecked ? (
                   <div className="mt-6 h-28 animate-pulse rounded-2xl bg-slate-100" />
@@ -651,29 +675,13 @@ export function StoreCheckoutClient() {
                     <p className="mt-1 text-sm font-semibold" dir="ltr">{customer.phone}</p>
                   </div>
                 ) : (
-                  <>
-                    <div className="mt-6 grid grid-cols-2 rounded-full bg-slate-100 p-1">
-                      <button type="button" className={contactMode === "guest" ? "min-h-11 rounded-full bg-white px-3 text-sm font-bold text-[color:var(--navy)] shadow-sm" : "min-h-11 rounded-full px-3 text-sm font-semibold text-[color:var(--muted-foreground)]"} onClick={() => setContactMode("guest")}>Guest checkout</button>
-                      <button type="button" className={contactMode === "signin" ? "min-h-11 rounded-full bg-white px-3 text-sm font-bold text-[color:var(--navy)] shadow-sm" : "min-h-11 rounded-full px-3 text-sm font-semibold text-[color:var(--muted-foreground)]"} onClick={() => setContactMode("signin")}>Sign in</button>
-                    </div>
-                    {contactMode === "guest" ? (
-                      <div className="mt-5 space-y-4">
-                        <label className="block text-sm font-semibold">Full name
-                          <input className="wizard-input mt-2 min-h-12" autoComplete="name" value={guestName} onChange={(event) => setGuestName(event.target.value)} placeholder="Your full name" />
-                        </label>
-                        <label className="block text-sm font-semibold">Qatar phone number
-                          <div className="mt-2 flex min-h-12 overflow-hidden rounded-xl border border-[color:var(--border)] bg-white focus-within:border-[color:var(--blue)] focus-within:ring-2 focus-within:ring-[color:var(--cyan)]/30">
-                            <span className="grid place-items-center border-e border-slate-200 px-3 text-sm font-bold" dir="ltr">+974</span>
-                            <input className="min-w-0 flex-1 px-3 text-sm outline-none" inputMode="numeric" autoComplete="tel-national" dir="ltr" maxLength={8} pattern="[0-9]*" value={guestPhone.replace(/\D/g, "").replace(/^974/, "").slice(0, 8)} onChange={(event) => setGuestPhone(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="5555 5555" />
-                          </div>
-                        </label>
-                        {guestPhone.length > 0 && !isValidQatarPhone(guestPhone) && <p className="text-xs font-medium text-red-600">Enter all 8 digits of your Qatar phone number.</p>}
-                        <p className="rounded-xl bg-blue-50 px-4 py-3 text-xs leading-5 text-[color:var(--muted-foreground)]">Phone verification by OTP will be added here later. You can continue as a guest for now.</p>
-                      </div>
-                    ) : (
-                      <div className="mt-5"><AuthPanel inline title="Sign in to use your saved details" onAuthed={(current) => { setCustomer(current); setGuestName(current.name ?? ""); setGuestPhone(current.phone); }} /></div>
-                    )}
-                  </>
+                  <div className="mt-6">
+                    <AuthPanel
+                      inline
+                      title="Sign in or verify your account to continue"
+                      onAuthed={acceptAuthenticatedCustomer}
+                    />
+                  </div>
                 )}
               </section>
             )}
@@ -696,7 +704,7 @@ export function StoreCheckoutClient() {
 
                 <section className="commerce-card divide-y divide-slate-100 px-5 sm:px-7">
                   <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">Deliver to</p><p className="mt-1 text-sm font-semibold">Building {buildingNumber}{zoneNumber ? ` · Zone ${zoneNumber}` : ""}{streetNumber ? ` · Street ${streetNumber}` : ""}{area ? ` · ${area}` : ""}</p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("location")}>Edit</button></div>
-                  <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">Contact</p><p className="mt-1 text-sm font-semibold">{customer?.name || guestName} · <span dir="ltr">{customer?.phone || normalizeQatarPhone(guestPhone)}</span></p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("contact")}>Edit</button></div>
+                  <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">Account owner</p><p className="mt-1 text-sm font-semibold">{customer?.name || "Bubbleit customer"} · <span dir="ltr">{customer?.phone}</span></p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("contact")}>View</button></div>
                 </section>
 
                 {pendingCheckout && <p role={paymentNotice ? "alert" : "status"} className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">Order {pendingCheckout.order.reference} is saved. {paymentNotice ?? "Retry payment to continue."}</p>}

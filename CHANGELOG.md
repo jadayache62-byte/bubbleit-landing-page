@@ -2,6 +2,13 @@
 
 ---
 
+## [2026-07-15] — Authenticated store checkout contract (MAD-48)
+
+### Fixed
+- Removed the broken guest checkout claim and now require sign-in or OTP-backed account verification before order review and creation.
+- Preserved the browser cart across mid-checkout authentication while binding saved pending orders to their server-issued customer owner.
+- Discarded cross-customer pending checkout details without clearing the cart, and mirrored the 15-minute reservation expiry in the development simulator.
+
 ## [2026-07-15] — Versioned booking cart confirmation (MAD-42)
 
 ### Fixed
