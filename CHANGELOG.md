@@ -2,6 +2,12 @@
 
 ---
 
+## [2026-07-15] — Large membership validity windows (MAD-33)
+
+### Fixed
+- All 24-wash plans now display and simulate 180-day validity; all 48-wash plans display and simulate 365-day validity across every plan family.
+- Membership cards and the confirmation dialog consume each plan's API validity instead of hardcoded 30-day copy.
+
 ## [2026-07-15] — Store price reconfirmation (MAD-49)
 
 ### Fixed
