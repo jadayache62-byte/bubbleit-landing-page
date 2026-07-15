@@ -335,7 +335,9 @@ export default function MembershipsPage() {
               </span>
               <span className="text-sm font-semibold text-[color:var(--navy)]">QR {(plan.price / plan.washes_count).toFixed(0)} / {t("wash")}</span>
               {baselinePerWash > plan.price / plan.washes_count && <span className="text-xs font-semibold text-emerald-700">{t("Save")} {Math.round((1 - (plan.price / plan.washes_count) / baselinePerWash) * 100)}%</span>}
-              <span className="text-xs text-[color:var(--muted-foreground)]">{t("Valid 30 days")}</span>
+              <span className="text-xs text-[color:var(--muted-foreground)]">
+                {lang === "ar" ? `صالح لمدة ${plan.validity_days} يومًا` : `Valid for ${plan.validity_days} days`}
+              </span>
               <button
                 type="button"
                 disabled={busy}
