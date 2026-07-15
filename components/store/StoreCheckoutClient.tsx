@@ -17,6 +17,7 @@ import type {
   CreateStoreOrderPayload,
   Customer,
   StoreOrder,
+  StorePricingConfirmation,
   StoreProductInventory,
 } from "@/lib/api/types";
 import { STORE_PRODUCTS, formatStorePrice } from "@/lib/store/products";
@@ -171,6 +172,28 @@ function isCompletedOrder(order: StoreOrder) {
   return COMPLETED_ORDER_STATUSES.has(order.status);
 }
 
+function minorUnits(amount: number) {
+  return Math.round(amount * 100);
+}
+
+function pricingFromConflict(data: unknown): StorePricingConfirmation | null {
+  if (!data || typeof data !== "object") return null;
+  const pricing = (data as { pricing?: unknown }).pricing;
+  if (!pricing || typeof pricing !== "object") return null;
+  const candidate = pricing as Partial<StorePricingConfirmation>;
+  if (
+    candidate.schema !== "store-cart-pricing:v1" ||
+    candidate.currency !== "QAR" ||
+    typeof candidate.version !== "string" ||
+    !Array.isArray(candidate.lines) ||
+    !Number.isInteger(candidate.subtotal_minor) ||
+    !Number.isInteger(candidate.delivery_fee_minor) ||
+    !Number.isInteger(candidate.total_minor)
+  ) return null;
+
+  return candidate as StorePricingConfirmation;
+}
+
 export function StoreCheckoutClient() {
   const topRef = useRef<HTMLDivElement | null>(null);
   const checkoutInFlightRef = useRef(false);
@@ -196,6 +219,7 @@ export function StoreCheckoutClient() {
   >("idle");
   const [error, setError] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
+  const [pricingReview, setPricingReview] = useState<StorePricingConfirmation | null>(null);
   const [completedOrder, setCompletedOrder] = useState<StoreOrder | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -317,14 +341,31 @@ export function StoreCheckoutClient() {
     [cart, products],
   );
 
-  const subtotal = useMemo(
-    () =>
-      items.reduce(
-        (sum, item) => sum + item.product.price * item.quantity,
-        0,
-      ),
-    [items],
-  );
+  const catalogPricing = useMemo<StorePricingConfirmation>(() => {
+    const lines = items.map(({ product, quantity }) => {
+      const unitPriceMinor = minorUnits(product.price);
+      return {
+        product_id: product.id,
+        sku: product.sku,
+        name: product.name,
+        quantity,
+        unit_price_minor: unitPriceMinor,
+        line_total_minor: unitPriceMinor * quantity,
+      };
+    });
+    const subtotalMinor = lines.reduce((sum, line) => sum + line.line_total_minor, 0);
+
+    return {
+      schema: "store-cart-pricing:v1",
+      version: null,
+      currency: "QAR",
+      lines,
+      subtotal_minor: subtotalMinor,
+      delivery_fee_minor: 0,
+      total_minor: subtotalMinor,
+    };
+  }, [items]);
+  const reviewedPricing = pricingReview ?? catalogPricing;
 
   async function reverseGeocode(lat: number, lng: number) {
     try {
@@ -503,6 +544,7 @@ export function StoreCheckoutClient() {
         latitude: geo.lat,
         longitude: geo.lng,
         service_area_version: serviceArea.version,
+        pricing_confirmation: reviewedPricing,
         lines: items.map(({ product, quantity }) => ({
           product_id: product.id,
           inventory_item_id:
@@ -512,6 +554,13 @@ export function StoreCheckoutClient() {
       } satisfies CreateStoreOrderPayload;
       const attempt = checkoutAttempt(payload);
       const order = await createStoreOrder(payload, attempt.orderKey);
+      if (
+        order.pricing.total_minor !== reviewedPricing.total_minor ||
+        order.pricing.currency !== reviewedPricing.currency ||
+        (reviewedPricing.version !== null && order.pricing.version !== reviewedPricing.version)
+      ) {
+        throw new Error("The created order does not match the price you confirmed.");
+      }
       const checkout = savePendingCheckout(order, attempt);
 
       if (isCompletedOrder(order)) {
@@ -521,6 +570,15 @@ export function StoreCheckoutClient() {
 
       await initializePayment(checkout);
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "STORE_PRICING_CHANGED") {
+        const updatedPricing = pricingFromConflict(caught.data);
+        if (updatedPricing) {
+          setPricingReview(updatedPricing);
+          setError("The store total changed. Review the updated prices and confirm again to continue to payment.");
+          setStep("review");
+          return;
+        }
+      }
       setError(
         caught instanceof ApiError
           ? caught.message
@@ -542,7 +600,9 @@ export function StoreCheckoutClient() {
           ? "Redirecting..."
           : pendingCheckout
             ? "Retry payment"
-            : "Place order";
+            : pricingReview
+              ? "Confirm updated total and pay"
+              : "Place order";
   const checkoutLocked = Boolean(pendingCheckout);
 
   if (submitted) {
@@ -601,7 +661,7 @@ export function StoreCheckoutClient() {
             <Link href="/store" className="inline-flex min-h-11 items-center text-sm font-semibold text-[color:var(--muted-foreground)] hover:text-[color:var(--navy)]">
               <span className="me-2" aria-hidden="true">←</span> Back to cart
             </Link>
-            <span className="text-sm font-bold text-[color:var(--navy)]">{formatStorePrice(subtotal)}</span>
+            <span className="text-sm font-bold text-[color:var(--navy)]">{formatStorePrice(reviewedPricing.total_minor / 100)}</span>
           </div>
 
           <nav className="mb-7 grid grid-cols-3 gap-2" aria-label="Checkout progress">
@@ -692,14 +752,16 @@ export function StoreCheckoutClient() {
                   <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">Step 3 of 3</span>
                   <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">Review your order</h1>
                   <div className="mt-5 divide-y divide-slate-100">
-                    {items.map(({ product, quantity }) => (
-                      <div key={product.id} className="flex items-center justify-between gap-4 py-3">
-                        <div className="min-w-0"><p className="truncate text-sm font-bold">{product.name}</p><p className="text-xs text-[color:var(--muted-foreground)]">Qty {quantity} × {formatStorePrice(product.price)}</p></div>
-                        <span className="shrink-0 text-sm font-bold">{formatStorePrice(product.price * quantity)}</span>
+                    {reviewedPricing.lines.map((line) => (
+                      <div key={String(line.product_id)} className="flex items-center justify-between gap-4 py-3">
+                        <div className="min-w-0"><p className="truncate text-sm font-bold">{line.name ?? products.find((product) => product.id === line.product_id)?.name ?? "Store product"}</p><p className="text-xs text-[color:var(--muted-foreground)]">Qty {line.quantity} × {formatStorePrice(line.unit_price_minor / 100)}</p></div>
+                        <span className="shrink-0 text-sm font-bold">{formatStorePrice((line.line_total_minor ?? line.unit_price_minor * line.quantity) / 100)}</span>
                       </div>
                     ))}
                   </div>
-                  <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4"><span className="font-semibold">Total</span><span className="text-2xl font-extrabold text-[color:var(--navy)]">{formatStorePrice(subtotal)}</span></div>
+                  {reviewedPricing.delivery_fee_minor > 0 && <div className="flex items-center justify-between border-t border-slate-100 py-3 text-sm"><span>Delivery fee</span><span className="font-bold">{formatStorePrice(reviewedPricing.delivery_fee_minor / 100)}</span></div>}
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4"><span className="font-semibold">Total</span><span className="text-2xl font-extrabold text-[color:var(--navy)]">{formatStorePrice(reviewedPricing.total_minor / 100)}</span></div>
+                  {pricingReview && <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">Pricing changed since your first review. This updated QAR total must be confirmed before payment starts.</p>}
                 </section>
 
                 <section className="commerce-card divide-y divide-slate-100 px-5 sm:px-7">
