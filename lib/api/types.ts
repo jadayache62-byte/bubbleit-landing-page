@@ -118,6 +118,20 @@ export type Address = {
 
 export type PaymentMethod = "pay_on_site" | "online" | "membership";
 
+export type PaymentState = {
+  status:
+    | "not_started"
+    | "not_required"
+    | "ready"
+    | "retryable"
+    | "pending"
+    | "paid"
+    | "reconciliation_required";
+  captured: boolean;
+  reconciliation_reason: string | null;
+  checkout_url: string | null;
+};
+
 export type MembershipPlan = {
   id: number;
   name: string;
@@ -140,10 +154,7 @@ export type CustomerMembership = {
   activated_at: string | null;
   expires_at: string | null;
   plan: MembershipPlan;
-  payment?: {
-    status: "not_started" | "ready" | "retryable";
-    checkout_url: string | null;
-  };
+  payment?: PaymentState;
 };
 
 export type BookingStatus =
@@ -198,10 +209,7 @@ export type Booking = {
   cars: BookingCar[];
   created_at: string;
   // Present on create for online bookings: the SkipCash hosted-checkout URL.
-  payment?: {
-    status: "not_started" | "not_required" | "ready" | "retryable";
-    checkout_url: string | null;
-  };
+  payment?: PaymentState;
 };
 
 export type VerifyOtpResult = {
@@ -347,6 +355,7 @@ export type StoreOrder = {
     | "fulfilled";
   payment_status?: "unpaid" | "pending" | "paid" | "failed" | "refunded";
   payment_method?: string;
+  payment?: PaymentState;
   accounting_status: "pending_sync" | "synced" | "sync_failed" | "not_required" | "failed";
   customer_name: string;
   customer_phone: string;

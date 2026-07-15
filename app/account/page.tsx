@@ -323,6 +323,7 @@ function EmptyState({
 function MembershipCard({ membership }: { membership: CustomerMembership }) {
   const { t } = useI18n();
   const active = membership.status === "active" && membership.washes_remaining > 0;
+  const reconciliationRequired = membership.payment?.status === "reconciliation_required";
   const expiry = membership.expires_at
     ? new Date(membership.expires_at).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })
     : null;
@@ -331,9 +332,10 @@ function MembershipCard({ membership }: { membership: CustomerMembership }) {
     <article className="commerce-card flex min-h-44 flex-col p-5">
       <div className="flex items-start justify-between gap-3">
         <div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">{t("Membership")}</p><h3 className="mt-1 font-bold text-[color:var(--navy)]">{membership.plan.name}</h3></div>
-        <span className={clsx("rounded-full px-3 py-1 text-xs font-bold", active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600")}>{t(active ? "Active" : membership.status.replaceAll("_", " "))}</span>
+        <span className={clsx("rounded-full px-3 py-1 text-xs font-bold", reconciliationRequired ? "bg-amber-100 text-amber-800" : active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600")}>{t(reconciliationRequired ? "Payment under review" : active ? "Active" : membership.status.replaceAll("_", " "))}</span>
       </div>
       <div className="mt-4 flex items-end justify-between gap-4"><p><span className="text-3xl font-extrabold text-[color:var(--navy)]">{membership.washes_remaining}</span><span className="ms-2 text-sm font-semibold text-[color:var(--muted-foreground)]">{t("washes left")}</span></p>{expiry && <p className="text-xs font-medium text-[color:var(--muted-foreground)]">{t("Expires")} {expiry}</p>}</div>
+      {reconciliationRequired && <p role="alert" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t("Payment received after this membership closed. It was not reactivated, and our team is arranging the required refund.")}</p>}
       <div className="mt-auto flex flex-col gap-2 pt-5 sm:flex-row">
         {active && <Link href="/book" className="primary-button flex-1 px-4">{t("Book a Wash")}</Link>}
         <Link href="/memberships" className="secondary-button flex-1 px-4">{t(active ? "View plans" : "Renew plan")}</Link>
@@ -359,6 +361,7 @@ function BookingCard({
     minute: "2-digit",
   });
   const { t } = useI18n();
+  const reconciliationRequired = booking.payment?.status === "reconciliation_required";
   const hasBluePlate = Boolean(
     booking.building_number || booking.zone_number || booking.street_number,
   );
@@ -417,16 +420,22 @@ function BookingCard({
         </div>
       )}
 
+      {reconciliationRequired && (
+        <p role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+          {t("Payment received after this booking closed. It was not reinstated, and our team is arranging the required refund.")}
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
         <span className="font-bold">QR {booking.total}</span>
         <div className="flex flex-wrap gap-2">
           <Link href="/book" className="secondary-button min-h-9 px-4 py-2 text-xs">
             {t("Book again")}
           </Link>
-          {CANCELLABLE.includes(booking.status) && (
+          {!reconciliationRequired && CANCELLABLE.includes(booking.status) && (
             <button type="button" className="secondary-button min-h-9 px-4 py-2 text-xs" onClick={onReschedule}>{t("Reschedule")}</button>
           )}
-          {CANCELLABLE.includes(booking.status) && (
+          {!reconciliationRequired && CANCELLABLE.includes(booking.status) && (
             <button
               type="button"
               className="secondary-button min-h-9 px-4 py-2 text-xs text-red-600 hover:border-red-400 hover:text-red-600"
