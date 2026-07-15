@@ -227,6 +227,8 @@ export type VerifyOtpResult = {
 };
 
 export type CreateBookingPayload = {
+  quote_id?: string;
+  quote_version?: string;
   scheduled_at: string;
   duration_version: string;
   cars?: { vehicle_id: number; service_id: number; add_on_ids: number[] }[];
@@ -261,9 +263,15 @@ export type QuoteCar = {
   vehicle_type: VehicleType;
   service_id: number;
   add_on_ids: number[];
+  membership_id?: number | null;
 };
 
 export type BookingQuote = {
+  quote_id: string;
+  quote_version: string;
+  pricing_schema: "booking-cart-pricing:v1";
+  currency: "QAR";
+  expires_at: string;
   service: {
     id: number;
     name: string;
@@ -282,6 +290,8 @@ export type BookingQuote = {
   service_total: number;
   membership_eligible: boolean;
   membership_discount: number;
+  promo_discount: number;
+  product_total: number;
   total_price: number;
   payment_required: boolean;
   payment_method: PaymentMethod;
@@ -291,6 +301,15 @@ export type BookingQuote = {
     subtotal: number;
     covered: boolean;
     membership_id: number | null;
+    membership_name: string | null;
+    membership_discount: number;
+    remaining_before: number | null;
+    remaining_after: number | null;
+    eligible_memberships: {
+      id: number;
+      name: string | null;
+      remaining_washes: number;
+    }[];
   }[];
   memberships: {
     id: number;
@@ -300,6 +319,14 @@ export type BookingQuote = {
     remaining_after: number;
   }[];
   service_area: ServiceAreaSnapshot;
+  products: {
+    product_id: string | number;
+    sku: string;
+    name: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }[];
 };
 
 // Result of validating a promo code against the current cart. All rule

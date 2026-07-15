@@ -479,15 +479,31 @@ export function BookingWizard() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteRetryVersion, setQuoteRetryVersion] = useState(0);
+  const [membershipChoices, setMembershipChoices] = useState<Record<number, number | null> | null>(null);
+  const membershipCartKeyRef = useRef<string | null>(null);
+  const membershipCartKey = useMemo(
+    () => JSON.stringify(cars.map((car) => [car.vtype, car.serviceId, [...car.addOnIds].sort()])),
+    [cars],
+  );
 
   useEffect(() => {
     if (step !== 3 || !authed || !slot || !availabilityDuration) return;
+    const choicesMatchCart = membershipCartKeyRef.current === membershipCartKey;
+    if (!choicesMatchCart) {
+      membershipCartKeyRef.current = membershipCartKey;
+      setMembershipChoices(null);
+    }
+    const explicitChoices = choicesMatchCart ? membershipChoices : null;
+    const hasSelectedMembershipChoice = Object.values(explicitChoices ?? {}).some(
+      (membershipId) => membershipId !== null,
+    );
     const quoteCars = cars
       .filter((c) => c.serviceId !== null)
-      .map((c) => ({
+      .map((c, index) => ({
         vehicle_type: c.vtype,
         service_id: c.serviceId as number,
         add_on_ids: c.addOnIds,
+        ...(explicitChoices !== null ? { membership_id: explicitChoices[index] ?? null } : {}),
       }));
     if (quoteCars.length === 0 || !serviceAreaVersion || !geo) return;
 
@@ -499,13 +515,20 @@ export function BookingWizard() {
         setQuoteLoading(true);
       }
     });
-    // Always price with memberships applied. Eligible coverage is automatic
-    // so the customer stays inside one standard booking flow.
+    // The first quote preselects eligible washes. Every subsequent quote sends
+    // the customer's explicit per-car choices and the complete product cart.
     getQuote({
       scheduled_at: serializeQatarBookingDateTime(date, slot),
       cars: quoteCars,
       duration_version: availabilityDuration.version,
       use_membership: true,
+      preselect_memberships: explicitChoices === null,
+      product_lines: Object.entries(productQuantities)
+        .filter(([, quantity]) => quantity > 0)
+        .map(([product_id, quantity]) => ({ product_id, quantity })),
+      ...(!hasSelectedMembershipChoice && promoActive && applied?.code
+        ? { promo_code: applied.code }
+        : {}),
       ...(selectedAddressId !== null
         ? { address_id: selectedAddressId }
         : { latitude: geo.lat, longitude: geo.lng }),
@@ -515,6 +538,9 @@ export function BookingWizard() {
         if (!cancelled) {
           setQuote(q);
           setQuoteError(null);
+          setMembershipChoices((current) => current ?? Object.fromEntries(
+            q.cars.map((car) => [car.index, car.membership_id]),
+          ));
         }
       })
       .catch((caught) => {
@@ -540,16 +566,16 @@ export function BookingWizard() {
     return () => {
       cancelled = true;
     };
-  }, [step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, availabilityDuration, availabilityCars, loadSlots, quoteRetryVersion, t]);
+  }, [step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, availabilityDuration, availabilityCars, loadSlots, quoteRetryVersion, membershipChoices, membershipCartKey, productQuantities, promoActive, applied?.code, t]);
 
-  const membershipEligible = quote?.membership_eligible ?? false;
-  const applyMembership = membershipEligible;
+  const applyMembership = quote?.cars.some((car) => car.covered) ?? false;
   const membershipDiscount = applyMembership
     ? (quote?.membership_discount ?? 0)
     : 0;
-  // Total the customer actually pays: membership-adjusted, or the promo net.
-  const activeProductTotal = productTotal;
-  const dueTotal = (applyMembership ? (quote?.total_price ?? 0) : netTotal) + activeProductTotal;
+  // The authoritative quote includes services, add-ons, products, membership,
+  // and promo impact. No client-computed amount is submitted to payment.
+  const activeProductTotal = quote?.product_total ?? productTotal;
+  const dueTotal = quote?.total_price ?? netTotal + productTotal;
   const washesLeftAfter = applyMembership
     ? quote?.memberships.reduce(
         (min, m) => Math.min(min, m.remaining_after),
@@ -708,15 +734,14 @@ export function BookingWizard() {
       }
 
       const booking = await createBooking({
+        quote_id: quote.quote_id,
+        quote_version: quote.quote_version,
         scheduled_at: serializeQatarBookingDateTime(date, slot),
         duration_version: quote.duration.version,
         cars: carPayloads,
         address_id: addressId,
         service_area_version: serviceAreaVersion,
         payment_method: "online",
-        // Server re-prices and applies memberships; false lets the customer
-        // pay and keep the wash. Promo only applies when paying.
-        use_membership: true,
         notes: notes.trim() || undefined,
         promo_code: !applyMembership && promoActive ? applied.code : undefined,
         product_lines: Object.entries(productQuantities)
@@ -759,6 +784,13 @@ export function BookingWizard() {
         clearBookingAttempt();
         loadSlots(date, availabilityCars);
       } else if (e instanceof ApiError && e.status === 409) {
+        if (e.message.toLowerCase().includes("quote") || e.message.toLowerCase().includes("membership wash")) {
+          setError(t("Your price or membership availability changed. Review a fresh quote before confirming."));
+          setQuote(null);
+          setQuoteRetryVersion((version) => version + 1);
+          clearBookingAttempt();
+          return;
+        }
         // The backend sends distinct 409 reasons — a car that is already
         // booked must not be presented as a fleet-capacity problem.
         setError(
@@ -1121,18 +1153,46 @@ export function BookingWizard() {
               </div>
             )}
 
-            {authed && !quoteLoading && quote && applyMembership && (
+            {authed && !quoteLoading && quote && quote.cars.some((car) => car.eligible_memberships.length > 0) && (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5" role="status">
                 <div className="flex items-start gap-3">
                   <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-600 text-lg font-bold text-white" aria-hidden="true">✓</span>
                   <div>
-                    <h3 className="font-bold text-emerald-900">{t("Membership applied automatically")}</h3>
-                    <p className="mt-1 text-sm leading-6 text-emerald-800">{quote?.memberships[0]?.name ?? t("Your eligible wash is covered by your membership.")}</p>
+                    <h3 className="font-bold text-emerald-900">{t("Choose membership coverage")}</h3>
+                    <p className="mt-1 text-sm leading-6 text-emerald-800">{t("Eligible washes are preselected. Choose each car you want the membership to cover.")}</p>
                     {washesLeftAfter !== undefined && Number.isFinite(washesLeftAfter) && <p className="mt-1 text-xs font-semibold text-emerald-700">{t("Washes left after booking")}: {washesLeftAfter}</p>}
                   </div>
                 </div>
+                <div className="mt-4 space-y-2 border-t border-emerald-200 pt-4">
+                  {quote.cars.map((quotedCar) => {
+                    const eligible = quotedCar.eligible_memberships[0];
+                    if (!eligible) return null;
+                    const checked = quotedCar.membership_id !== null;
+                    return (
+                      <label key={quotedCar.index} className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl bg-white/70 px-3 py-2 text-sm text-emerald-950">
+                        <span>
+                          <span className="font-semibold">{t("Car")} {quotedCar.index + 1}</span>
+                          <span className="ms-2 text-xs text-emerald-700">{eligible.name} · {eligible.remaining_washes} {t("washes left")}</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) => setMembershipChoices((current) => ({
+                            ...(current ?? {}),
+                            [quotedCar.index]: event.target.checked ? eligible.id : null,
+                          }))}
+                          className="h-5 w-5 accent-emerald-600"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
                 <div className="mt-4 border-t border-emerald-200 pt-4 text-sm font-semibold text-emerald-900">
-                  {productTotal > 0 ? t("Your wash is covered. You’ll only pay for the products added to this booking.") : t("No payment is required for this booking.")}
+                  {applyMembership
+                    ? activeProductTotal > 0
+                      ? t("Selected washes are covered. Add-ons, products, and uncovered cars remain in the total.")
+                      : t("Selected washes are covered by membership.")
+                    : t("No membership washes are selected. The full total will be paid online.")}
                 </div>
               </div>
             )}
@@ -1182,9 +1242,9 @@ export function BookingWizard() {
                 details={details}
                 date={date}
                 slot={slot}
-                total={total}
-                discount={discount}
-                promoCode={promoActive ? applied.code : null}
+                total={quote.service_total}
+                discount={quote.promo_discount}
+                promoCode={quote.promo_discount > 0 ? (applied?.code ?? null) : null}
                 membershipApplied={applyMembership}
                 membershipDiscount={membershipDiscount}
                 dueTotal={dueTotal}
@@ -1192,8 +1252,8 @@ export function BookingWizard() {
                 timeRangeLabel={quote.time_range_label ?? null}
                 durationLabel={quote.duration_label ?? null}
                 durationContributions={quote.duration.contributions ?? []}
-                products={bookingProducts}
-                productQuantities={productQuantities}
+                quoteCars={quote.cars}
+                quotedProducts={quote.products}
                 productTotal={activeProductTotal}
               />
             )}
@@ -1223,7 +1283,7 @@ export function BookingWizard() {
                   </span>
                   {applyMembership ? (
                     <span className="ms-2 text-xs font-semibold text-emerald-600">
-                      ({productTotal > 0 ? t("wash covered · products only") : t("covered by membership")})
+                      ({dueTotal > 0 ? t("membership applied · remaining total") : t("covered by membership")})
                     </span>
                   ) : (
                     discount > 0 && (
@@ -1272,16 +1332,14 @@ export function BookingWizard() {
               <button
                 type="button"
                 className="primary-button min-w-0 flex-1 px-5 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
-                disabled={submitting || !authed || quoteLoading || !quote?.duration.version}
+                disabled={submitting || !authed || quoteLoading || !quote?.quote_id || !quote?.quote_version}
                 onClick={submit}
               >
                 {submitting
                   ? t("Confirming…")
                   : applyMembership && dueTotal <= 0
                     ? t("Confirm booking")
-                    : applyMembership
-                      ? t("Pay for products")
-                      : t("Confirm & Pay")}
+                    : t("Confirm & Pay")}
               </button>
             )}
           </div>
@@ -1950,8 +2008,8 @@ function Summary({
   timeRangeLabel,
   durationLabel,
   durationContributions,
-  products,
-  productQuantities,
+  quoteCars,
+  quotedProducts,
   productTotal,
 }: {
   cars: CarDraft[];
@@ -1970,8 +2028,8 @@ function Summary({
   timeRangeLabel: string | null;
   durationLabel: string | null;
   durationContributions: DurationContribution[];
-  products: StoreProductInventory[];
-  productQuantities: Record<string, number>;
+  quoteCars: BookingQuote["cars"];
+  quotedProducts: BookingQuote["products"];
   productTotal: number;
 }) {
   const { lang, t } = useI18n();
@@ -1989,15 +2047,15 @@ function Summary({
         {t("Booking summary")}
       </h3>
       <ul className="mt-3 flex flex-col gap-2 text-sm">
-        {cars.map((car) => {
+        {cars.map((car, index) => {
           const service = services.find((s) => s.id === car.serviceId);
           if (!service) return null;
           const addOns = service.add_ons.filter((a) =>
             car.addOnIds.includes(a.id),
           );
-          const subtotal =
-            priceFor(service, car.vtype) +
-            addOns.reduce((s, a) => s + a.price, 0);
+          const subtotal = quoteCars[index]?.subtotal ?? (
+            priceFor(service, car.vtype) + addOns.reduce((sum, addOn) => sum + addOn.price, 0)
+          );
           return (
             <li
               key={car.key}
@@ -2027,16 +2085,14 @@ function Summary({
             </li>
           );
         })}
-        {products.map((product) => {
-          const quantity = productQuantities[String(product.id)] ?? 0;
-          if (quantity === 0) return null;
+        {quotedProducts.map((product) => {
           return (
-            <li key={product.id} className="flex items-start justify-between gap-4">
+            <li key={String(product.product_id)} className="flex items-start justify-between gap-4">
               <span>
                 <span className="font-semibold">{product.name}</span>
-                <span className="block text-xs text-[color:var(--muted-foreground)]">{quantity} × {fmt(product.price)}</span>
+                <span className="block text-xs text-[color:var(--muted-foreground)]">{product.quantity} × {fmt(product.unit_price)}</span>
               </span>
-              <span className="font-semibold">{fmt(product.price * quantity)}</span>
+              <span className="font-semibold">{fmt(product.line_total)}</span>
             </li>
           );
         })}
@@ -2084,8 +2140,8 @@ function Summary({
           </span>
           <span className="font-medium">
             {membershipApplied
-              ? productTotal > 0
-                ? t("Membership wash + online payment for products")
+              ? dueTotal > 0
+                ? t("Membership applied + online payment for remaining total")
                 : t("Membership — no payment required")
               : t("Pay online (SkipCash)")}
           </span>

@@ -86,6 +86,12 @@ const paymentAttempts = new Map<string, {
   checkout_url: string;
   status: "ready";
 }>();
+const bookingQuotes = new Map<string, {
+  customerId: number;
+  version: string;
+  expiresAt: string;
+  cars: { index: number; membership_id: number | null }[];
+}>();
 
 function mockPayment(subject: "BKG" | "MEM" | "STO", id: number) {
   const key = `${subject}:${id}`;
@@ -775,28 +781,42 @@ async function handle(req: NextRequest, segments: string[]) {
       return staleDuration(durationContract);
     }
 
-    // Match the backend: auto-apply only for a single, add-on-free car.
-    const singleAddonFree =
-      quoteCars.length === 1 && (quoteCars[0].add_on_ids?.length ?? 0) === 0;
-    const mine = useMembership && singleAddonFree
+    const mine = useMembership
       ? store.memberships.filter((m) => m.customer_id === customer.id)
       : [];
-    const norm = quoteCars.map((c: { service_id: number; vehicle_type: string }) => ({
+    const norm: {
+      service_id: number;
+      type: string;
+      add_on_ids: number[];
+      membership_id?: number | null;
+      has_membership_choice: boolean;
+    }[] = quoteCars.map((c: { service_id: number; vehicle_type: string; add_on_ids?: number[]; membership_id?: number | null }) => ({
       service_id: Number(c.service_id),
       type: String(c.vehicle_type ?? "sedan"),
+      add_on_ids: Array.isArray(c.add_on_ids) ? c.add_on_ids.map(Number) : [],
+      membership_id: c.membership_id,
+      has_membership_choice: Object.prototype.hasOwnProperty.call(c, "membership_id"),
     }));
-    const alloc = allocateMemberships(mine, norm, scheduledAt);
+    const preselected = allocateMemberships(mine, norm, scheduledAt);
+    const alloc = norm.map((car, index) => {
+      if (!car.has_membership_choice) return preselected[index];
+      if (car.membership_id === null) return undefined;
+      return mine.find((membership) => membership.id === Number(car.membership_id)
+        && membershipCoversCar(membership, car.service_id, car.type, scheduledAt));
+    });
 
     let serviceTotal = 0;
     let membershipDiscount = 0;
     const totalDuration = durationContract.total_minutes;
     let firstService: (typeof SERVICES)[number] | undefined;
     const summary = new Map<number, { m: MockMembership; applied: number }>();
-    const carsOut = norm.map((c: { service_id: number; type: string }, i: number) => {
+    const carsOut = norm.map((c, i: number) => {
       const service = SERVICES.find((s) => s.id === c.service_id);
       firstService ??= service;
       const base = service ? (c.type === "suv" ? service.price_suv : service.price) : 0;
-      serviceTotal += base;
+      const selectedAddons = service?.add_ons.filter((addon) => c.add_on_ids.includes(addon.id)) ?? [];
+      const addonTotal = selectedAddons.reduce((sum, addon) => sum + addon.price, 0);
+      serviceTotal += base + addonTotal;
       const m = alloc[i];
       if (m) {
         membershipDiscount += base;
@@ -804,16 +824,76 @@ async function handle(req: NextRequest, segments: string[]) {
         s.applied += 1;
         summary.set(m.id, s);
       }
-      return { index: i, service_id: c.service_id, subtotal: base, covered: !!m, membership_id: m?.id ?? null };
+      const eligibleMemberships = mine
+        .filter((membership) => membershipCoversCar(membership, c.service_id, c.type, scheduledAt))
+        .map((membership) => ({
+          id: membership.id,
+          name: membership.plan.name,
+          remaining_washes: membership.washes_remaining,
+        }));
+      return {
+        index: i,
+        service_id: c.service_id,
+        subtotal: base + addonTotal,
+        covered: !!m,
+        membership_id: m?.id ?? null,
+        membership_name: m?.plan.name ?? null,
+        membership_discount: m ? base : 0,
+        remaining_before: m?.washes_remaining ?? null,
+        remaining_after: m ? Math.max(0, m.washes_remaining - 1) : null,
+        eligible_memberships: eligibleMemberships,
+      };
     });
 
-    const total = Math.max(0, serviceTotal - membershipDiscount);
+    const quotedProducts: {
+      product_id: string | number;
+      sku: string;
+      name: string;
+      quantity: number;
+      unit_price: number;
+      line_total: number;
+    }[] = (Array.isArray(body.product_lines) ? body.product_lines : []).flatMap((line: { product_id?: string | number; quantity?: number }) => {
+      const product = store.storeProducts.find((item) => String(item.id) === String(line.product_id));
+      const quantity = Number(line.quantity ?? 0);
+      if (!product || !Number.isInteger(quantity) || quantity < 1) return [];
+      return [{
+        product_id: product.id,
+        sku: product.sku,
+        name: product.name,
+        quantity,
+        unit_price: product.price,
+        line_total: product.price * quantity,
+      }];
+    });
+    const productTotal = quotedProducts.reduce((sum, line) => sum + line.line_total, 0);
+    const promo = membershipDiscount === 0 && body.promo_code
+      ? evaluatePromo(store, String(body.promo_code), customer.id, serviceTotal, norm.map((car) => car.service_id))
+      : { valid: false, discount: 0 };
+    const promoDiscount = promo.valid ? promo.discount : 0;
+    const total = Math.max(0, serviceTotal - membershipDiscount - promoDiscount + productTotal);
     // Nominal wall-clock start (as sent) + duration → end and range label.
     const startHm = scheduledAt.slice(11, 16);
     const endDate = new Date(scheduledAt);
     endDate.setMinutes(endDate.getMinutes() + totalDuration);
     const endHm = `${String(endDate.getHours()).padStart(2, "0")}:${String(endDate.getMinutes()).padStart(2, "0")}`;
+    const quoteId = crypto.randomUUID();
+    const quoteVersion = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(JSON.stringify({ carsOut, quotedProducts, total, scheduledAt, duration: durationContract.version })),
+    ).then((bytes) => Array.from(new Uint8Array(bytes)).map((byte) => byte.toString(16).padStart(2, "0")).join(""));
+    const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+    bookingQuotes.set(quoteId, {
+      customerId: customer.id,
+      version: quoteVersion,
+      expiresAt,
+      cars: carsOut.map((car) => ({ index: car.index, membership_id: car.membership_id })),
+    });
     return envelope({
+      quote_id: quoteId,
+      quote_version: quoteVersion,
+      pricing_schema: "booking-cart-pricing:v1",
+      currency: "QAR",
+      expires_at: expiresAt,
       service: firstService && norm.length === 1 ? {
         id: firstService.id,
         name: firstService.name,
@@ -828,10 +908,12 @@ async function handle(req: NextRequest, segments: string[]) {
       duration_label: formatDuration(totalDuration),
       duration: durationContract,
       base_price: serviceTotal,
-      discount_total: membershipDiscount,
+      discount_total: membershipDiscount + promoDiscount,
       service_total: serviceTotal,
       membership_eligible: membershipDiscount > 0,
       membership_discount: membershipDiscount,
+      promo_discount: promoDiscount,
+      product_total: productTotal,
       total_price: total,
       payment_required: total > 0,
       payment_method: total <= 0 && membershipDiscount > 0 ? "membership" : "online",
@@ -843,6 +925,7 @@ async function handle(req: NextRequest, segments: string[]) {
         washes_applied: applied,
         remaining_after: Math.max(0, m.washes_remaining - applied),
       })),
+      products: quotedProducts,
       service_area: { version: SERVICE_AREA_VERSION, eligible: true },
     });
   }
@@ -875,6 +958,13 @@ async function handle(req: NextRequest, segments: string[]) {
       return fail(422, "Validation failed.", {
         duration_version: ["The duration version field is required."],
       });
+    }
+    const committedQuote = typeof body.quote_id === "string" ? bookingQuotes.get(body.quote_id) : null;
+    if (body.quote_id && (!committedQuote
+      || committedQuote.customerId !== customer.id
+      || committedQuote.version !== body.quote_version
+      || new Date(committedQuote.expiresAt).getTime() <= Date.now())) {
+      return fail(409, "This booking quote has expired or changed. Please request a new quote.");
     }
 
     // Membership redemption: single vehicle, plan-defined service, QR 0.
@@ -999,27 +1089,23 @@ async function handle(req: NextRequest, segments: string[]) {
       return fail(409, "This time slot is no longer available. Please pick another slot.");
     }
 
-    // Auto-apply a membership only for a single, add-on-free car (matches the
-    // backend's dedicated-bus redemption model).
-    const useMembership = body.use_membership !== false;
-    const singleAddonFree =
-      cars.length === 1 && (cars[0].add_on_ids?.length ?? 0) === 0;
-    const mineActive = useMembership && singleAddonFree
-      ? store.memberships.filter((m) => m.customer_id === customer.id)
-      : [];
-    const bookingAlloc = allocateMemberships(
-      mineActive,
-      bookingCars.map((c) => ({ service_id: c.service.id, type: c.vehicle.type as string })),
-      scheduledAt,
-    );
+    const mineActive = store.memberships.filter((m) => m.customer_id === customer.id);
+    const bookingAlloc = committedQuote
+      ? committedQuote.cars.map((car) => mineActive.find((membership) => membership.id === car.membership_id))
+      : body.use_membership !== false
+        ? allocateMemberships(
+            mineActive,
+            bookingCars.map((c) => ({ service_id: c.service.id, type: c.vehicle.type as string })),
+            scheduledAt,
+          )
+        : [];
     let coveredCount = 0;
     bookingCars.forEach((c, i) => {
       const m = bookingAlloc[i];
       if (!m) return;
       coveredCount += 1;
       c.service = { ...c.service, price: 0 };
-      c.add_ons = [];
-      c.subtotal = 0;
+      c.subtotal = c.add_ons.reduce((sum, addon) => sum + addon.price, 0);
       m.washes_used += 1;
       m.washes_remaining -= 1;
       if (m.washes_remaining === 0) m.status = "exhausted" as never;

@@ -175,6 +175,19 @@ const AR: Record<string, string> = {
     "تعذّر التحقق من السعر الحالي وتغطية الاشتراك. أعد محاولة عرض السعر قبل التأكيد.",
   "Retry quote": "إعادة محاولة عرض السعر",
   "Authoritative quote required": "يلزم عرض سعر مؤكّد",
+  "Choose membership coverage": "اختر تغطية الاشتراك",
+  "Eligible washes are preselected. Choose each car you want the membership to cover.":
+    "تم تحديد الغسلات المؤهلة مسبقاً. اختر كل سيارة تريد أن يغطيها الاشتراك.",
+  "Selected washes are covered. Add-ons, products, and uncovered cars remain in the total.":
+    "الغسلات المحددة مغطاة. تبقى الإضافات والمنتجات والسيارات غير المغطاة ضمن المجموع.",
+  "Selected washes are covered by membership.": "الغسلات المحددة مغطاة بالاشتراك.",
+  "No membership washes are selected. The full total will be paid online.":
+    "لم يتم اختيار غسلات من الاشتراك. سيتم دفع المجموع كاملاً عبر الإنترنت.",
+  "Your price or membership availability changed. Review a fresh quote before confirming.":
+    "تغيّر السعر أو توفر الاشتراك. راجع عرض سعر جديداً قبل التأكيد.",
+  "membership applied · remaining total": "تم تطبيق الاشتراك · المبلغ المتبقي",
+  "Membership applied + online payment for remaining total":
+    "تم تطبيق الاشتراك + دفع المبلغ المتبقي عبر الإنترنت",
   "Booking confirmed — membership covered": "تم تأكيد الحجز — مغطّى بالاشتراك",
   "Booking confirmed — payment received": "تم تأكيد الحجز — تم استلام الدفع",
   "Booking saved — payment pending": "تم حفظ الحجز — الدفع معلّق",

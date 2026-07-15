@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-15] — Versioned booking cart confirmation (MAD-42)
+
+### Fixed
+- The final booking summary now renders server-quoted service, add-on, product, promo, and membership totals and submits the exact quote ID/version instead of combining server and browser calculations.
+- Eligible membership washes are preselected but explicitly controllable per car; add-ons, products, and uncovered cars remain visibly payable.
+- Expired or contested quotes return the customer to a fresh authoritative price instead of creating or paying a mismatched booking.
+
+### Added
+- Added the versioned quote contract to the customer client and development simulator, with deterministic contract tests for per-line membership choice and product-inclusive totals.
+
 ## [2026-07-15] — Authoritative booking and payment UI states (MAD-53)
 
 ### Fixed

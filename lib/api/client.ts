@@ -344,6 +344,9 @@ export function getQuote(payload: {
   cars: QuoteCar[];
   duration_version: string;
   use_membership?: boolean;
+  preselect_memberships?: boolean;
+  product_lines?: { product_id: string | number; quantity: number }[];
+  promo_code?: string;
   address_id?: number;
   latitude?: number;
   longitude?: number;
