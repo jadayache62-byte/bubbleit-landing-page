@@ -14,6 +14,7 @@ import {
   validateServiceArea,
 } from "@/lib/api/client";
 import type {
+  CreateStoreOrderPayload,
   Customer,
   StoreOrder,
   StoreProductInventory,
@@ -31,12 +32,17 @@ const LocationMap = dynamic(() => import("@/components/booking/LocationMap"), {
 
 const CART_KEY = "bubbleit.store.cart";
 const PENDING_CHECKOUT_KEY = "bubbleit.store.pending-checkout";
+const CHECKOUT_ATTEMPT_KEY = "bubbleit.store.checkout-attempt";
 
 type Cart = Record<string, number>;
 type PendingCheckout = {
   order: StoreOrder;
   cart: Cart;
+  orderKey: string;
+  paymentKey: string;
 };
+
+type CheckoutAttempt = Pick<PendingCheckout, "orderKey" | "paymentKey"> & { fingerprint: string };
 
 const COMPLETED_ORDER_STATUSES = new Set<StoreOrder["status"]>([
   // Some supported order APIs return a completed order instead of a payment URL.
@@ -96,7 +102,15 @@ function readPendingCheckout(): PendingCheckout | null {
       return null;
     }
 
-    return pending as PendingCheckout;
+    return {
+      ...pending,
+      orderKey: typeof pending.orderKey === "string"
+        ? pending.orderKey
+        : `store-order:${pending.order.id}:legacy-create`,
+      paymentKey: typeof pending.paymentKey === "string"
+        ? pending.paymentKey
+        : `store-order:${pending.order.id}:legacy-payment`,
+    } as PendingCheckout;
   } catch {
     return null;
   }
@@ -108,6 +122,36 @@ function writePendingCheckout(pending: PendingCheckout) {
   } catch {
     // The in-memory checkout state still prevents a duplicate order this visit.
   }
+}
+
+function randomAttemptKey(prefix: string) {
+  const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${prefix}:${id}`;
+}
+
+function checkoutAttempt(payload: CreateStoreOrderPayload): CheckoutAttempt {
+  const fingerprint = JSON.stringify(payload);
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(CHECKOUT_ATTEMPT_KEY) ?? "null") as Partial<CheckoutAttempt> | null;
+    if (saved?.fingerprint === fingerprint && saved.orderKey && saved.paymentKey) {
+      return saved as CheckoutAttempt;
+    }
+  } catch {
+    // Generate a fresh in-memory attempt below.
+  }
+  const attempt = {
+    fingerprint,
+    orderKey: randomAttemptKey("store-order:create"),
+    paymentKey: randomAttemptKey("store-order:payment"),
+  };
+  try {
+    window.localStorage.setItem(CHECKOUT_ATTEMPT_KEY, JSON.stringify(attempt));
+  } catch {
+    // The current submit still carries stable keys in memory.
+  }
+  return attempt;
 }
 
 function isCompletedOrder(order: StoreOrder) {
@@ -319,8 +363,8 @@ export function StoreCheckoutClient() {
     );
   }
 
-  function savePendingCheckout(order: StoreOrder) {
-    const next = { order, cart };
+  function savePendingCheckout(order: StoreOrder, attempt: CheckoutAttempt) {
+    const next = { order, cart, orderKey: attempt.orderKey, paymentKey: attempt.paymentKey };
     setPendingCheckout(next);
     writePendingCheckout(next);
     return next;
@@ -330,6 +374,7 @@ export function StoreCheckoutClient() {
     try {
       window.localStorage.removeItem(CART_KEY);
       window.localStorage.removeItem(PENDING_CHECKOUT_KEY);
+      window.localStorage.removeItem(CHECKOUT_ATTEMPT_KEY);
     } catch {
       // Navigation can still continue when browser storage is unavailable.
     }
@@ -355,7 +400,7 @@ export function StoreCheckoutClient() {
     setPaymentNotice(null);
 
     try {
-      const payment = await payStoreOrder(checkout.order.id);
+      const payment = await payStoreOrder(checkout.order.id, checkout.paymentKey);
       if (payment.checkout_url) {
         setSubmitPhase("redirecting");
         window.location.href = payment.checkout_url;
@@ -416,7 +461,7 @@ export function StoreCheckoutClient() {
         return;
       }
       const serviceArea = await validateServiceArea(geo.lat, geo.lng);
-      const order = await createStoreOrder({
+      const payload = {
         customer_name: contactName,
         customer_phone: contactPhone,
         delivery_area: area.trim() || "Qatar",
@@ -438,8 +483,10 @@ export function StoreCheckoutClient() {
             typeof product.id === "number" ? product.id : undefined,
           quantity,
         })),
-      });
-      const checkout = savePendingCheckout(order);
+      } satisfies CreateStoreOrderPayload;
+      const attempt = checkoutAttempt(payload);
+      const order = await createStoreOrder(payload, attempt.orderKey);
+      const checkout = savePendingCheckout(order, attempt);
 
       if (isCompletedOrder(order)) {
         completeOrder(order);

@@ -11,6 +11,8 @@ npm run dev
 
 If `CUSTOMER_API_BASE` is not set in development, the server-side BFF falls back to the local mock API under `/api/mock/v1/customer`.
 
+Booking, membership, and store payments use separate idempotent create/payment commands. The browser persists the current command keys and pending subject before redirecting, so double taps, a lost response, or returning to an interrupted checkout resumes the same server-side payment attempt. The development mock returns a deterministic checkout attempt per subject; production settlement remains entirely server-authoritative.
+
 To run against the real backend:
 
 ```bash

@@ -10,6 +10,7 @@ import {
   ApiError,
   buyMembership,
   getMembershipPlans,
+  initializeMembershipPayment,
   listMemberships,
   me,
 } from "@/lib/api/client";
@@ -38,6 +39,42 @@ const STATUS_STYLES: Record<CustomerMembership["status"], string> = {
   cancelled: "bg-red-100 text-red-600",
 };
 
+const MEMBERSHIP_ATTEMPT_KEY = "bubbleit.membership.payment-attempt";
+
+type MembershipAttempt = {
+  planId: number;
+  membershipId?: number;
+  purchaseKey: string;
+  paymentKey: string;
+};
+
+function randomAttemptKey(prefix: string) {
+  const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${prefix}:${id}`;
+}
+
+function membershipAttempt(planId: number): MembershipAttempt {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(MEMBERSHIP_ATTEMPT_KEY) ?? "null") as MembershipAttempt | null;
+    if (saved?.planId === planId && saved.purchaseKey && saved.paymentKey) return saved;
+  } catch {
+    // Generate a fresh attempt below.
+  }
+  const attempt = {
+    planId,
+    purchaseKey: randomAttemptKey("membership:create"),
+    paymentKey: randomAttemptKey("membership:payment"),
+  };
+  window.localStorage.setItem(MEMBERSHIP_ATTEMPT_KEY, JSON.stringify(attempt));
+  return attempt;
+}
+
+function saveMembershipAttempt(attempt: MembershipAttempt) {
+  window.localStorage.setItem(MEMBERSHIP_ATTEMPT_KEY, JSON.stringify(attempt));
+}
+
 export default function MembershipsPage() {
   const { lang, t } = useI18n();
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
@@ -54,7 +91,17 @@ export default function MembershipsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const refreshMine = useCallback(() => {
-    listMemberships().then(setMine).catch(() => setMine([]));
+    listMemberships().then((memberships) => {
+      setMine(memberships);
+      try {
+        const attempt = JSON.parse(window.localStorage.getItem(MEMBERSHIP_ATTEMPT_KEY) ?? "null") as MembershipAttempt | null;
+        if (attempt?.membershipId && memberships.some((item) => item.id === attempt.membershipId && item.status !== "pending_payment")) {
+          window.localStorage.removeItem(MEMBERSHIP_ATTEMPT_KEY);
+        }
+      } catch {
+        // A malformed local retry record should not block the membership list.
+      }
+    }).catch(() => setMine([]));
   }, []);
 
   useEffect(() => {
@@ -96,18 +143,33 @@ export default function MembershipsPage() {
     setError(null);
     setBusy(true);
     try {
-      const result = await buyMembership(plan.id);
-      if (result.pay_url) {
-        // SkipCash hosted checkout — webhook auto-activates on payment.
-        window.location.assign(result.pay_url);
-        return;
-      }
-      setBought(true);
-      setBuyingPlan(null);
-      refreshMine();
+      const attempt = membershipAttempt(plan.id);
+      const result = await buyMembership(plan.id, attempt.purchaseKey);
+      const linkedAttempt = { ...attempt, membershipId: result.id };
+      saveMembershipAttempt(linkedAttempt);
+      const payment = await initializeMembershipPayment(result.id, linkedAttempt.paymentKey);
+      window.location.assign(payment.checkout_url);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("Something went wrong. Please try again."));
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retryMembershipPayment(membership: CustomerMembership) {
+    if (busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const saved = membershipAttempt(membership.plan.id);
+      const attempt = saved.membershipId === membership.id
+        ? saved
+        : { ...saved, membershipId: membership.id, paymentKey: randomAttemptKey("membership:payment") };
+      saveMembershipAttempt(attempt);
+      const payment = await initializeMembershipPayment(membership.id, attempt.paymentKey);
+      window.location.assign(payment.checkout_url);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("Something went wrong. Please try again."));
       setBusy(false);
     }
   }
@@ -173,6 +235,11 @@ export default function MembershipsPage() {
                     <Link href="/book" className="primary-button mt-auto">
                       {t("Book a Wash")}
                     </Link>
+                  )}
+                  {m.status === "pending_payment" && (
+                    <button type="button" className="primary-button mt-auto" disabled={busy} onClick={() => retryMembershipPayment(m)}>
+                      {t("Continue Payment")}
+                    </button>
                   )}
                 </article>
               ))}

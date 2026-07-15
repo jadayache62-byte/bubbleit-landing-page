@@ -78,6 +78,30 @@ const FLEET_CAPACITY = 2;
 const POST_BOOKING_BUFFER_MINUTES = 30;
 const SERVICE_AREA_VERSION = "qatar-cgis-land-2026-07-14-v1";
 const idempotencyResponses = new Map<string, { request: string; status: number; body: unknown }>();
+const paymentAttempts = new Map<string, {
+  purchase_id: number;
+  attempt_id: number;
+  merchant_reference: string;
+  payment_reference: string;
+  checkout_url: string;
+  status: "ready";
+}>();
+
+function mockPayment(subject: "BKG" | "MEM" | "STO", id: number) {
+  const key = `${subject}:${id}`;
+  const sequence = paymentAttempts.size + 1;
+  const merchantReference = `${subject}-${id}-A1`;
+  const payment = paymentAttempts.get(key) ?? {
+    purchase_id: id,
+    attempt_id: sequence,
+    merchant_reference: merchantReference,
+    payment_reference: `sim_${subject.toLowerCase()}_${id}`,
+    checkout_url: `/book/checkout?payment=${encodeURIComponent(merchantReference)}`,
+    status: "ready" as const,
+  };
+  paymentAttempts.set(key, payment);
+  return payment;
+}
 
 // Development-only approximation. Production eligibility is always decided
 // by the Laravel API's versioned official CGIS polygon snapshot.
@@ -292,6 +316,7 @@ async function handle(req: NextRequest, segments: string[]) {
 
   if (method === "POST" && path === "store/orders") {
     const linkedCustomer = authCustomer(req);
+    if (!linkedCustomer) return fail(401, "Unauthenticated.");
     const linesInput = Array.isArray(body.lines) ? body.lines : [];
     const customerName = String(body.customer_name ?? linkedCustomer?.name ?? "").trim();
     const customerPhone = String(body.customer_phone ?? linkedCustomer?.phone ?? "").trim();
@@ -342,17 +367,18 @@ async function handle(req: NextRequest, segments: string[]) {
     for (const line of orderLines) {
       const product = store.storeProducts.find((item) => item.id === line.product_id);
       if (!product) continue;
-      product.stock_quantity -= line.quantity;
-      product.sold_quantity += line.quantity;
+      product.reserved_quantity += line.quantity;
     }
 
     const id = store.nextId++;
     const subtotal = orderLines.reduce((sum, line) => sum + line.line_total, 0);
     const order: StoreOrder = {
       id,
-      customer_id: linkedCustomer?.id ?? null,
+      customer_id: linkedCustomer.id,
       reference: `SO-${String(id).padStart(5, "0")}`,
-      status: "received",
+      status: "pending_payment",
+      payment_status: "unpaid",
+      payment_method: "online",
       accounting_status: "pending_sync" as const,
       customer_name: customerName,
       customer_phone: customerPhone,
@@ -388,11 +414,8 @@ async function handle(req: NextRequest, segments: string[]) {
       return fail(422, "This store order cannot be paid.");
     }
 
-    order.status = "confirmed";
-    return envelope({
-      checkout_url: null,
-      payment_reference: `MOCK-PAY-${order.id}`,
-    });
+    order.payment_status = "pending";
+    return envelope(mockPayment("STO", order.id));
   }
 
   // ── Availability ──
@@ -699,14 +722,18 @@ async function handle(req: NextRequest, segments: string[]) {
       plan: chosenPlan,
     };
     store.memberships.push(membership);
-    // Mock convenience: auto-activate after 5s so the flow can be demoed.
-    setTimeout(() => {
-      membership.status = "active" as never;
-      membership.activated_at = new Date().toISOString() as never;
-      membership.expires_at = new Date(Date.now() + 30 * 864e5).toISOString() as never;
-    }, 5000);
     const { customer_id: _c, ...pub } = membership;
-    return envelope({ ...pub, pay_url: null }, { status: 201, message: "Membership requested." });
+    return envelope({ ...pub, payment: { status: "not_started", checkout_url: null } }, { status: 201, message: "Membership reserved." });
+  }
+
+  const membershipPayMatch = path.match(/^memberships\/(\d+)\/pay$/);
+  if (method === "POST" && membershipPayMatch) {
+    const membership = store.memberships.find(
+      (item) => item.id === Number(membershipPayMatch[1]) && item.customer_id === customer.id,
+    );
+    if (!membership) return fail(404, "Membership not found.");
+    if (membership.status !== "pending_payment") return fail(422, "This membership is not awaiting payment.");
+    return envelope(mockPayment("MEM", membership.id));
   }
 
   // ── Bookings ──
@@ -1184,7 +1211,7 @@ async function handle(req: NextRequest, segments: string[]) {
       if (booking.status !== "pending_payment" || booking.payment_method !== "online") {
         return fail(422, "This booking is not awaiting online payment.");
       }
-      return envelope({ checkout_url: `/book/checkout?booking=${booking.id}`, status: "ready" });
+      return envelope(mockPayment("BKG", booking.id));
     }
 
     // Mock-only: the fake checkout page calls this to simulate a successful
