@@ -11,7 +11,7 @@ const client = readFileSync(new URL("../lib/api/client.ts", import.meta.url), "u
 test("quote timeout or 500 exposes retry and cannot submit without an authoritative quote", () => {
   assert.match(wizard, /setQuoteError\(/);
   assert.match(wizard, /Retry quote/);
-  assert.match(wizard, /disabled=\{submitting \|\| !authed \|\| quoteLoading \|\| !quote\?\.duration\.version\}/);
+  assert.match(wizard, /disabled=\{submitting \|\| !authed \|\| quoteLoading \|\| !quote\?\.quote_id \|\| !quote\?\.quote_version\}/);
   assert.match(wizard, /We couldn't verify the current price and coverage/);
 });
 
