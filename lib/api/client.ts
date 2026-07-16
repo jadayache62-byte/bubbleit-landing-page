@@ -34,6 +34,7 @@ export class ApiError extends Error {
   retryAfterSeconds: number | null;
   code: string | null;
   data: unknown;
+  requestId: string | null;
 
   constructor(
     status: number,
@@ -42,17 +43,19 @@ export class ApiError extends Error {
     retryAfterSeconds: number | null = null,
     code: string | null = null,
     data: unknown = null,
+    requestId: string | null = null,
   ) {
     super(
-      retryAfterSeconds !== null && retryAfterSeconds > 0
+      `${retryAfterSeconds !== null && retryAfterSeconds > 0
         ? `${message} Try again in ${retryAfterSeconds} seconds.`
-        : message,
+        : message}${requestId ? ` Reference: ${requestId}.` : ""}`,
     );
     this.status = status;
     this.errors = errors;
     this.retryAfterSeconds = retryAfterSeconds;
     this.code = code;
     this.data = data;
+    this.requestId = requestId;
   }
 }
 
@@ -77,7 +80,15 @@ async function request<T>(
   try {
     envelope = (await res.json()) as Envelope<T>;
   } catch {
-    throw new ApiError(res.status, "Unexpected server response.");
+    throw new ApiError(
+      res.status,
+      "Unexpected server response.",
+      null,
+      null,
+      null,
+      null,
+      res.headers.get("x-request-id"),
+    );
   }
 
   if (
@@ -106,6 +117,7 @@ async function request<T>(
       Number.isFinite(retryAfter) ? retryAfter : null,
       envelope.code ?? null,
       envelope.data,
+      res.headers.get("x-request-id"),
     );
   }
   return envelope.data;

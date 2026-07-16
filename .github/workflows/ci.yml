@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, "codex/**", "feature/**", "fix/**"]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  release-regression:
+    name: Lint · Contract · Build · Browser fault gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit runtime and build dependencies
+        run: npm audit --audit-level=moderate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run contract and regression tests
+        run: npm test
+
+      - name: Build production candidate
+        run: npm run build
+        env:
+          CUSTOMER_API_BASE: http://127.0.0.1:8000/api/v1/customer
+
+      - name: Install isolated browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser fault-injection gate
+        run: npm run test:e2e
+
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.sha }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

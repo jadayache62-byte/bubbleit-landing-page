@@ -6,6 +6,7 @@ const AUTHENTICATING_PATHS = new Set([
   "auth/register",
   "auth/verify-otp",
 ]);
+const SAFE_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,11 @@ function isCrossSiteMutation(request: NextRequest) {
   }
 }
 
+function requestId(request: NextRequest) {
+  const candidate = request.headers.get("x-request-id");
+  return candidate && SAFE_REQUEST_ID.test(candidate) ? candidate : crypto.randomUUID();
+}
+
 function expireSession(response: NextResponse) {
   response.cookies.set(SESSION_COOKIE, "", {
     httpOnly: true,
@@ -71,6 +77,7 @@ function establishSession(response: NextResponse, token: string, expiresAt?: str
 }
 
 async function proxy(request: NextRequest, context: RouteContext) {
+  const correlationId = requestId(request);
   if (isCrossSiteMutation(request)) {
     return NextResponse.json(
       {
@@ -79,7 +86,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
         data: null,
         errors: null,
       },
-      { status: 403 },
+      { status: 403, headers: { "X-Request-ID": correlationId } },
     );
   }
 
@@ -89,6 +96,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
   target.search = request.nextUrl.search;
 
   const headers = new Headers({ Accept: "application/json" });
+  headers.set("X-Request-ID", correlationId);
   const contentType = request.headers.get("content-type");
   if (contentType) headers.set("Content-Type", contentType);
   const idempotencyKey = request.headers.get("idempotency-key");
@@ -96,20 +104,43 @@ async function proxy(request: NextRequest, context: RouteContext) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const upstream = await fetch(target, {
-    method: request.method,
-    headers,
-    body: ["GET", "HEAD"].includes(request.method)
-      ? undefined
-      : await request.arrayBuffer(),
-    cache: "no-store",
-    redirect: "manual",
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(target, {
+      method: request.method,
+      headers,
+      body: ["GET", "HEAD"].includes(request.method)
+        ? undefined
+        : await request.arrayBuffer(),
+      cache: "no-store",
+      redirect: "manual",
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        success: false,
+        message: "The Bubbleit service is temporarily unavailable.",
+        data: null,
+        errors: null,
+      },
+      {
+        status: 503,
+        headers: {
+          "Cache-Control": "no-store, private",
+          "X-Request-ID": correlationId,
+        },
+      },
+    );
+  }
 
   const responseHeaders = new Headers({
     "Cache-Control": "no-store, private",
     "Content-Type": upstream.headers.get("content-type") ?? "application/json",
   });
+  responseHeaders.set(
+    "X-Request-ID",
+    upstream.headers.get("x-request-id") ?? correlationId,
+  );
   const retryAfter = upstream.headers.get("retry-after");
   if (retryAfter) responseHeaders.set("Retry-After", retryAfter);
 

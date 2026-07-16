@@ -10,6 +10,8 @@ echo the accepted quote version to booking commit, and recover
 
 `docs/contracts/public-contract-v1.schema.json` is the byte-identical consumer copy of the backend-owned public JSON Schema. Type unions, nullable fields, error/pagination parsing, and development mock fixtures must stay aligned with it. Store products always use integer backend IDs; an API outage must render unavailable/retry UI and must never hydrate a production cart from `STORE_PRODUCTS`.
 
+The same-origin customer BFF owns `X-Request-ID` forwarding and must return the authoritative backend ID. API recovery text retains that reference. `.github/workflows/ci.yml` must keep lint, contract/regression tests, production build, and local Playwright fault injection blocking; browser tests must never call real providers.
+
 Repository notes for agents working on the Bubble It marketing site and customer booking flow.
 
 ---

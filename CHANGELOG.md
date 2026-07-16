@@ -2,6 +2,13 @@
 
 ---
 
+## [2026-07-16] — Browser release and request-correlation gates (MAD-63)
+
+### Added
+- Added blocking landing CI for lint, contract/regression tests, production build, and Playwright catalogue/checkout outage fault injection.
+- The customer BFF now forwards one safe `X-Request-ID`, returns the authoritative backend ID, and includes it in customer-visible API recovery messages.
+- CI now blocks on moderate dependency advisories; the vulnerable nested PostCSS and JS-YAML versions are pinned to patched releases.
+
 ## [2026-07-16] — Honest store outage and API contract (MAD-62)
 
 ### Added
