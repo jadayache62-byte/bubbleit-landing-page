@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-16] — Honest store outage and API contract (MAD-62)
+
+### Added
+- Added the byte-identical backend-owned `public-contract-v1` JSON Schema and consumer tests for enums, fields, nullability, errors, pagination, mock parity, and forced catalogue outage.
+
+### Fixed
+- Booking account UI now covers `driver_accepted`, `phone_confirmed`, and `refund_requested`, plus every backend vehicle type.
+- Store catalogue and checkout now start empty, accept only integer server product IDs, remove stale/synthetic cart lines after a verified fetch, and show explicit retry UI when live products cannot be verified.
+- The development API now returns 404 in production instead of exposing mock catalogue or payment state.
+
 ## [2026-07-15] — Large membership validity windows (MAD-33)
 
 ### Fixed

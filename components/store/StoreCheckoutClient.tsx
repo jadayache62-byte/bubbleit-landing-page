@@ -20,7 +20,7 @@ import type {
   StorePricingConfirmation,
   StoreProductInventory,
 } from "@/lib/api/types";
-import { STORE_PRODUCTS, formatStorePrice } from "@/lib/store/products";
+import { formatStorePrice } from "@/lib/store/products";
 
 const LocationMap = dynamic(() => import("@/components/booking/LocationMap"), {
   ssr: false,
@@ -47,33 +47,12 @@ type PendingCheckout = {
 type CheckoutAttempt = Pick<PendingCheckout, "orderKey" | "paymentKey"> & { fingerprint: string };
 
 const COMPLETED_ORDER_STATUSES = new Set<StoreOrder["status"]>([
-  // Some supported order APIs return a completed order instead of a payment URL.
-  "received",
   "paid",
   "confirmed",
   "preparing",
   "out_for_delivery",
   "delivered",
-  "fulfilled",
 ]);
-
-function fallbackProducts(): StoreProductInventory[] {
-  return STORE_PRODUCTS.map((product) => ({
-    id: product.id,
-    sku: product.sku,
-    name: product.name,
-    description: product.description,
-    price: product.price,
-    imageSrc: product.imageSrc,
-    imageAlt: product.imageAlt,
-    stock_quantity: product.initialStock,
-    sold_quantity: 0,
-    reserved_quantity: 0,
-    available_quantity: product.initialStock,
-    accounting_code: product.accountingCode,
-    is_available: product.initialStock > 0,
-  }));
-}
 
 function readCart(): Cart {
   if (typeof window === "undefined") return {};
@@ -223,9 +202,9 @@ export function StoreCheckoutClient() {
   const [completedOrder, setCompletedOrder] = useState<StoreOrder | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [products, setProducts] = useState<StoreProductInventory[]>(() =>
-    fallbackProducts(),
-  );
+  const [products, setProducts] = useState<StoreProductInventory[]>([]);
+  const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [step, setStep] = useState<"location" | "contact" | "review">("location");
 
   const acceptAuthenticatedCustomer = useCallback((current: Customer) => {
@@ -288,13 +267,21 @@ export function StoreCheckoutClient() {
     let cancelled = false;
     listStoreProducts()
       .then((items) => {
-        if (!cancelled) setProducts(items);
+        if (!cancelled) {
+          setProducts(items);
+          setCatalogState("ready");
+        }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) {
+          setProducts([]);
+          setCatalogState("error");
+        }
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [catalogAttempt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -547,8 +534,7 @@ export function StoreCheckoutClient() {
         pricing_confirmation: reviewedPricing,
         lines: items.map(({ product, quantity }) => ({
           product_id: product.id,
-          inventory_item_id:
-            typeof product.id === "number" ? product.id : undefined,
+          inventory_item_id: product.id,
           quantity,
         })),
       } satisfies CreateStoreOrderPayload;
@@ -604,6 +590,38 @@ export function StoreCheckoutClient() {
               ? "Confirm updated total and pay"
               : "Place order";
   const checkoutLocked = Boolean(pendingCheckout);
+
+  if (catalogState !== "ready") {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center sm:px-6">
+        <section className="commerce-card p-8" role="status" aria-live="polite">
+          <h1 className="text-2xl font-bold text-[color:var(--navy)]">
+            {catalogState === "loading" ? "Checking your cart…" : "Checkout is temporarily unavailable"}
+          </h1>
+          <p className="mx-auto mt-3 max-w-lg text-sm text-[color:var(--muted-foreground)]">
+            {catalogState === "loading"
+              ? "We’re verifying every product, price, and stock level with Bubbleit."
+              : "We couldn’t verify the live catalogue. Your saved cart has not been submitted or replaced with offline products."}
+          </p>
+          {catalogState === "error" && (
+            <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => {
+                  setCatalogState("loading");
+                  setCatalogAttempt((attempt) => attempt + 1);
+                }}
+              >
+                Retry checkout
+              </button>
+              <Link href="/store" className="secondary-button">Back to store</Link>
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
 
   if (submitted) {
     return (

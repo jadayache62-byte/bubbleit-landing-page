@@ -345,7 +345,7 @@ export function getQuote(payload: {
   duration_version: string;
   use_membership?: boolean;
   preselect_memberships?: boolean;
-  product_lines?: { product_id: string | number; quantity: number }[];
+  product_lines?: { product_id: number; quantity: number }[];
   promo_code?: string;
   address_id?: number;
   latitude?: number;

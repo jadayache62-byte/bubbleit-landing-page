@@ -36,8 +36,11 @@ const STATUS_STYLES: Record<BookingStatus, string> = {
   pending_payment: "bg-amber-100 text-amber-700",
   paid: "bg-emerald-100 text-emerald-700",
   assigned: "bg-sky-100 text-sky-700",
+  driver_accepted: "bg-sky-100 text-sky-700",
+  phone_confirmed: "bg-sky-100 text-sky-700",
   in_progress: "bg-sky-100 text-sky-700",
   completed: "bg-emerald-100 text-emerald-700",
+  refund_requested: "bg-amber-100 text-amber-700",
   cancelled_by_customer: "bg-red-100 text-red-600",
   cancelled_by_admin: "bg-red-100 text-red-600",
   no_show: "bg-gray-200 text-gray-600",
@@ -52,6 +55,9 @@ const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
   caravan: "Caravan",
   jet_ski: "Jet Ski",
   jet_boat: "Jet Boat",
+  truck: "Truck",
+  van: "Van",
+  other: "Other",
 };
 
 export default function AccountPage() {

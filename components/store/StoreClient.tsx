@@ -12,24 +12,6 @@ const CART_KEY = "bubbleit.store.cart";
 
 type Cart = Record<string, number>;
 
-function fallbackProducts(): StoreProductInventory[] {
-  return STORE_PRODUCTS.map((product) => ({
-    id: product.id,
-    sku: product.sku,
-    name: product.name,
-    description: product.description,
-    price: product.price,
-    imageSrc: product.imageSrc,
-    imageAlt: product.imageAlt,
-    stock_quantity: product.initialStock,
-    sold_quantity: 0,
-    reserved_quantity: 0,
-    available_quantity: product.initialStock,
-    accounting_code: product.accountingCode,
-    is_available: product.initialStock > 0,
-  }));
-}
-
 function imageFor(product: StoreProductInventory) {
   return (
     product.imageSrc ??
@@ -65,9 +47,9 @@ export function StoreClient() {
   // render always match, even when a returning shopper has a saved cart.
   const [cart, setCart] = useState<Cart>({});
   const [justAdded, setJustAdded] = useState<string | null>(null);
-  const [products, setProducts] = useState<StoreProductInventory[]>(() =>
-    fallbackProducts(),
-  );
+  const [products, setProducts] = useState<StoreProductInventory[]>([]);
+  const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [cartOpen, setCartOpen] = useState(false);
@@ -80,13 +62,29 @@ export function StoreClient() {
     let cancelled = false;
     listStoreProducts()
       .then((items) => {
-        if (!cancelled) setProducts(items);
+        if (cancelled) return;
+        setProducts(items);
+        const productIds = new Set(items.map((product) => String(product.id)));
+        setCart((current) => {
+          const next = Object.fromEntries(
+            Object.entries(current).filter(
+              ([id, quantity]) => productIds.has(id) && Number.isInteger(quantity) && quantity > 0,
+            ),
+          );
+          writeCart(next);
+          return next;
+        });
+        setCatalogState("ready");
       })
-      .catch(() => {});
+      .catch(() => {
+        if (cancelled) return;
+        setProducts([]);
+        setCatalogState("error");
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [catalogAttempt]);
 
   const cartCount = useMemo(
     () => Object.values(cart).reduce((sum, qty) => sum + qty, 0),
@@ -167,6 +165,47 @@ export function StoreClient() {
     if (quantity <= 0) delete next[id];
     else next[id] = Math.min(quantity, availableFor(product));
     updateCart(next);
+  }
+
+  if (catalogState !== "ready") {
+    return (
+      <div className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6 sm:py-12 lg:px-8">
+        <section className="max-w-3xl">
+          <span className="section-kicker">Bubbleit Store</span>
+          <h1 className="section-title mt-4">Professional car care, delivered</h1>
+          <p className="section-copy mt-4">
+            The same practical tools and towels trusted by Bubbleit detailers,
+            ready for delivery across Qatar.
+          </p>
+        </section>
+        <section
+          className="commerce-card mt-9 p-8 text-center"
+          role="status"
+          aria-live="polite"
+        >
+          <h2 className="text-xl font-bold text-[color:var(--navy)]">
+            {catalogState === "loading" ? "Loading the store…" : "The store is temporarily unavailable"}
+          </h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm text-[color:var(--muted-foreground)]">
+            {catalogState === "loading"
+              ? "We’re checking current products, prices, and stock."
+              : "We couldn’t verify current products or stock. No offline products have been added to your cart."}
+          </p>
+          {catalogState === "error" && (
+            <button
+              type="button"
+              className="primary-button mt-6"
+              onClick={() => {
+                setCatalogState("loading");
+                setCatalogAttempt((attempt) => attempt + 1);
+              }}
+            >
+              Retry store
+            </button>
+          )}
+        </section>
+      </div>
+    );
   }
 
   return (

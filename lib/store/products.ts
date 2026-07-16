@@ -1,5 +1,5 @@
 export type StoreProduct = {
-  id: string;
+  id: number;
   name: string;
   description: string;
   price: number;
@@ -12,7 +12,7 @@ export type StoreProduct = {
 
 export const STORE_PRODUCTS: StoreProduct[] = [
   {
-    id: "double-side-twisted-loop-drying-microfiber",
+    id: 1,
     name: "Double Side Twisted Loop Drying Microfiber",
     description: "1400 GSM drying microfiber towel, 60x90cm.",
     price: 95,
@@ -23,7 +23,7 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     accountingCode: "STORE-CAR-CARE",
   },
   {
-    id: "glass-cleaning-microfiber-set",
+    id: 2,
     name: "Glass Cleaning Microfiber",
     description: "260 GSM glass cleaning microfiber, 40x40cm set of 3 pieces.",
     price: 55,
@@ -34,7 +34,7 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     accountingCode: "STORE-CAR-CARE",
   },
   {
-    id: "suede-microfiber-set",
+    id: 3,
     name: "Suede Microfiber",
     description: "220 GSM suede microfiber, 40x40cm set of 3 pieces.",
     price: 49,
@@ -45,7 +45,7 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     accountingCode: "STORE-CAR-CARE",
   },
   {
-    id: "detailing-brush-set",
+    id: 4,
     name: "Detailing Brush Set",
     description: "Five-piece detailing brush set for tight trim and interior areas.",
     price: 59,
@@ -56,7 +56,7 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     accountingCode: "STORE-TOOLS",
   },
   {
-    id: "product-5",
+    id: 5,
     name: "Product 5",
     description: "Bubbleit store product listed on the official shop.",
     price: 139,
@@ -67,7 +67,7 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     accountingCode: "STORE-CAR-CARE",
   },
   {
-    id: "bubbleit-tissue-box",
+    id: 6,
     name: "Bubbleit Tissue Box",
     description:
       "Value pack of 6 premium tissue boxes for cars, homes, and offices.",
@@ -79,7 +79,7 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     accountingCode: "STORE-ACCESSORIES",
   },
   {
-    id: "microfiber-washing-sponge",
+    id: 7,
     name: "Microfiber Washing Sponge",
     description: "Microfiber washing sponge, 10x26cm.",
     price: 39,
@@ -90,7 +90,7 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     accountingCode: "STORE-CAR-CARE",
   },
   {
-    id: "microfiber-brush",
+    id: 8,
     name: "Microfiber Brush",
     description: "Microfiber brush, 29x5cm.",
     price: 29,
@@ -101,7 +101,7 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     accountingCode: "STORE-TOOLS",
   },
   {
-    id: "microfiber-washing-gloves",
+    id: 9,
     name: "Microfiber Washing Gloves",
     description: "Microfiber washing gloves, 20x27cm.",
     price: 48,
@@ -112,7 +112,7 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     accountingCode: "STORE-CAR-CARE",
   },
   {
-    id: "drill-brush-adapter-set",
+    id: 10,
     name: "Drill Brush With Adapter Set",
     description: "Five-piece drill brush set with adapter.",
     price: 75,

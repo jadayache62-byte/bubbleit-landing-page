@@ -177,6 +177,12 @@ function vtypeLabel(vtype: VehicleType): string {
       return "Jet Ski";
     case "jet_boat":
       return "Jet Boat";
+    case "truck":
+      return "Truck";
+    case "van":
+      return "Van";
+    case "other":
+      return "Other";
   }
 }
 
@@ -525,7 +531,7 @@ export function BookingWizard() {
       preselect_memberships: explicitChoices === null,
       product_lines: Object.entries(productQuantities)
         .filter(([, quantity]) => quantity > 0)
-        .map(([product_id, quantity]) => ({ product_id, quantity })),
+        .map(([productId, quantity]) => ({ product_id: Number(productId), quantity })),
       ...(!hasSelectedMembershipChoice && promoActive && applied?.code
         ? { promo_code: applied.code }
         : {}),
@@ -746,7 +752,7 @@ export function BookingWizard() {
         promo_code: !applyMembership && promoActive ? applied.code : undefined,
         product_lines: Object.entries(productQuantities)
           .filter(([, quantity]) => quantity > 0)
-          .map(([product_id, quantity]) => ({ product_id, quantity })),
+          .map(([productId, quantity]) => ({ product_id: Number(productId), quantity })),
       }, `${attemptKey}:booking`);
 
       if (canRetryBookingPayment(bookingPaymentUiState(booking.payment?.status))) {

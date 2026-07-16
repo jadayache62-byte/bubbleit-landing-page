@@ -8,6 +8,8 @@ echo the accepted quote version to booking commit, and recover
 `DURATION_VERSION_STALE` by reloading availability. Keep
 `docs/contracts/duration-v1.json` byte-identical with backend and mobile.
 
+`docs/contracts/public-contract-v1.schema.json` is the byte-identical consumer copy of the backend-owned public JSON Schema. Type unions, nullable fields, error/pagination parsing, and development mock fixtures must stay aligned with it. Store products always use integer backend IDs; an API outage must render unavailable/retry UI and must never hydrate a production cart from `STORE_PRODUCTS`.
+
 Repository notes for agents working on the Bubble It marketing site and customer booking flow.
 
 ---
