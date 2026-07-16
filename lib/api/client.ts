@@ -10,6 +10,9 @@ import type {
   CreateBookingPayload,
   Customer,
   CustomerMembership,
+  CustomerNotification,
+  CustomerNotificationDevice,
+  CustomerNotificationPreference,
   Envelope,
   MembershipPlan,
   Paginated,
@@ -252,6 +255,49 @@ export function me() {
 
 export async function logout() {
   await request<null>("/auth/logout", { method: "POST" });
+}
+
+// ── Customer notifications ─────────────────────────────────────────────────
+
+export function listCustomerNotifications() {
+  return request<Paginated<CustomerNotification>>("/notifications").then((result) => result.data);
+}
+
+export function markCustomerNotificationRead(notificationId: number) {
+  return request<CustomerNotification>(`/notifications/${notificationId}/read`, { method: "POST" });
+}
+
+export function resolveCustomerNotification(notificationId: number) {
+  return request<{ path: string }>(`/notifications/${notificationId}/resolve`, { method: "POST" });
+}
+
+export function getCustomerNotificationPreferences() {
+  return request<CustomerNotificationPreference>("/notification-preferences");
+}
+
+export function updateCustomerNotificationPreferences(payload: {
+  locale: "en" | "ar";
+  push_enabled: boolean;
+}) {
+  return request<CustomerNotificationPreference>("/notification-preferences", {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+export function registerCustomerNotificationDevice(payload: {
+  token: string;
+  locale: "en" | "ar";
+  name?: string;
+}) {
+  return request<CustomerNotificationDevice>("/notification-devices", {
+    method: "POST",
+    body: { ...payload, platform: "web" },
+  });
+}
+
+export function removeCustomerNotificationDevice(deviceId: number) {
+  return request<null>(`/notification-devices/${deviceId}`, { method: "DELETE" });
 }
 
 export function updateProfile(payload: { name: string; email?: string; password?: string }) {

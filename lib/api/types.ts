@@ -460,3 +460,39 @@ export type StoreOrderPayment = {
   payment_reference: string;
   status: "ready" | "retryable" | "pending";
 };
+
+export type CustomerNotificationType =
+  | "booking_created"
+  | "payment_confirmed"
+  | "booking_cancelled"
+  | "booking_status_changed"
+  | "booking_reminder_24h"
+  | "booking_reminder_2h"
+  | "refund_status_changed"
+  | "membership_status_changed"
+  | "store_order_status_changed";
+
+export type CustomerNotification = {
+  id: number;
+  type: CustomerNotificationType;
+  title: string;
+  body: string;
+  locale: "en" | "ar";
+  is_read: boolean;
+  deep_link: string;
+  created_at: string | null;
+};
+
+export type CustomerNotificationPreference = {
+  locale: "en" | "ar";
+  push_enabled: boolean;
+  transactional_fallback: true;
+};
+
+export type CustomerNotificationDevice = {
+  id: number;
+  platform: "web" | "ios" | "android";
+  name: string | null;
+  locale: "en" | "ar";
+  last_seen_at: string | null;
+};

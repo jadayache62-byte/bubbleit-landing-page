@@ -244,6 +244,25 @@ const AR: Record<string, string> = {
   "Cancel": "إلغاء",
   "Cancel this booking?": "إلغاء هذا الحجز؟",
   "Hi,": "أهلاً،",
+  "Notifications": "الإشعارات",
+  "Booking, payment, cancellation, refund, and appointment reminders appear here.":
+    "تظهر هنا تحديثات الحجز والدفع والإلغاء والاسترداد وتذكيرات المواعيد.",
+  "How delivery works": "آلية إرسال الإشعارات",
+  "Browser push is optional. Important transactional WhatsApp or SMS remains the fallback when push cannot be delivered.":
+    "إشعارات المتصفح اختيارية. تبقى رسائل واتساب أو الرسائل النصية المهمة هي البديل عند تعذر الإرسال الفوري.",
+  "Browser notifications are blocked. Change your browser permission to enable them.":
+    "إشعارات المتصفح محظورة. غيّر إذن المتصفح لتفعيلها.",
+  "This browser does not support push notifications.": "هذا المتصفح لا يدعم الإشعارات الفورية.",
+  "Enable browser notifications": "تفعيل إشعارات المتصفح",
+  "Turn off browser notifications": "إيقاف إشعارات المتصفح",
+  "Updating…": "جارٍ التحديث…",
+  "Could not load notifications.": "تعذّر تحميل الإشعارات.",
+  "Could not update notification settings.": "تعذّر تحديث إعدادات الإشعارات.",
+  "This notification is no longer available.": "لم يعد هذا الإشعار متاحاً.",
+  "Loading notifications…": "جارٍ تحميل الإشعارات…",
+  "No notifications yet": "لا توجد إشعارات بعد",
+  "Your transactional updates will appear here.": "ستظهر تحديثات معاملاتك هنا.",
+  "Open": "فتح",
 
   // Memberships
   "Wash Memberships": "اشتراكات الغسيل",

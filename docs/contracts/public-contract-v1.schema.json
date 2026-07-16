@@ -86,6 +86,20 @@
       "type": "string",
       "enum": ["pay_on_site", "online", "membership"]
     },
+    "CustomerNotificationType": {
+      "type": "string",
+      "enum": [
+        "booking_created",
+        "payment_confirmed",
+        "booking_cancelled",
+        "booking_status_changed",
+        "booking_reminder_24h",
+        "booking_reminder_2h",
+        "refund_status_changed",
+        "membership_status_changed",
+        "store_order_status_changed"
+      ]
+    },
     "ErrorCode": {
       "type": "string",
       "enum": [
@@ -131,6 +145,51 @@
         "captured": { "type": "boolean" },
         "reconciliation_reason": { "type": ["string", "null"] },
         "checkout_url": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "CustomerNotification": {
+      "type": "object",
+      "required": ["id", "type", "title", "body", "locale", "is_read", "deep_link", "created_at"],
+      "properties": {
+        "id": { "type": "integer" },
+        "type": { "$ref": "#/$defs/CustomerNotificationType" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "locale": { "enum": ["en", "ar"] },
+        "is_read": { "type": "boolean" },
+        "deep_link": { "type": "string", "pattern": "^/account\\?notification=[0-9]+$" },
+        "created_at": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "CustomerNotificationPreference": {
+      "type": "object",
+      "required": ["locale", "push_enabled", "transactional_fallback"],
+      "properties": {
+        "locale": { "enum": ["en", "ar"] },
+        "push_enabled": { "type": "boolean" },
+        "transactional_fallback": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "CustomerNotificationDevice": {
+      "type": "object",
+      "required": ["id", "platform", "name", "locale", "last_seen_at"],
+      "properties": {
+        "id": { "type": "integer" },
+        "platform": { "enum": ["web", "ios", "android"] },
+        "name": { "type": ["string", "null"] },
+        "locale": { "enum": ["en", "ar"] },
+        "last_seen_at": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "NotificationDeepLinkResolution": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^/(account|store/checkout)\\?" }
       },
       "additionalProperties": false
     },

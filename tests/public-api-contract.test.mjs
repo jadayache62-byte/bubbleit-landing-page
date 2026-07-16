@@ -46,6 +46,24 @@ test("customer booking and vehicle enums are identical to the backend-owned sche
   }
 });
 
+test("customer notification enums and safe-link resources match the backend-owned schema", () => {
+  assert.deepEqual(
+    quotedValues(typeBlock("CustomerNotificationType")),
+    schema.$defs.CustomerNotificationType.enum,
+  );
+  assert.deepEqual(schema.$defs.CustomerNotification.required, [
+    "id",
+    "type",
+    "title",
+    "body",
+    "locale",
+    "is_read",
+    "deep_link",
+    "created_at",
+  ]);
+  assert.equal(schema.$defs.CustomerNotificationPreference.properties.transactional_fallback.const, true);
+});
+
 test("store client accepts only numeric server product IDs and published order states", () => {
   assert.match(types, /export type StoreProductInventory = \{\s+id: number;/);
   assert.doesNotMatch(types, /product_id: string \| number/);

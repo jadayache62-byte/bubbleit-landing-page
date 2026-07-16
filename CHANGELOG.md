@@ -2,6 +2,13 @@
 
 ---
 
+## [2026-07-16] — Customer notification inbox and safe browser delivery (MAD-58)
+
+### Added
+- Added a localized account notification inbox, permission education, optional browser push registration, foreground refresh, background system alerts, and terminated-state notification opening.
+- Browser taps ignore provider-supplied links and enter through an authenticated notification ID that the backend resolves only after rechecking notification and target ownership.
+- Logout detaches only the current browser subscription; the backend retains other customer devices and uses transactional WhatsApp/SMS as the critical fallback when push cannot deliver.
+
 ## [2026-07-16] — Browser release and request-correlation gates (MAD-63)
 
 ### Added
