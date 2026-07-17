@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useI18n } from "@/lib/i18n";
@@ -33,6 +33,9 @@ function near(a: LatLng, b: LatLng): boolean {
 
 export default function LocationMap({ value, onChange, className }: Props) {
   const { t } = useI18n();
+  const [latitude, setLatitude] = useState(() => String(value?.lat ?? DEFAULT_CENTER.lat));
+  const [longitude, setLongitude] = useState(() => String(value?.lng ?? DEFAULT_CENTER.lng));
+  const [coordinateError, setCoordinateError] = useState(false);
   const elRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
@@ -116,13 +119,76 @@ export default function LocationMap({ value, onChange, className }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value?.lat, value?.lng]);
 
+  function applyCoordinates(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      setCoordinateError(true);
+      return;
+    }
+    setCoordinateError(false);
+    const coordinates = { lat, lng };
+    emittedRef.current = null;
+    onChange(coordinates);
+    markerRef.current?.setLatLng([lat, lng]);
+    mapRef.current?.setView([lat, lng], Math.max(mapRef.current.getZoom(), 16));
+  }
+
   return (
-    <div
-      ref={elRef}
-      className={className}
-      style={{ height: 260, width: "100%", borderRadius: 16, overflow: "hidden", zIndex: 0 }}
-      role="application"
-      aria-label={t("Map — drag the pin to your exact location")}
-    />
+    <div className="space-y-3">
+      <div
+        ref={elRef}
+        className={className}
+        style={{ height: 260, width: "100%", borderRadius: 16, overflow: "hidden", zIndex: 0 }}
+        role="region"
+        aria-label={t("Map — drag the pin to your exact location")}
+      />
+      <details
+        className="rounded-2xl border border-[color:var(--border)] bg-white p-3"
+        onToggle={(event) => {
+          if (!event.currentTarget.open || !value) return;
+          setLatitude(value.lat.toFixed(6));
+          setLongitude(value.lng.toFixed(6));
+        }}
+      >
+        <summary className="min-h-11 cursor-pointer py-2 text-sm font-bold text-[color:var(--navy)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)]">
+          {t("Enter coordinates without using the map")}
+        </summary>
+        <form className="mt-3 grid gap-3 sm:grid-cols-2" onSubmit={applyCoordinates}>
+          <label className="text-sm font-semibold text-[color:var(--foreground)]">
+            {t("Latitude")}
+            <input
+              className="wizard-input mt-1"
+              inputMode="decimal"
+              value={latitude}
+              onChange={(event) => setLatitude(event.target.value)}
+            />
+          </label>
+          <label className="text-sm font-semibold text-[color:var(--foreground)]">
+            {t("Longitude")}
+            <input
+              className="wizard-input mt-1"
+              inputMode="decimal"
+              value={longitude}
+              onChange={(event) => setLongitude(event.target.value)}
+            />
+          </label>
+          {coordinateError && (
+            <p className="text-sm font-semibold text-red-700 sm:col-span-2" role="alert">
+              {t("Enter valid latitude and longitude values.")}
+            </p>
+          )}
+          <button type="submit" className="secondary-button sm:col-span-2">
+            {t("Apply coordinates")}
+          </button>
+        </form>
+        {value && (
+          <p className="mt-3 text-xs text-[color:var(--muted-foreground)]" aria-live="polite">
+            {t("Selected coordinates")}: <bdi dir="ltr">{value.lat.toFixed(6)}, {value.lng.toFixed(6)}</bdi>
+          </p>
+        )}
+      </details>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import Link from "next/link";
 import { Footer } from "@/components/Footer";
@@ -75,6 +75,8 @@ export default function AccountPage() {
   const [tab, setTab] = useState<(typeof ACCOUNT_TABS)[number]>("overview");
   const [error, setError] = useState<string | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
+  const rescheduleDialogRef = useRef<HTMLElement>(null);
+  const rescheduleCloseRef = useRef<HTMLButtonElement>(null);
   const [reschedule, setReschedule] = useState<{
     booking: Booking;
     date: string;
@@ -84,6 +86,44 @@ export default function AccountPage() {
     busy: boolean;
     error: string | null;
   } | null>(null);
+  const rescheduleOpen = Boolean(reschedule);
+
+  useEffect(() => {
+    if (!rescheduleOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setReschedule(null);
+        return;
+      }
+      if (event.key !== "Tab" || !rescheduleDialogRef.current) return;
+      const controls = [...rescheduleDialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      )];
+      if (controls.length === 0) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    requestAnimationFrame(() => rescheduleCloseRef.current?.focus());
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus({ preventScroll: true });
+    };
+  }, [rescheduleOpen]);
 
   const refresh = useCallback(() => {
     listBookings().then(setBookings).catch(() => setBookings([]));
@@ -311,9 +351,9 @@ export default function AccountPage() {
         )}
       </main>
       {reschedule && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-label={t("Reschedule booking")}>
-          <section className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between gap-4"><h2 className="text-xl font-bold">{t("Choose a new time")}</h2><button type="button" className="secondary-button" onClick={() => setReschedule(null)}>{t("Close")}</button></div>
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" role="presentation">
+          <section ref={rescheduleDialogRef} role="dialog" aria-modal="true" aria-labelledby="reschedule-booking-title" tabIndex={-1} className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between gap-4"><h2 id="reschedule-booking-title" className="text-xl font-bold">{t("Choose a new time")}</h2><button ref={rescheduleCloseRef} type="button" className="secondary-button" onClick={() => setReschedule(null)}>{t("Close")}</button></div>
             <label className="mt-5 block text-sm font-semibold">{t("Date")}<input type="date" min={qatarToday()} value={reschedule.date} className="mt-2 w-full rounded-xl border p-3" onChange={(event) => loadRescheduleOptions(reschedule.booking, event.target.value, reschedule.key)} /></label>
             {reschedule.busy && !reschedule.options ? <p className="mt-5 text-sm">{t("Loading available times…")}</p> : (
               <div className="mt-5 grid grid-cols-3 gap-2">{reschedule.options?.slots.filter((slot) => slot.available).map((slot) => <button key={slot.start} type="button" className={clsx("rounded-xl border p-3 text-sm font-bold", reschedule.slot === slot.start && "border-[color:var(--blue)] bg-sky-50")} onClick={() => setReschedule({ ...reschedule, slot: slot.start })}>{slot.start}</button>)}</div>

@@ -181,7 +181,7 @@ export function Hero() {
 
                     <div className="mt-3 grid grid-cols-2 gap-3">
                       <div className="rounded-[1.5rem] bg-[#f6fbff] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--blue)]">
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--navy)]">
                           {t("Service")}
                         </p>
                         <p className="mt-2 text-[0.92rem] font-semibold text-[color:var(--foreground)]">
@@ -189,7 +189,7 @@ export function Hero() {
                         </p>
                       </div>
                       <div className="rounded-[1.5rem] bg-[#f6fbff] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--blue)]">
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--navy)]">
                           {t("Payment")}
                         </p>
                         <p className="mt-2 text-[0.92rem] font-semibold text-[color:var(--foreground)]">
