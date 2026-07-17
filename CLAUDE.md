@@ -14,6 +14,13 @@ The same-origin customer BFF owns `X-Request-ID` forwarding and must return the 
 
 Customer notification push is optional and session/device scoped. Never ask for permission before an explicit customer action. A push payload may carry only a numeric notification ID and `/account?notification={id}`; the service worker must reconstruct that internal entry point and the authenticated backend resolve endpoint must reauthorize the notification and target before navigation. `NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY` and a live backend adapter remain external release inputs. Important transactional WhatsApp/SMS remains the server-owned fallback.
 
+## Arabic localization and RTL (MAD-59)
+
+- Derive the initial document language and direction on the server from the locale cookie, and persist explicit language changes immediately. Arabic pages must render with `lang="ar"` and `dir="rtl"` before hydration.
+- App-owned navigation, actions, validation, status, policy, accessibility, and recovery copy belongs in the shared localization layer. Customer names and user-created service or product names may remain exactly as authored in English or any other entered language; do not machine-translate them.
+- Format QAR and locale-sensitive values through the shared money/date helpers. Use CSS logical properties and directional semantics rather than hardcoded left/right assumptions.
+- Keep the RTL/localization contract test and Arabic browser journey as release gates, including compact layouts and increased text size. Engineering is integrated locally; professional review of Arabic product copy remains required before MAD-59 can close.
+
 Repository notes for agents working on the Bubble It marketing site and customer booking flow.
 
 ---
