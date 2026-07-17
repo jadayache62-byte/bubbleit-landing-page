@@ -2,6 +2,21 @@
 
 ---
 
+## [2026-07-17] — Arabic localization and RTL customer journeys (MAD-59)
+
+### Added
+- Added server-derived Arabic document language/direction, persistent language selection, and localized release-critical booking, store, membership, account, authentication, notification, validation, policy, and accessibility copy.
+- Added locale-aware QAR formatting, an RTL/localization contract gate, and an Arabic browser journey covering persistence, form errors, cart, checkout, and account recovery.
+
+### Changed
+- Replaced LTR-specific layout assumptions with logical/directional behavior and preserved customer names and user-created service or product names exactly as authored, including English content.
+
+### Verification
+- Passed 59/59 tests, lint, an isolated production build against a deliberately unreachable loopback customer API, and whitespace validation without contacting a shared backend or provider.
+
+### Remaining
+- Professional Arabic product-copy review is still required before MAD-59 is marked Done.
+
 ## [2026-07-16] — Customer notification inbox and safe browser delivery (MAD-58)
 
 ### Added
