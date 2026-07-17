@@ -2,6 +2,20 @@
 
 ---
 
+## [2026-07-17] — Critical-flow accessibility gates (MAD-61)
+
+### Added
+- Added a localized coordinate-entry alternative for booking and saved-location maps so customers can select a pin without pointer gestures or geolocation permission.
+- Added blocking axe WCAG A/AA browser checks for home, store, booking, and membership release surfaces, plus static contracts for map input, time-picker focus restoration, and reschedule-dialog focus containment.
+
+### Fixed
+- Reschedule dialogs now receive and trap focus, close with Escape, lock background scrolling, and restore focus after dismissal.
+- Time option popovers restore focus after selection or Escape.
+- Fixed invalid QR placeholder ARIA, membership-list semantics, and automated contrast failures on home and membership controls.
+
+### Remaining
+- Release-like VoiceOver and TalkBack walkthrough evidence remains required before MAD-61 is marked Done.
+
 ## [2026-07-17] — Arabic localization and RTL customer journeys (MAD-59)
 
 ### Added

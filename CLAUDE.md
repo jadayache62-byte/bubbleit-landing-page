@@ -97,6 +97,8 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Account section controls follow the ARIA tabs pattern, including a single tab stop, `aria-selected`, linked tabpanels, Arrow Left/Right, Home, and End behavior. Avoid horizontally clipped mobile tabs.
 - Keep normal text contrast at WCAG AA, interactive targets at least 44×44px on mobile, visible `:focus-visible` outlines, contextual accessible names for repeated actions, and one page-level `<h1>` per rendered account state.
 - Respect `prefers-reduced-motion`. Use compositor-friendly opacity/transform motion for modal entrances, and avoid long scripted page-scroll animations between wizard steps.
+- Map selection must include the localized coordinate form in `LocationMap`; pointer dragging and geolocation permission cannot be the only input paths. Time pickers and modal dialogs must restore the invoking control's focus after selection or dismissal and trap focus while open.
+- `tests/e2e/accessibility.spec.ts` is a blocking axe WCAG A/AA gate for customer release surfaces. Do not suppress violations without a documented false-positive proof; fix the rendered semantics or contrast instead.
 - Customer auth stores the token in a SameSite=Lax cookie and local storage fallback, sends same-origin credentials with API calls, and clears both stores on logout. Phone login/signup inputs accept exactly eight local Qatar digits and use a numeric keypad.
 
 ## Timezone Convention

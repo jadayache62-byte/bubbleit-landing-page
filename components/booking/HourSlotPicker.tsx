@@ -29,6 +29,7 @@ export function HourSlotPicker({
 }: HourSlotPickerProps) {
   const [openHour, setOpenHour] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const hours = useMemo(() => {
     const grouped = new Map<string, Map<string, Slot>>();
     slots.forEach((slot) => {
@@ -64,7 +65,11 @@ export function HourSlotPicker({
       if (!rootRef.current?.contains(event.target as Node)) setOpenHour(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpenHour(null);
+      if (event.key === "Escape" && openHour) {
+        const hour = openHour;
+        setOpenHour(null);
+        requestAnimationFrame(() => triggerRefs.current.get(hour)?.focus());
+      }
     };
     document.addEventListener("mousedown", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
@@ -72,7 +77,7 @@ export function HourSlotPicker({
       document.removeEventListener("mousedown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, []);
+  }, [openHour]);
 
   return (
     <div ref={rootRef} className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -85,10 +90,15 @@ export function HourSlotPicker({
         return (
           <div key={hour} className="relative scroll-mb-32">
             <button
+              ref={(element) => {
+                if (element) triggerRefs.current.set(hour, element);
+                else triggerRefs.current.delete(hour);
+              }}
               type="button"
               disabled={!enabled}
               aria-expanded={openHour === hour}
               aria-haspopup="listbox"
+              aria-controls={`time-options-${hour}`}
               onClick={() => setOpenHour(openHour === hour ? null : hour)}
               className={clsx(
                 "w-full rounded-xl border px-2 py-2.5 text-sm font-semibold transition",
@@ -103,6 +113,7 @@ export function HourSlotPicker({
             </button>
             {openHour === hour && (
               <div
+                id={`time-options-${hour}`}
                 role="listbox"
                 aria-label={`${hour}:00 time options`}
                 className="absolute z-50 mt-2 grid w-[13rem] max-w-[calc(100vw-2rem)] grid-cols-2 gap-1 rounded-2xl border border-[color:var(--border)] bg-white p-2 shadow-xl"
@@ -119,6 +130,7 @@ export function HourSlotPicker({
                       onClick={() => {
                         onSelect(option.start);
                         setOpenHour(null);
+                        requestAnimationFrame(() => triggerRefs.current.get(hour)?.focus());
                       }}
                       className={clsx(
                         "rounded-xl px-2 py-2 text-sm font-semibold transition",

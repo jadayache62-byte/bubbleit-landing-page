@@ -288,7 +288,7 @@ export default function MembershipsPage() {
                 className={clsx(
                   "rounded-full border px-5 py-2 text-sm font-semibold transition",
                   vtype === o.value
-                    ? "border-[color:var(--blue)] bg-[color:var(--blue)] text-white"
+                    ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
                     : "border-[color:var(--border)] bg-white text-[color:var(--muted-foreground)] hover:border-[color:var(--blue)]",
                 )}
               >
@@ -309,7 +309,7 @@ export default function MembershipsPage() {
         )}
 
         {/* Plans */}
-        <div className="card-grid md:grid-cols-2 xl:grid-cols-4" aria-busy={plansLoading} aria-label={plansLoading ? t("Loading membership plans…") : t("Membership plans")}>
+        <div role="list" className="card-grid md:grid-cols-2 xl:grid-cols-4" aria-busy={plansLoading} aria-label={plansLoading ? t("Loading membership plans…") : t("Membership plans")}>
           {plansLoading ? Array.from({ length: 4 }, (_, index) => (
             <div key={index} className="commerce-card flex min-h-[19rem] flex-col items-center p-6" aria-hidden="true">
               <span className="mt-2 block h-12 w-16 animate-pulse rounded-xl bg-slate-200" />
@@ -321,10 +321,11 @@ export default function MembershipsPage() {
             </div>
           )) : visiblePlans.map((plan) => (
             <article
+              role="listitem"
               key={plan.id}
               className={clsx("commerce-card relative flex flex-col items-center gap-2 p-6 text-center", plan.washes_count === 8 && "border-[color:var(--blue)] ring-2 ring-blue-100")}
             >
-              {plan.washes_count === 8 && <span className="absolute -top-3 rounded-full bg-[color:var(--blue)] px-3 py-1 text-xs font-bold text-white">{t("Most popular")}</span>}
+              {plan.washes_count === 8 && <span className="absolute -top-3 rounded-full bg-[color:var(--navy)] px-3 py-1 text-xs font-bold text-white">{t("Most popular")}</span>}
               <span className="text-4xl font-bold text-[color:var(--navy)]">
                 {plan.washes_count}
               </span>

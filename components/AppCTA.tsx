@@ -205,7 +205,7 @@ export function AppCTA() {
 
                       <div className="mt-3 grid grid-cols-2 gap-3">
                         <div className="rounded-[1.45rem] bg-[#f6fbff] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--blue)]">
+                          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--navy)]">
                             {t("Service")}
                           </p>
                           <p className="mt-2 text-[0.92rem] font-semibold text-[color:var(--foreground)]">
@@ -213,7 +213,7 @@ export function AppCTA() {
                           </p>
                         </div>
                         <div className="rounded-[1.45rem] bg-[#f6fbff] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--blue)]">
+                          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--navy)]">
                             {t("Payment")}
                           </p>
                           <p className="mt-2 text-[0.92rem] font-semibold text-[color:var(--foreground)]">
@@ -261,6 +261,7 @@ export function AppCTA() {
                   </div>
 
                   <div
+                    role="img"
                     aria-label={t("QR code placeholder")}
                     className="grid grid-cols-5 gap-1 rounded-[20px] bg-[#f2f8ff] p-3"
                   >
