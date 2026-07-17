@@ -23,6 +23,7 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       CUSTOMER_API_BASE: "http://127.0.0.1:9/api/v1/customer",
+      CSP_MODE: "enforce",
     },
   },
 });

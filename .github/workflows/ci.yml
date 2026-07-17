@@ -31,6 +31,9 @@ jobs:
       - name: Run contract and regression tests
         run: npm test
 
+      - name: Verify HttpOnly session boundary
+        run: npm run test:session
+
       - name: Build production candidate
         run: npm run build
         env:
@@ -41,6 +44,8 @@ jobs:
 
       - name: Run browser fault-injection gate
         run: npm run test:e2e
+        env:
+          CSP_MODE: enforce
 
       - name: Upload browser failure evidence
         if: failure()
