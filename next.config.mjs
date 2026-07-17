@@ -17,15 +17,20 @@ if (
   );
 }
 
-// Conservative, framework-agnostic security headers. A full CSP is intentionally
-// left out here because Leaflet/inline styles need runtime validation first.
+// Request-specific CSP nonces are applied by proxy.ts. These static headers are
+// intentionally present on pages, route handlers, and error responses alike.
 const securityHeaders = [
-  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self), payment=(), usb=(), browsing-topics=()" },
+  { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
 ];
 
 const nextConfig = {
+  poweredByHeader: false,
   allowedDevOrigins: ["127.0.0.1"],
   images: {
     formats: ["image/avif", "image/webp"],

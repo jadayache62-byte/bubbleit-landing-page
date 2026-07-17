@@ -72,7 +72,7 @@ function establishSession(response: NextResponse, token: string, expiresAt?: str
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    ...(expiresAt ? { expires: new Date(expiresAt) } : { maxAge: 60 * 60 * 24 * 30 }),
+    ...(expiresAt ? { expires: new Date(expiresAt) } : { maxAge: 60 * 60 * 24 * 21 }),
   });
 }
 

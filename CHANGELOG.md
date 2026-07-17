@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-07-17] — Web security policy and token boundary (MAD-64)
+
+- Added request-specific CSP nonces with an explicit report-only-to-enforced rollout mode, allowlisting only the same origin, OpenStreetMap tiles, and Nominatim required by current customer flows.
+- Added a bounded CSP-report endpoint that records redacted directive/origin/path evidence without query strings.
+- Added HSTS, Permissions-Policy, cross-origin isolation, framing, MIME, and referrer headers and removed the framework disclosure header.
+- Kept authentication behind the same-origin HttpOnly BFF, enforced the approved 21-day fallback session lifetime, and added executable header, CSP/XSS, CORS, and session-boundary release gates.
+- Hosting report-only observation and enforced hosted-header verification remain release evidence; no deployment was performed.
+
 ## [2026-07-17] — Critical-flow accessibility gates (MAD-61)
 
 ### Added

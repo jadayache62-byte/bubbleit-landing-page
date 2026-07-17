@@ -9,7 +9,8 @@
     "test:e2e": "playwright test",
     "start": "next start",
     "lint": "eslint",
-    "test:session": "node scripts/verify-session-bff.mjs"
+    "test:session": "node scripts/verify-session-bff.mjs",
+    "test:security": "npm run test:session && playwright test tests/e2e/security.spec.ts --project=chromium"
   },
   "dependencies": {
     "clsx": "^2.1.1",

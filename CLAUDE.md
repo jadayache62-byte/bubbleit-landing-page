@@ -12,6 +12,8 @@ echo the accepted quote version to booking commit, and recover
 
 The same-origin customer BFF owns `X-Request-ID` forwarding and must return the authoritative backend ID. API recovery text retains that reference. `.github/workflows/ci.yml` must keep lint, contract/regression tests, production build, and local Playwright fault injection blocking; browser tests must never call real providers.
 
+The customer web security policy is request-nonced in `proxy.ts`. `CSP_MODE` defaults to `report-only`; release-like browser tests set it to `enforce`, and hosting may switch to enforcement only after report-only evidence is reviewed. Keep OpenStreetMap tiles and Nominatim as the only current third-party runtime sources. CSP reports must remain bounded and redact query strings. HSTS, Permissions-Policy, MIME/referrer/isolation headers, the HttpOnly BFF session, and same-origin mutation checks are release gates. The fallback BFF session lifetime is 21 days; an authoritative shorter backend expiry still wins.
+
 Customer notification push is optional and session/device scoped. Never ask for permission before an explicit customer action. A push payload may carry only a numeric notification ID and `/account?notification={id}`; the service worker must reconstruct that internal entry point and the authenticated backend resolve endpoint must reauthorize the notification and target before navigation. `NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY` and a live backend adapter remain external release inputs. Important transactional WhatsApp/SMS remains the server-owned fallback.
 
 ## Arabic localization and RTL (MAD-59)
@@ -99,7 +101,7 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Respect `prefers-reduced-motion`. Use compositor-friendly opacity/transform motion for modal entrances, and avoid long scripted page-scroll animations between wizard steps.
 - Map selection must include the localized coordinate form in `LocationMap`; pointer dragging and geolocation permission cannot be the only input paths. Time pickers and modal dialogs must restore the invoking control's focus after selection or dismissal and trap focus while open.
 - `tests/e2e/accessibility.spec.ts` is a blocking axe WCAG A/AA gate for customer release surfaces. Do not suppress violations without a documented false-positive proof; fix the rendered semantics or contrast instead.
-- Customer auth stores the token in a SameSite=Lax cookie and local storage fallback, sends same-origin credentials with API calls, and clears both stores on logout. Phone login/signup inputs accept exactly eight local Qatar digits and use a numeric keypad.
+- Customer auth stores its bearer token only in the server-owned HttpOnly, Secure-in-production, SameSite=Lax cookie. Browser code sends same-origin credentials but cannot read the token; never add a localStorage or script-readable cookie fallback. Phone login/signup inputs accept exactly eight local Qatar digits and use a numeric keypad.
 
 ## Timezone Convention
 
