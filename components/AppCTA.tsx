@@ -51,9 +51,11 @@ function StoreBadge({
   label: string;
   platform: string;
 }) {
+  const { t } = useI18n();
+
   return (
     <span
-      aria-label={`Bubbleit on ${label} — coming soon`}
+      aria-label={`${t("Bubbleit on")} ${label} — ${t("coming soon")}`}
       className="relative inline-flex min-h-14 cursor-default items-center gap-3 rounded-[22px] border border-white/14 bg-[#11152f]/55 px-4 py-3 text-left text-white/75 shadow-[0_14px_30px_rgba(12,18,44,0.22)] backdrop-blur-md"
     >
       <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/8 opacity-70">
@@ -65,7 +67,7 @@ function StoreBadge({
       </span>
       <span>
         <span className="block text-[0.68rem] font-medium uppercase tracking-[0.18em] text-[color:var(--cyan)]">
-          Coming soon
+          {t("Coming soon")}
         </span>
         <span className="mt-0.5 block text-sm font-semibold">{label}</span>
       </span>
@@ -180,23 +182,23 @@ export function AppCTA() {
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-[0.72rem] font-medium uppercase tracking-[0.14em] text-white/70">
-                              Today, 3:30 PM
+                              {t("Today, 3:30 PM")}
                             </p>
                             <p className="mt-2 text-[1.65rem] font-semibold tracking-[-0.04em]">
-                              Full Car Wash
+                              {t("Full Car Wash")}
                             </p>
                           </div>
                           <div className="rounded-full bg-white/16 px-3 py-1.5 text-[0.78rem] font-semibold text-white">
-                            Confirmed
+                            {t("Confirmed")}
                           </div>
                         </div>
 
                         <div className="mt-5 rounded-[1.5rem] border border-white/12 bg-white/10 p-3 backdrop-blur-md">
                           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-white/64">
-                            Location
+                            {t("Location")}
                           </p>
                           <p className="mt-1 text-[0.9rem] leading-6 text-white/92">
-                            Your address is pinned and ready for arrival.
+                            {t("Your address is pinned and ready for arrival.")}
                           </p>
                         </div>
                       </div>
@@ -204,18 +206,18 @@ export function AppCTA() {
                       <div className="mt-3 grid grid-cols-2 gap-3">
                         <div className="rounded-[1.45rem] bg-[#f6fbff] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
                           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--blue)]">
-                            Service
+                            {t("Service")}
                           </p>
                           <p className="mt-2 text-[0.92rem] font-semibold text-[color:var(--foreground)]">
-                            Exterior + Interior
+                            {t("Exterior + Interior")}
                           </p>
                         </div>
                         <div className="rounded-[1.45rem] bg-[#f6fbff] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
                           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--blue)]">
-                            Payment
+                            {t("Payment")}
                           </p>
                           <p className="mt-2 text-[0.92rem] font-semibold text-[color:var(--foreground)]">
-                            Secure checkout
+                            {t("Secure checkout")}
                           </p>
                         </div>
                       </div>
@@ -229,7 +231,7 @@ export function AppCTA() {
                         >
                           <div className="mx-auto h-9 w-9 rounded-full bg-[color:var(--cyan)]/14" />
                           <span className="mt-2 block text-[0.74rem] font-semibold text-[color:var(--foreground)]">
-                            {item}
+                            {t(item)}
                           </span>
                         </div>
                       ))}
@@ -253,13 +255,13 @@ export function AppCTA() {
                     </span>
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--blue)]">
-                        App coming soon
+                  {t("App coming soon")}
                       </p>
                     </div>
                   </div>
 
                   <div
-                    aria-label="QR code placeholder"
+                    aria-label={t("QR code placeholder")}
                     className="grid grid-cols-5 gap-1 rounded-[20px] bg-[#f2f8ff] p-3"
                   >
                     {Array.from({ length: 25 }).map((_, index) => (

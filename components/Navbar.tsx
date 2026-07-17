@@ -34,11 +34,11 @@ export function Navbar() {
           <Link
             href="/"
             className="flex shrink-0 items-center overflow-visible"
-            aria-label="Bubbleit home"
+            aria-label={t("Bubbleit home")}
           >
             <Image
               src="/assets/brand/logo-secondary.png"
-              alt="Bubbleit logo"
+              alt={t("Bubbleit logo")}
               width={1600}
               height={510}
               priority
@@ -46,7 +46,7 @@ export function Navbar() {
             />
           </Link>
 
-          <nav className="hidden items-center gap-6 lg:flex" aria-label="Primary">
+          <nav className="hidden items-center gap-6 lg:flex" aria-label={t("Primary navigation")}>
             {navItems.map((item) => (
               <a
                 key={item.href}
@@ -75,10 +75,10 @@ export function Navbar() {
             className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[color:var(--border)] text-[color:var(--navy)] transition hover:border-[color:var(--blue)] hover:text-[color:var(--blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)] lg:hidden"
             aria-expanded={isOpen}
             aria-controls="mobile-menu"
-            aria-label={isOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-label={t(isOpen ? "Close navigation menu" : "Open navigation menu")}
             onClick={() => setIsOpen((current) => !current)}
           >
-            <span className="sr-only">Menu</span>
+            <span className="sr-only">{t("Menu")}</span>
             <div className="flex flex-col gap-1.5">
               <span
                 className={clsx(
@@ -114,7 +114,7 @@ export function Navbar() {
           <div className="overflow-hidden">
             <nav
               className="commerce-card flex flex-col gap-1.5 p-3"
-              aria-label="Mobile"
+              aria-label={t("Mobile navigation")}
             >
               <div className="px-3 pb-2 pt-1"><p className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">{t("Explore Bubbleit")}</p></div>
               {navItems.map((item) => (

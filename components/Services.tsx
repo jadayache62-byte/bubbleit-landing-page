@@ -2,6 +2,7 @@
 
 import { SectionHeader } from "@/components/ui";
 import { useI18n } from "@/lib/i18n";
+import { formatQar } from "@/lib/money";
 
 const services = [
   {
@@ -50,7 +51,7 @@ const services = [
 ];
 
 export function Services() {
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   return (
     <section id="services" className="section-spacing">
       <div className="section-shell">
@@ -86,16 +87,16 @@ export function Services() {
                   <span className="block text-xs font-medium text-[color:var(--muted-foreground)]">
                     {t("Salon")}
                   </span>
-                  <span className="font-bold text-[color:var(--blue)]">
-                    {service.salon} QR
+                  <span className="font-bold text-[color:var(--blue)]" dir="ltr">
+                    {formatQar(service.salon, lang)}
                   </span>
                 </span>
                 <span>
                   <span className="block text-xs font-medium text-[color:var(--muted-foreground)]">
                     {t("SUV")}
                   </span>
-                  <span className="font-bold text-[color:var(--blue)]">
-                    {service.suv} QR
+                  <span className="font-bold text-[color:var(--blue)]" dir="ltr">
+                    {formatQar(service.suv, lang)}
                   </span>
                 </span>
                 <a

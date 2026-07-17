@@ -20,15 +20,22 @@ import type {
   StorePricingConfirmation,
   StoreProductInventory,
 } from "@/lib/api/types";
+import { localized, useI18n } from "@/lib/i18n";
 import { formatStorePrice } from "@/lib/store/products";
+
+function MapLoading() {
+  const { t } = useI18n();
+
+  return (
+    <div className="grid h-[260px] w-full place-items-center rounded-2xl bg-slate-100 text-sm text-slate-400">
+      {t("Loading map…")}
+    </div>
+  );
+}
 
 const LocationMap = dynamic(() => import("@/components/booking/LocationMap"), {
   ssr: false,
-  loading: () => (
-    <div className="grid h-[260px] w-full place-items-center rounded-2xl bg-slate-100 text-sm text-slate-400">
-      Loading map...
-    </div>
-  ),
+  loading: () => <MapLoading />,
 });
 
 const CART_KEY = "bubbleit.store.cart";
@@ -174,6 +181,7 @@ function pricingFromConflict(data: unknown): StorePricingConfirmation | null {
 }
 
 export function StoreCheckoutClient() {
+  const { lang, t } = useI18n();
   const topRef = useRef<HTMLDivElement | null>(null);
   const checkoutInFlightRef = useRef(false);
   const pendingCheckoutRef = useRef<PendingCheckout | null>(null);
@@ -358,7 +366,7 @@ export function StoreCheckoutClient() {
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
-        { headers: { Accept: "application/json" } },
+        { headers: { Accept: "application/json", "Accept-Language": lang } },
       );
       const json = await res.json();
       const address = json.address ?? {};
@@ -467,13 +475,11 @@ export function StoreCheckoutClient() {
       }
 
       setPaymentNotice(
-        "Payment could not start because no checkout link was returned. Please retry payment.",
+        t("Payment could not start because no checkout link was returned. Please retry payment."),
       );
     } catch (caught) {
       setPaymentNotice(
-        caught instanceof ApiError
-          ? `Payment could not start: ${caught.message}`
-          : "Payment could not start. Your order is saved; please retry payment.",
+        `${t("Payment could not start. Your order is saved; please retry payment.")}${caught instanceof ApiError && caught.requestId ? ` ${t("Reference")}: ${caught.requestId}.` : ""}`,
       );
     }
   }
@@ -500,7 +506,7 @@ export function StoreCheckoutClient() {
     }
     if (checkoutInFlightRef.current) return;
     if (!customer) {
-      setError("Sign in or create your verified account before checkout.");
+      setError(t("Sign in or create your verified account before checkout."));
       setStep("contact");
       return;
     }
@@ -512,7 +518,7 @@ export function StoreCheckoutClient() {
     setPaymentNotice(null);
     try {
       if (!geo) {
-        setError("Confirm the delivery pin before checkout.");
+        setError(t("Confirm the delivery pin before checkout."));
         setStep("location");
         return;
       }
@@ -560,15 +566,13 @@ export function StoreCheckoutClient() {
         const updatedPricing = pricingFromConflict(caught.data);
         if (updatedPricing) {
           setPricingReview(updatedPricing);
-          setError("The store total changed. Review the updated prices and confirm again to continue to payment.");
+          setError(t("The store total changed. Review the updated prices and confirm again to continue to payment."));
           setStep("review");
           return;
         }
       }
       setError(
-        caught instanceof ApiError
-          ? caught.message
-          : "Could not place the order. Please try again.",
+        `${t("Could not place the order. Please try again.")}${caught instanceof ApiError && caught.requestId ? ` ${t("Reference")}: ${caught.requestId}.` : ""}`,
       );
     } finally {
       setSubmitting(false);
@@ -579,16 +583,16 @@ export function StoreCheckoutClient() {
 
   const submitLabel =
     submitPhase === "creating"
-      ? "Creating order..."
+      ? t("Creating order…")
       : submitPhase === "initializing_payment"
-        ? "Starting payment..."
+        ? t("Starting payment…")
         : submitPhase === "redirecting"
-          ? "Redirecting..."
+          ? t("Redirecting…")
           : pendingCheckout
-            ? "Retry payment"
+            ? t("Retry payment")
             : pricingReview
-              ? "Confirm updated total and pay"
-              : "Place order";
+              ? t("Confirm updated total and pay")
+              : t("Place order");
   const checkoutLocked = Boolean(pendingCheckout);
 
   if (catalogState !== "ready") {
@@ -596,12 +600,12 @@ export function StoreCheckoutClient() {
       <div className="mx-auto max-w-2xl px-4 py-16 text-center sm:px-6">
         <section className="commerce-card p-8" role="status" aria-live="polite">
           <h1 className="text-2xl font-bold text-[color:var(--navy)]">
-            {catalogState === "loading" ? "Checking your cart…" : "Checkout is temporarily unavailable"}
+            {catalogState === "loading" ? t("Checking your cart…") : t("Checkout is temporarily unavailable")}
           </h1>
           <p className="mx-auto mt-3 max-w-lg text-sm text-[color:var(--muted-foreground)]">
             {catalogState === "loading"
-              ? "We’re verifying every product, price, and stock level with Bubbleit."
-              : "We couldn’t verify the live catalogue. Your saved cart has not been submitted or replaced with offline products."}
+              ? t("We’re verifying every product, price, and stock level with Bubbleit.")
+              : t("We couldn’t verify the live catalogue. Your saved cart has not been submitted or replaced with offline products.")}
           </p>
           {catalogState === "error" && (
             <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
@@ -613,9 +617,9 @@ export function StoreCheckoutClient() {
                   setCatalogAttempt((attempt) => attempt + 1);
                 }}
               >
-                Retry checkout
+                {t("Retry checkout")}
               </button>
-              <Link href="/store" className="secondary-button">Back to store</Link>
+              <Link href="/store" className="secondary-button">{t("Back to store")}</Link>
             </div>
           )}
         </section>
@@ -633,22 +637,21 @@ export function StoreCheckoutClient() {
           <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-emerald-50 text-2xl font-bold text-emerald-600">
             ✓
           </span>
-          <h1 className="section-title mt-5">Store order received</h1>
+          <h1 className="section-title mt-5">{t("Store order received")}</h1>
           <p className="section-copy mx-auto mt-4">
-            Your Bubbleit store order has been captured. The team will contact
-            you to confirm delivery and payment details.
+            {t("Your Bubbleit store order has been captured. The team will contact you to confirm delivery and payment details.")}
           </p>
           {completedOrder && (
             <p className="mt-4 text-sm font-bold text-[color:var(--blue)]">
-              Reference {completedOrder.reference}
+              {t("Reference")} {completedOrder.reference}
             </p>
           )}
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Link href="/store" className="secondary-button">
-              Continue shopping
+              {t("Continue shopping")}
             </Link>
             <Link href="/" className="primary-button">
-              Back to home
+              {t("Back to home")}
             </Link>
           </div>
         </div>
@@ -669,25 +672,25 @@ export function StoreCheckoutClient() {
     <div ref={topRef} className="mx-auto w-full max-w-3xl scroll-mt-24 px-4 py-6 pb-32 sm:px-6 sm:py-10">
       {items.length === 0 ? (
         <div className="commerce-card p-8 text-center">
-          <h1 className="text-2xl font-bold text-[color:var(--navy)]">Your cart is empty</h1>
-          <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">Choose your products before starting checkout.</p>
-          <Link href="/store" className="primary-button mt-6">Shop products</Link>
+          <h1 className="text-2xl font-bold text-[color:var(--navy)]">{t("Your cart is empty")}</h1>
+          <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">{t("Choose your products before starting checkout.")}</p>
+          <Link href="/store" className="primary-button mt-6">{t("Shop products")}</Link>
         </div>
       ) : (
         <>
           <div className="mb-6 flex items-center justify-between">
             <Link href="/store" className="inline-flex min-h-11 items-center text-sm font-semibold text-[color:var(--muted-foreground)] hover:text-[color:var(--navy)]">
-              <span className="me-2" aria-hidden="true">←</span> Back to cart
+              <span className="me-2 rtl:rotate-180" aria-hidden="true">←</span> {t("Back to cart")}
             </Link>
-            <span className="text-sm font-bold text-[color:var(--navy)]">{formatStorePrice(reviewedPricing.total_minor / 100)}</span>
+            <span className="text-sm font-bold text-[color:var(--navy)]">{formatStorePrice(reviewedPricing.total_minor / 100, lang)}</span>
           </div>
 
-          <nav className="mb-7 grid grid-cols-3 gap-2" aria-label="Checkout progress">
+          <nav className="mb-7 grid grid-cols-3 gap-2" aria-label={t("Checkout progress")}>
             {steps.map((item, index) => (
               <div key={item.id} className="min-w-0">
                 <div className={index <= currentStep ? "h-1 rounded-full bg-[color:var(--blue)] transition-colors duration-300" : "h-1 rounded-full bg-slate-200 transition-colors duration-300"} />
                 <span className={index === currentStep ? "mt-2 block text-xs font-bold text-[color:var(--navy)]" : "mt-2 block text-xs font-semibold text-[color:var(--muted-foreground)]"}>
-                  {index + 1}. {item.label}
+                  {index + 1}. {t(item.label)}
                 </span>
               </div>
             ))}
@@ -697,9 +700,9 @@ export function StoreCheckoutClient() {
             {step === "location" && (
               <section className="commerce-card overflow-hidden">
                 <div className="border-b border-slate-200 px-5 py-5 sm:px-7">
-                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">Step 1 of 3</span>
-                  <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">Where should we deliver?</h1>
-                  <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">Pin the exact location, then add the building details.</p>
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">{t("Step 1 of 3")}</span>
+                  <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">{t("Where should we deliver?")}</h1>
+                  <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Pin the exact location, then add the building details.")}</p>
                 </div>
                 <div className="space-y-4 p-4 sm:p-7">
                   <div className="overflow-hidden rounded-2xl">
@@ -707,32 +710,32 @@ export function StoreCheckoutClient() {
                   </div>
                   <button type="button" className="secondary-button w-full gap-2" disabled={geoState === "locating" || checkoutLocked} onClick={requestLocation}>
                     <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true" fill="none"><path d="M12 20s5.25-5.13 5.25-9a5.25 5.25 0 1 0-10.5 0c0 3.87 5.25 9 5.25 9Z" stroke="currentColor" strokeWidth="1.8"/><circle cx="12" cy="11" r="1.9" fill="currentColor"/></svg>
-                    {geoState === "locating" ? "Finding your location…" : geo ? "Update precise location" : "Use my precise location"}
+                    {geoState === "locating" ? t("Finding your location…") : geo ? t("Update precise location") : t("Use my precise location")}
                   </button>
-                  {geo && <p className="text-center text-xs font-semibold text-emerald-700">Location pinned successfully</p>}
-                  {geoState === "error" && <p role="alert" className="text-center text-xs font-medium text-red-600">Location access failed. Tap the map to place the pin manually.</p>}
+                  {geo && <p className="text-center text-xs font-semibold text-emerald-700">{t("Location pinned successfully")}</p>}
+                  {geoState === "error" && <p role="alert" className="text-center text-xs font-medium text-red-600">{t("Location access failed. Tap the map to place the pin manually.")}</p>}
                   <div className="rounded-3xl border border-[color:var(--border)] bg-white p-3 shadow-sm sm:p-4">
-                    <p className="mb-3 text-sm font-bold text-[color:var(--navy)]">Blue plate</p>
+                    <p className="mb-3 text-sm font-bold text-[color:var(--navy)]">{t("Blue plate")}</p>
                     <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-center text-white">
-                      <span className="block text-sm font-bold">Building No. <span aria-hidden="true">*</span></span>
+                      <span className="block text-sm font-bold">{t("Building No.")} <span aria-hidden="true">*</span></span>
                       <input className="mt-1 w-full bg-transparent text-center text-4xl font-bold outline-none placeholder:text-white/45 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={buildingNumber} disabled={checkoutLocked} onChange={(event) => setBuildingNumber(event.target.value.replace(/\D/g, "").slice(0, 6))} required />
                     </label>
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-white">
-                        <span className="block text-sm font-bold">Zone No.</span>
+                        <span className="block text-sm font-bold">{t("Zone No.")}</span>
                         <input className="mt-1 w-full bg-transparent text-3xl font-bold outline-none placeholder:text-white/35 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={zoneNumber} disabled={checkoutLocked} onChange={(event) => setZoneNumber(event.target.value.replace(/\D/g, "").slice(0, 3))} />
                       </label>
                       <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-white">
-                        <span className="block text-sm font-bold">Street No.</span>
+                        <span className="block text-sm font-bold">{t("Street No.")}</span>
                         <input className="mt-1 w-full bg-transparent text-3xl font-bold outline-none placeholder:text-white/35 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={streetNumber} disabled={checkoutLocked} onChange={(event) => setStreetNumber(event.target.value.replace(/\D/g, "").slice(0, 4))} />
                       </label>
                     </div>
                   </div>
-                  <label className="block text-sm font-semibold text-[color:var(--navy)]">Area / neighborhood
-                    <input className="wizard-input mt-2 min-h-12" placeholder="e.g. West Bay, The Pearl" value={area} disabled={checkoutLocked} onChange={(event) => setArea(event.target.value)} />
+                  <label className="block text-sm font-semibold text-[color:var(--navy)]">{t("Area / neighborhood")}
+                    <input className="wizard-input mt-2 min-h-12" placeholder={t("e.g. West Bay, The Pearl")} value={area} disabled={checkoutLocked} onChange={(event) => setArea(event.target.value)} />
                   </label>
-                  <label className="block text-sm font-semibold text-[color:var(--navy)]">Extra details
-                    <textarea className="wizard-input mt-2 min-h-20 resize-none" placeholder="Flat, floor, gate, parking level" value={addressDetails} disabled={checkoutLocked} onChange={(event) => setAddressDetails(event.target.value)} />
+                  <label className="block text-sm font-semibold text-[color:var(--navy)]">{t("Extra details")}
+                    <textarea className="wizard-input mt-2 min-h-20 resize-none" placeholder={t("Flat, floor, gate, parking level")} value={addressDetails} disabled={checkoutLocked} onChange={(event) => setAddressDetails(event.target.value)} />
                   </label>
                 </div>
               </section>
@@ -740,23 +743,23 @@ export function StoreCheckoutClient() {
 
             {step === "contact" && (
               <section className="commerce-card p-5 sm:p-7">
-                <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">Step 2 of 3</span>
-                <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">Verify your account</h1>
-                <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">Store checkout requires a signed-in customer account. Your cart stays here while you sign in or verify a new account by OTP.</p>
+                <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">{t("Step 2 of 3")}</span>
+                <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">{t("Verify your account")}</h1>
+                <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Store checkout requires a signed-in customer account. Your cart stays here while you sign in or verify a new account by OTP.")}</p>
 
                 {!authChecked ? (
                   <div className="mt-6 h-28 animate-pulse rounded-2xl bg-slate-100" />
                 ) : customer ? (
                   <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-emerald-700">Using signed-in account</p>
-                    <p className="mt-2 text-lg font-bold">{customer.name || "Bubbleit customer"}</p>
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-emerald-700">{t("Using signed-in account")}</p>
+                    <p className="mt-2 text-lg font-bold">{customer.name || t("Bubbleit customer")}</p>
                     <p className="mt-1 text-sm font-semibold" dir="ltr">{customer.phone}</p>
                   </div>
                 ) : (
                   <div className="mt-6">
                     <AuthPanel
                       inline
-                      title="Sign in or verify your account to continue"
+                      title={t("Sign in or verify your account to continue")}
                       onAuthed={acceptAuthenticatedCustomer}
                     />
                   </div>
@@ -767,30 +770,30 @@ export function StoreCheckoutClient() {
             {step === "review" && (
               <form className="space-y-4" onSubmit={submitOrder}>
                 <section className="commerce-card p-5 sm:p-7">
-                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">Step 3 of 3</span>
-                  <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">Review your order</h1>
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">{t("Step 3 of 3")}</span>
+                  <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">{t("Review your order")}</h1>
                   <div className="mt-5 divide-y divide-slate-100">
                     {reviewedPricing.lines.map((line) => (
                       <div key={String(line.product_id)} className="flex items-center justify-between gap-4 py-3">
-                        <div className="min-w-0"><p className="truncate text-sm font-bold">{line.name ?? products.find((product) => product.id === line.product_id)?.name ?? "Store product"}</p><p className="text-xs text-[color:var(--muted-foreground)]">Qty {line.quantity} × {formatStorePrice(line.unit_price_minor / 100)}</p></div>
-                        <span className="shrink-0 text-sm font-bold">{formatStorePrice((line.line_total_minor ?? line.unit_price_minor * line.quantity) / 100)}</span>
+                        <div className="min-w-0"><p className="truncate text-sm font-bold">{(() => { const product = products.find((candidate) => candidate.id === line.product_id); return product ? localized(lang, product.name, product.name_ar) : line.name ?? t("Store product"); })()}</p><p className="text-xs text-[color:var(--muted-foreground)]">{t("Qty")} {line.quantity} × {formatStorePrice(line.unit_price_minor / 100, lang)}</p></div>
+                        <span className="shrink-0 text-sm font-bold">{formatStorePrice((line.line_total_minor ?? line.unit_price_minor * line.quantity) / 100, lang)}</span>
                       </div>
                     ))}
                   </div>
-                  {reviewedPricing.delivery_fee_minor > 0 && <div className="flex items-center justify-between border-t border-slate-100 py-3 text-sm"><span>Delivery fee</span><span className="font-bold">{formatStorePrice(reviewedPricing.delivery_fee_minor / 100)}</span></div>}
-                  <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4"><span className="font-semibold">Total</span><span className="text-2xl font-extrabold text-[color:var(--navy)]">{formatStorePrice(reviewedPricing.total_minor / 100)}</span></div>
-                  {pricingReview && <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">Pricing changed since your first review. This updated QAR total must be confirmed before payment starts.</p>}
+                  {reviewedPricing.delivery_fee_minor > 0 && <div className="flex items-center justify-between border-t border-slate-100 py-3 text-sm"><span>{t("Delivery fee")}</span><span className="font-bold">{formatStorePrice(reviewedPricing.delivery_fee_minor / 100, lang)}</span></div>}
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4"><span className="font-semibold">{t("Total")}</span><span className="text-2xl font-extrabold text-[color:var(--navy)]">{formatStorePrice(reviewedPricing.total_minor / 100, lang)}</span></div>
+                  {pricingReview && <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">{t("Pricing changed since your first review. This updated QAR total must be confirmed before payment starts.")}</p>}
                 </section>
 
                 <section className="commerce-card divide-y divide-slate-100 px-5 sm:px-7">
-                  <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">Deliver to</p><p className="mt-1 text-sm font-semibold">Building {buildingNumber}{zoneNumber ? ` · Zone ${zoneNumber}` : ""}{streetNumber ? ` · Street ${streetNumber}` : ""}{area ? ` · ${area}` : ""}</p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("location")}>Edit</button></div>
-                  <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">Account owner</p><p className="mt-1 text-sm font-semibold">{customer?.name || "Bubbleit customer"} · <span dir="ltr">{customer?.phone}</span></p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("contact")}>View</button></div>
+                  <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">{t("Deliver to")}</p><p className="mt-1 text-sm font-semibold">{t("Building")} <bdi>{buildingNumber}</bdi>{zoneNumber ? ` · ${t("Zone")} ${zoneNumber}` : ""}{streetNumber ? ` · ${t("Street")} ${streetNumber}` : ""}{area ? ` · ${area}` : ""}</p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("location")}>{t("Edit")}</button></div>
+                  <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">{t("Account owner")}</p><p className="mt-1 text-sm font-semibold">{customer?.name || t("Bubbleit customer")} · <span dir="ltr">{customer?.phone}</span></p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("contact")}>{t("View")}</button></div>
                 </section>
 
-                {pendingCheckout && <p role={paymentNotice ? "alert" : "status"} className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">Order {pendingCheckout.order.reference} is saved. {paymentNotice ?? "Retry payment to continue."}</p>}
+                {pendingCheckout && <p role={paymentNotice ? "alert" : "status"} className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">{t("Order")} {pendingCheckout.order.reference} {t("is saved.")} {paymentNotice ?? t("Retry payment to continue.")}</p>}
                 {error && <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
                 <button type="submit" className="primary-button min-h-14 w-full text-base disabled:opacity-50" disabled={submitting}>{submitLabel}</button>
-                <p className="text-center text-xs text-[color:var(--muted-foreground)]">By placing your order, you confirm the delivery and contact details above.</p>
+                <p className="text-center text-xs text-[color:var(--muted-foreground)]">{t("By placing your order, you confirm the delivery and contact details above.")}</p>
               </form>
             )}
           </div>
@@ -798,9 +801,9 @@ export function StoreCheckoutClient() {
           {step !== "review" && (
             <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/96 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-10px_30px_rgba(38,34,98,0.1)]">
               <div className="mx-auto flex max-w-3xl gap-2">
-                {step === "contact" && <button type="button" className="secondary-button min-h-14 px-5" onClick={() => setStep("location")}>Back</button>}
+                {step === "contact" && <button type="button" className="secondary-button min-h-14 px-5" onClick={() => setStep("location")}>{t("Back")}</button>}
                 <button type="button" className="primary-button min-h-14 flex-1 text-base disabled:opacity-40" disabled={step === "location" ? !locationValid : !contactValid} onClick={() => { setError(null); setStep(step === "location" ? "contact" : "review"); }}>
-                  {step === "location" ? "Continue to contact" : "Review order"} <span className="ms-2" aria-hidden="true">→</span>
+                  {step === "location" ? t("Continue to contact") : t("Review order")} <span className="ms-2 rtl:rotate-180" aria-hidden="true">→</span>
                 </button>
               </div>
             </div>

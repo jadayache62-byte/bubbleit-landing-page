@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { useI18n } from "@/lib/i18n";
 
 export type LatLng = { lat: number; lng: number };
 
@@ -31,6 +32,7 @@ function near(a: LatLng, b: LatLng): boolean {
 }
 
 export default function LocationMap({ value, onChange, className }: Props) {
+  const { t } = useI18n();
   const elRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
@@ -120,7 +122,7 @@ export default function LocationMap({ value, onChange, className }: Props) {
       className={className}
       style={{ height: 260, width: "100%", borderRadius: 16, overflow: "hidden", zIndex: 0 }}
       role="application"
-      aria-label="Map — drag the pin to your exact location"
+      aria-label={t("Map — drag the pin to your exact location")}
     />
   );
 }

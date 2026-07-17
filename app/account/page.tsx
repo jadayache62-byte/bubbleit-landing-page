@@ -8,6 +8,7 @@ import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import { CustomerNotifications } from "@/components/account/CustomerNotifications";
 import { useI18n } from "@/lib/i18n";
+import { formatQar } from "@/lib/money";
 import {
   ApiError,
   cancelBooking,
@@ -381,14 +382,14 @@ function BookingCard({
   onCancel: () => void;
   onReschedule: () => void;
 }) {
-  const when = formatQatarDateTime(booking.scheduled_at, "en", {
+  const { lang, t } = useI18n();
+  const when = formatQatarDateTime(booking.scheduled_at, lang, {
     weekday: "short",
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
-  const { t } = useI18n();
   const reconciliationRequired = booking.payment?.status === "reconciliation_required";
   const hasBluePlate = Boolean(
     booking.building_number || booking.zone_number || booking.street_number,
@@ -455,7 +456,7 @@ function BookingCard({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
-        <span className="font-bold">QR {booking.total}</span>
+        <span className="font-bold" dir="ltr">{formatQar(booking.total, lang)}</span>
         <div className="flex flex-wrap gap-2">
           <Link href="/book" className="secondary-button min-h-9 px-4 py-2 text-xs">
             {t("Book again")}

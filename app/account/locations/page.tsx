@@ -18,13 +18,19 @@ import {
 import type { Address, Customer } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
 
+function MapLoading() {
+  const { t } = useI18n();
+
+  return (
+    <div className="grid h-[260px] w-full place-items-center rounded-2xl bg-slate-100 text-sm text-slate-400">
+      {t("Loading map…")}
+    </div>
+  );
+}
+
 const LocationMap = dynamic(() => import("@/components/booking/LocationMap"), {
   ssr: false,
-  loading: () => (
-    <div className="grid h-[260px] w-full place-items-center rounded-2xl bg-slate-100 text-sm text-slate-400">
-      Loading map…
-    </div>
-  ),
+  loading: () => <MapLoading />,
 });
 
 type LocationForm = {

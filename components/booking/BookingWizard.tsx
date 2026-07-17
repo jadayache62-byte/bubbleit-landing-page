@@ -8,15 +8,23 @@ import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import { HourSlotPicker } from "@/components/booking/HourSlotPicker";
+import { localized, useI18n } from "@/lib/i18n";
+import { formatQar } from "@/lib/money";
+
+function MapLoading() {
+  const { t } = useI18n();
+
+  return (
+    <div className="grid h-[260px] w-full place-items-center rounded-2xl bg-slate-100 text-sm text-slate-400">
+      {t("Loading map…")}
+    </div>
+  );
+}
 
 // Leaflet touches `window` at import time, so load the map client-side only.
 const LocationMap = dynamic(() => import("@/components/booking/LocationMap"), {
   ssr: false,
-  loading: () => (
-    <div className="grid h-[260px] w-full place-items-center rounded-2xl bg-slate-100 text-sm text-slate-400">
-      Loading map…
-    </div>
-  ),
+  loading: () => <MapLoading />,
 });
 import {
   ApiError,
@@ -55,9 +63,6 @@ import {
   canRetryBookingPayment,
   usableCheckoutUrl,
 } from "@/lib/booking/payment-flow";
-import { localized, useI18n } from "@/lib/i18n";
-
-const CURRENCY = "QR";
 const STALE_SLOT_MS = 15 * 60 * 1000;
 const BOOKING_ATTEMPT_KEY = "bubbleit.booking.idempotency";
 
@@ -186,8 +191,8 @@ function vtypeLabel(vtype: VehicleType): string {
   }
 }
 
-function fmt(amount: number) {
-  return `${CURRENCY} ${amount}`;
+function fmt(amount: number, lang: "en" | "ar") {
+  return formatQar(amount, lang);
 }
 
 function Skeleton({ className }: { className: string }) {
@@ -199,7 +204,7 @@ function next7Days(): { date: string; label: string; weekday: string }[] {
 }
 
 export function BookingWizard() {
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   const [step, setStep] = useState(0);
   const topRef = useRef<HTMLDivElement>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -872,7 +877,7 @@ export function BookingWizard() {
     >
       <nav
         className="mb-7 grid grid-cols-4 gap-2"
-        aria-label="Booking progress"
+        aria-label={t("Booking progress")}
       >
         {STEPS.map((label, i) => (
           <div key={label} className="min-w-0" aria-current={i === step ? "step" : undefined}>
@@ -1285,7 +1290,7 @@ export function BookingWizard() {
                 <>
                   {t("Total")}{" "}
                   <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
-                    {fmt(dueTotal)}
+                    {fmt(dueTotal, lang)}
                   </span>
                   {applyMembership ? (
                     <span className="ms-2 text-xs font-semibold text-emerald-600">
@@ -1294,7 +1299,7 @@ export function BookingWizard() {
                   ) : (
                     discount > 0 && (
                       <span className="ms-2 text-xs font-medium text-emerald-600">
-                        ({t("saved")} {fmt(discount)})
+                        ({t("saved")} {fmt(discount, lang)})
                       </span>
                     )
                   )}
@@ -1309,7 +1314,7 @@ export function BookingWizard() {
                 <>
                   {t("Total")}{" "}
                   <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
-                    {fmt(netTotal)}
+                    {fmt(netTotal, lang)}
                   </span>
                 </>
               )
@@ -1604,7 +1609,7 @@ function StepServices({
                             : "text-[color:var(--blue)]",
                         )}
                       >
-                        {fmt(priceFor(service, car.vtype))}
+                        {fmt(priceFor(service, car.vtype), lang)}
                         {service.duration_label && (
                           <span
                             className={clsx(
@@ -1653,7 +1658,7 @@ function StepServices({
                               : "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)]",
                           )}
                         >
-                          {addOn.name} · {fmt(addOn.price)}
+                          {addOn.name} · {fmt(addOn.price, lang)}
                         </button>
                       );
                     })}
@@ -1796,7 +1801,7 @@ function BookingProductPicker({
   onAutoOpen: () => void;
   onChange: (id: string, quantity: number) => void;
 }) {
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLElement>(null);
@@ -1904,7 +1909,7 @@ function BookingProductPicker({
           </span>
           <span className="block text-xs leading-4 text-[color:var(--muted-foreground)] sm:text-sm">
             {selectedCount > 0
-              ? `${selectedCount} ${t("selected")} · ${fmt(selectedTotal)}`
+              ? `${selectedCount} ${t("selected")} · ${fmt(selectedTotal, lang)}`
               : t("Add car-care essentials and we’ll bring them with your wash.")}
           </span>
         </span>
@@ -1962,7 +1967,7 @@ function BookingProductPicker({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="line-clamp-2 text-sm font-bold leading-5 text-[color:var(--navy)]">{product.name}</p>
-                <p className="mt-1 text-sm font-bold text-[color:var(--blue)]">{fmt(product.price)}</p>
+                <p className="mt-1 text-sm font-bold text-[color:var(--blue)]">{fmt(product.price, lang)}</p>
                 {available === 0 && <p className="mt-1 text-xs font-semibold text-red-600">{t("Out of stock")}</p>}
               </div>
               <div className="ms-auto flex shrink-0 items-center gap-1 rounded-full border border-[color:var(--border)] bg-slate-50 p-1">
@@ -1983,7 +1988,7 @@ function BookingProductPicker({
                 <span className="block text-xs font-medium text-[color:var(--muted-foreground)]">
                   {selectedCount > 0 ? `${selectedCount} ${t("selected")}` : t("No products selected")}
                 </span>
-                <span className="block text-lg font-bold text-[color:var(--navy)]">{fmt(selectedTotal)}</span>
+                <span className="block text-lg font-bold text-[color:var(--navy)]">{fmt(selectedTotal, lang)}</span>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="primary-button min-w-36 px-6 sm:min-w-48">
                 {t("Add to booking")}
@@ -2087,7 +2092,7 @@ function Summary({
                     .join(" · ")}
                 </span>
               </span>
-              <span className="font-semibold">{fmt(subtotal)}</span>
+              <span className="font-semibold">{fmt(subtotal, lang)}</span>
             </li>
           );
         })}
@@ -2096,9 +2101,9 @@ function Summary({
             <li key={String(product.product_id)} className="flex items-start justify-between gap-4">
               <span>
                 <span className="font-semibold">{product.name}</span>
-                <span className="block text-xs text-[color:var(--muted-foreground)]">{product.quantity} × {fmt(product.unit_price)}</span>
+                <span className="block text-xs text-[color:var(--muted-foreground)]">{product.quantity} × {fmt(product.unit_price, lang)}</span>
               </span>
-              <span className="font-semibold">{fmt(product.line_total)}</span>
+              <span className="font-semibold">{fmt(product.line_total, lang)}</span>
             </li>
           );
         })}
@@ -2158,7 +2163,7 @@ function Summary({
               <span className="text-[color:var(--muted-foreground)]">
                 {t("Subtotal")}
               </span>
-              <span className="font-medium">{fmt(total)}</span>
+              <span className="font-medium">{fmt(total, lang)}</span>
             </li>
             <li className="flex justify-between text-emerald-600">
               <span className="inline-flex items-center gap-1.5">
@@ -2166,7 +2171,7 @@ function Summary({
                   {t("Covered by membership")}
                 </span>
               </span>
-              <span className="font-semibold">− {fmt(membershipDiscount)}</span>
+              <span className="font-semibold">− {fmt(membershipDiscount, lang)}</span>
             </li>
           </>
         )}
@@ -2176,7 +2181,7 @@ function Summary({
               <span className="text-[color:var(--muted-foreground)]">
                 {t("Subtotal")}
               </span>
-              <span className="font-medium">{fmt(total)}</span>
+              <span className="font-medium">{fmt(total, lang)}</span>
             </li>
             <li className="flex justify-between text-emerald-600">
               <span>
@@ -2185,19 +2190,19 @@ function Summary({
                   <span className="font-semibold"> ({promoCode})</span>
                 )}
               </span>
-              <span className="font-semibold">− {fmt(discount)}</span>
+              <span className="font-semibold">− {fmt(discount, lang)}</span>
             </li>
           </>
         )}
         {productTotal > 0 && (
           <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
             <span className="text-[color:var(--muted-foreground)]">{t("Booking products")}</span>
-            <span className="font-medium">{fmt(productTotal)}</span>
+            <span className="font-medium">{fmt(productTotal, lang)}</span>
           </li>
         )}
         <li className="flex justify-between border-t border-[color:var(--border)] pt-2 text-base font-bold">
           <span>{t("Total")}</span>
-              <span>{fmt(dueTotal)}</span>
+              <span>{fmt(dueTotal, lang)}</span>
         </li>
         {membershipApplied &&
           washesLeftAfter !== undefined &&
@@ -2229,13 +2234,13 @@ function PromoField({
   onApply: () => void;
   onClear: () => void;
 }) {
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   if (applied) {
     return (
       <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
         <span className="text-sm font-semibold text-emerald-700">
           ✓ {t("Code")} {applied.code} {t("applied")} — {t("you save")}{" "}
-          {fmt(applied.discount)}
+          {fmt(applied.discount, lang)}
         </span>
         <button
           type="button"
@@ -2358,7 +2363,7 @@ function SuccessPanel({
         {paymentState === "covered_confirmed"
           ? t("Covered by your membership. No payment is required.")
           : paymentState === "paid_confirmed"
-            ? `${t("Paid")} ${fmt(booking.total)} ${t("online.")}`
+            ? `${t("Paid")} ${fmt(booking.total, lang)} ${t("online.")}`
             : paymentUnderReview
               ? t("A captured payment needs review. This booking is not being shown as paid or reinstated.")
               : paymentClosed

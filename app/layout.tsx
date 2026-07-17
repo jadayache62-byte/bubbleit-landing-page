@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { DM_Sans, IBM_Plex_Sans_Arabic, Space_Grotesk } from "next/font/google";
+import { cookies } from "next/headers";
 import { LanguageProvider } from "@/lib/i18n";
+import { LANG_COOKIE, type Lang } from "@/lib/locale";
 import { SessionBoundary } from "@/components/SessionBoundary";
 import "./globals.css";
 
@@ -46,19 +48,23 @@ export const metadata: Metadata = {
   ],
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const saved = (await cookies()).get(LANG_COOKIE)?.value;
+  const lang: Lang = saved === "ar" ? "ar" : "en";
+
   return (
     <html
-      lang="en"
+      lang={lang}
+      dir={lang === "ar" ? "rtl" : "ltr"}
       suppressHydrationWarning
       className={`${headingFont.variable} ${bodyFont.variable} ${arabicFont.variable}`}
     >
       <body>
-        <LanguageProvider>
+        <LanguageProvider initialLang={lang}>
           <SessionBoundary />
           {children}
         </LanguageProvider>

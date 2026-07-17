@@ -399,7 +399,7 @@ export function AuthPanel({
       {onClose && (
         <button
           type="button"
-          aria-label="Close"
+          aria-label={t("Close")}
           onClick={onClose}
           className="absolute end-4 top-4 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-none bg-[color:var(--background)] text-[color:var(--muted-foreground)] hover:text-[color:var(--navy)]"
         >

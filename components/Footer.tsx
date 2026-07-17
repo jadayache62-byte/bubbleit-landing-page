@@ -12,7 +12,7 @@ export function Footer() {
           <div>
             <Image
               src="/assets/brand/logo-white.svg"
-              alt="Bubbleit logo"
+              alt={t("Bubbleit logo")}
               width={160}
               height={48}
               className="h-11 w-auto"

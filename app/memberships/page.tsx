@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/client";
 import type { CustomerMembership, MembershipPlan } from "@/lib/api/types";
 import { localized, useI18n } from "@/lib/i18n";
+import { formatQar } from "@/lib/money";
 
 const SCOPES = [
   { key: "full_wash", label: "Full Wash" },
@@ -330,10 +331,10 @@ export default function MembershipsPage() {
               <span className="text-sm font-semibold uppercase tracking-wide text-[color:var(--muted-foreground)]">
                 {t("washes")}
               </span>
-              <span className="mt-2 text-2xl font-bold text-[color:var(--blue)]">
-                QR {plan.price}
+              <span className="mt-2 text-2xl font-bold text-[color:var(--blue)]" dir="ltr">
+                {formatQar(plan.price, lang)}
               </span>
-              <span className="text-sm font-semibold text-[color:var(--navy)]">QR {(plan.price / plan.washes_count).toFixed(0)} / {t("wash")}</span>
+              <span className="text-sm font-semibold text-[color:var(--navy)]"><bdi dir="ltr">{formatQar(plan.price / plan.washes_count, lang, 0)}</bdi> / {t("wash")}</span>
               {baselinePerWash > plan.price / plan.washes_count && <span className="text-xs font-semibold text-emerald-700">{t("Save")} {Math.round((1 - (plan.price / plan.washes_count) / baselinePerWash) * 100)}%</span>}
               <span className="text-xs text-[color:var(--muted-foreground)]">
                 {lang === "ar" ? `صالح لمدة ${plan.validity_days} يومًا` : `Valid for ${plan.validity_days} days`}
@@ -386,7 +387,7 @@ export default function MembershipsPage() {
                   <div><dt className="text-[color:var(--muted-foreground)]">{t("Validity")}</dt><dd className="mt-0.5 font-bold">{buyingPlan.validity_days} {t("days")}</dd></div>
                 </dl>
               </div>
-              <div className="flex items-end justify-between border-t border-slate-200 pt-4"><div><p className="text-sm font-semibold text-[color:var(--muted-foreground)]">{t("Total")}</p><p className="mt-1 text-xs text-[color:var(--muted-foreground)]">QR {(buyingPlan.price / buyingPlan.washes_count).toFixed(0)} / {t("wash")}</p></div><p className="text-3xl font-extrabold text-[color:var(--navy)]">QR {buyingPlan.price}</p></div>
+              <div className="flex items-end justify-between border-t border-slate-200 pt-4"><div><p className="text-sm font-semibold text-[color:var(--muted-foreground)]">{t("Total")}</p><p className="mt-1 text-xs text-[color:var(--muted-foreground)]"><bdi dir="ltr">{formatQar(buyingPlan.price / buyingPlan.washes_count, lang, 0)}</bdi> / {t("wash")}</p></div><p className="text-3xl font-extrabold text-[color:var(--navy)]" dir="ltr">{formatQar(buyingPlan.price, lang)}</p></div>
             </div>
 
             <div className="grid grid-cols-2 gap-2 border-t border-slate-200 bg-slate-50 px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pb-5">

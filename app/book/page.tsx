@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { BookingWizard } from "@/components/booking/BookingWizard";
+import { BookingPageHeading } from "@/components/booking/BookingPageHeading";
 
 export const metadata: Metadata = {
   title: "Book a Wash | Bubbleit",
@@ -14,10 +15,7 @@ export default function BookPage() {
     <>
       <Navbar />
       <main className="section-shell py-6 sm:py-14">
-        <div className="mb-5 text-center sm:mb-8">
-          <span className="section-kicker">Book a Wash</span>
-          <h1 className="section-title mt-4">Your car wash, your schedule</h1>
-        </div>
+        <BookingPageHeading />
         <BookingWizard />
       </main>
       <Footer />

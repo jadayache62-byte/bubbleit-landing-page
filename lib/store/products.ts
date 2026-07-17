@@ -1,3 +1,5 @@
+import { formatQar } from "@/lib/money";
+
 export type StoreProduct = {
   id: number;
   name: string;
@@ -124,6 +126,6 @@ export const STORE_PRODUCTS: StoreProduct[] = [
   },
 ];
 
-export function formatStorePrice(price: number) {
-  return `QAR ${price.toFixed(2)}`;
+export function formatStorePrice(price: number, locale: "en" | "ar" = "en") {
+  return formatQar(price, locale, 2);
 }
