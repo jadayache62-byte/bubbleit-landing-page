@@ -6,7 +6,9 @@ import Link from "next/link";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
+import { CustomerNotifications } from "@/components/account/CustomerNotifications";
 import { useI18n } from "@/lib/i18n";
+import { formatQar } from "@/lib/money";
 import {
   ApiError,
   cancelBooking,
@@ -19,7 +21,9 @@ import {
   logout,
   me,
   rescheduleBooking,
+  resolveCustomerNotification,
 } from "@/lib/api/client";
+import { detachCurrentPushDevice } from "@/lib/notifications/browser";
 import type {
   Booking,
   BookingStatus,
@@ -36,15 +40,18 @@ const STATUS_STYLES: Record<BookingStatus, string> = {
   pending_payment: "bg-amber-100 text-amber-700",
   paid: "bg-emerald-100 text-emerald-700",
   assigned: "bg-sky-100 text-sky-700",
+  driver_accepted: "bg-sky-100 text-sky-700",
+  phone_confirmed: "bg-sky-100 text-sky-700",
   in_progress: "bg-sky-100 text-sky-700",
   completed: "bg-emerald-100 text-emerald-700",
+  refund_requested: "bg-amber-100 text-amber-700",
   cancelled_by_customer: "bg-red-100 text-red-600",
   cancelled_by_admin: "bg-red-100 text-red-600",
   no_show: "bg-gray-200 text-gray-600",
 };
 
 const CANCELLABLE: BookingStatus[] = ["pending_payment", "paid", "assigned"];
-const ACCOUNT_TABS = ["overview", "bookings", "memberships", "vehicles"] as const;
+const ACCOUNT_TABS = ["overview", "bookings", "memberships", "vehicles", "notifications"] as const;
 
 const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
   sedan: "Salon / Sedan",
@@ -52,6 +59,9 @@ const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
   caravan: "Caravan",
   jet_ski: "Jet Ski",
   jet_boat: "Jet Boat",
+  truck: "Truck",
+  van: "Van",
+  other: "Other",
 };
 
 export default function AccountPage() {
@@ -62,7 +72,7 @@ export default function AccountPage() {
   const [vehicles, setVehicles] = useState<Vehicle[] | null>(null);
   const [addresses, setAddresses] = useState<Address[] | null>(null);
   const [memberships, setMemberships] = useState<CustomerMembership[] | null>(null);
-  const [tab, setTab] = useState<"overview" | "bookings" | "memberships" | "vehicles">("overview");
+  const [tab, setTab] = useState<(typeof ACCOUNT_TABS)[number]>("overview");
   const [error, setError] = useState<string | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [reschedule, setReschedule] = useState<{
@@ -108,6 +118,22 @@ export default function AccountPage() {
     window.addEventListener("bubbleit:session-ended", handleSessionEnded);
     return () => window.removeEventListener("bubbleit:session-ended", handleSessionEnded);
   }, []);
+
+  useEffect(() => {
+    if (!customer) return;
+    const parameters = new URLSearchParams(window.location.search);
+    const notificationId = Number.parseInt(parameters.get("notification") ?? "", 10);
+    if (Number.isSafeInteger(notificationId) && notificationId > 0) {
+      resolveCustomerNotification(notificationId)
+        .then(({ path }) => window.location.replace(path))
+        .catch((caught) => setError(caught instanceof ApiError ? caught.message : t("This notification is no longer available.")));
+      return;
+    }
+    const requestedTab = parameters.get("tab");
+    if (ACCOUNT_TABS.includes(requestedTab as (typeof ACCOUNT_TABS)[number])) {
+      queueMicrotask(() => setTab(requestedTab as (typeof ACCOUNT_TABS)[number]));
+    }
+  }, [customer, t]);
 
   async function handleCancel(id: number) {
     if (!window.confirm(t("Cancel this booking?"))) return;
@@ -174,6 +200,7 @@ export default function AccountPage() {
   }
 
   async function handleLogout() {
+    await detachCurrentPushDevice().catch(() => undefined);
     await logout();
     setCustomer(null);
     setBookings(null);
@@ -262,8 +289,8 @@ export default function AccountPage() {
 
             {error && <p role="alert" className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
 
-            <div className="mt-7 grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-white p-1 sm:grid-cols-4" role="tablist" aria-label={t("Account sections")}>
-              {([["overview", t("Overview")], ["bookings", t("Bookings")], ["memberships", t("Memberships")], ["vehicles", t("Vehicles")]] as const).map(([value, label]) => <button key={value} id={`account-tab-${value}`} type="button" role="tab" tabIndex={tab === value ? 0 : -1} aria-selected={tab === value} aria-controls={`account-panel-${value}`} onKeyDown={(event) => handleTabKeyDown(event, value)} onClick={() => setTab(value)} className={clsx("min-h-11 rounded-xl px-3 text-sm font-semibold transition", tab === value ? "bg-[color:var(--navy)] text-white" : "text-[color:var(--muted-foreground)] hover:bg-slate-50 hover:text-[color:var(--navy)]")}>{label}</button>)}
+            <div className="mt-7 grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-white p-1 sm:grid-cols-5" role="tablist" aria-label={t("Account sections")}>
+              {([["overview", t("Overview")], ["bookings", t("Bookings")], ["memberships", t("Memberships")], ["vehicles", t("Vehicles")], ["notifications", t("Notifications")]] as const).map(([value, label]) => <button key={value} id={`account-tab-${value}`} type="button" role="tab" tabIndex={tab === value ? 0 : -1} aria-selected={tab === value} aria-controls={`account-panel-${value}`} onKeyDown={(event) => handleTabKeyDown(event, value)} onClick={() => setTab(value)} className={clsx("min-h-11 rounded-xl px-3 text-sm font-semibold transition", tab === value ? "bg-[color:var(--navy)] text-white" : "text-[color:var(--muted-foreground)] hover:bg-slate-50 hover:text-[color:var(--navy)]")}>{label}</button>)}
             </div>
 
             <div key={tab} id={`account-panel-${tab}`} role="tabpanel" aria-labelledby={`account-tab-${tab}`} tabIndex={0} className="checkout-step mt-6 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-4">
@@ -277,6 +304,8 @@ export default function AccountPage() {
               {tab === "memberships" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My memberships")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("See remaining washes, validity, and book with a plan.")}</p></div><Link href="/memberships" className="primary-button shrink-0 px-4">{t("Browse plans")}</Link></div>{memberships === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-44 animate-pulse bg-slate-100" />)}</div> : memberships.length === 0 ? <EmptyState title={t("No memberships yet")} copy={t("Save more when you wash regularly.")} action={t("See memberships")} href="/memberships" /> : <div className="grid gap-4 md:grid-cols-2">{memberships.map((membership) => <MembershipCard key={membership.id} membership={membership} />)}</div>}</section>}
 
               {tab === "vehicles" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My vehicles")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Vehicles saved during booking appear here.")}</p></div><Link href="/book" className="primary-button shrink-0 px-4">{t("Add through booking")}</Link></div>{vehicles === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-36 animate-pulse bg-slate-100" />)}</div> : vehicles.length === 0 ? <EmptyState title={t("No vehicles saved")} copy={t("Your vehicle is saved automatically when you book.")} action={t("Book a Wash")} href="/book" /> : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{vehicles.map((vehicle) => <article key={vehicle.id} className="commerce-card flex min-h-40 flex-col p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">{t(VEHICLE_TYPE_LABELS[vehicle.type])}</p><p className="mt-1 text-2xl font-extrabold tracking-wider text-[color:var(--navy)]">{vehicle.plate_number}</p></div><svg viewBox="0 0 24 24" className="h-6 w-6 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="m5 16 1-5h12l1 5M7 11l2-4h6l2 4M4 16h16v3H4z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></div>{(vehicle.make || vehicle.model || vehicle.color) && <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">{[vehicle.make, vehicle.model, vehicle.color].filter(Boolean).join(" · ")}</p>}<div className="mt-auto flex items-center justify-between pt-4"><Link href="/book" className="min-h-11 py-3 text-sm font-bold text-[color:var(--blue)]">{t("Book a wash")}</Link><button type="button" className="min-h-11 px-2 text-sm font-semibold text-red-600 hover:underline" onClick={() => handleRemoveVehicle(vehicle.id)}>{t("Remove")}</button></div></article>)}</div>}</section>}
+
+              {tab === "notifications" && <CustomerNotifications />}
             </div>
           </>
         )}
@@ -353,14 +382,14 @@ function BookingCard({
   onCancel: () => void;
   onReschedule: () => void;
 }) {
-  const when = formatQatarDateTime(booking.scheduled_at, "en", {
+  const { lang, t } = useI18n();
+  const when = formatQatarDateTime(booking.scheduled_at, lang, {
     weekday: "short",
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
-  const { t } = useI18n();
   const reconciliationRequired = booking.payment?.status === "reconciliation_required";
   const hasBluePlate = Boolean(
     booking.building_number || booking.zone_number || booking.street_number,
@@ -427,7 +456,7 @@ function BookingCard({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
-        <span className="font-bold">QR {booking.total}</span>
+        <span className="font-bold" dir="ltr">{formatQar(booking.total, lang)}</span>
         <div className="flex flex-wrap gap-2">
           <Link href="/book" className="secondary-button min-h-9 px-4 py-2 text-xs">
             {t("Book again")}

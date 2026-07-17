@@ -8,6 +8,12 @@ echo the accepted quote version to booking commit, and recover
 `DURATION_VERSION_STALE` by reloading availability. Keep
 `docs/contracts/duration-v1.json` byte-identical with backend and mobile.
 
+`docs/contracts/public-contract-v1.schema.json` is the byte-identical consumer copy of the backend-owned public JSON Schema. Type unions, nullable fields, error/pagination parsing, and development mock fixtures must stay aligned with it. Store products always use integer backend IDs; an API outage must render unavailable/retry UI and must never hydrate a production cart from `STORE_PRODUCTS`.
+
+The same-origin customer BFF owns `X-Request-ID` forwarding and must return the authoritative backend ID. API recovery text retains that reference. `.github/workflows/ci.yml` must keep lint, contract/regression tests, production build, and local Playwright fault injection blocking; browser tests must never call real providers.
+
+Customer notification push is optional and session/device scoped. Never ask for permission before an explicit customer action. A push payload may carry only a numeric notification ID and `/account?notification={id}`; the service worker must reconstruct that internal entry point and the authenticated backend resolve endpoint must reauthorize the notification and target before navigation. `NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY` and a live backend adapter remain external release inputs. Important transactional WhatsApp/SMS remains the server-owned fallback.
+
 Repository notes for agents working on the Bubble It marketing site and customer booking flow.
 
 ---
@@ -80,7 +86,7 @@ Repository notes for agents working on the Bubble It marketing site and customer
 ## Navigation, Account, and Accessibility
 
 - Global navigation is organized around **Services, Memberships, Store, Account**, with one dominant **Book a Wash** CTA. The closed mobile menu must remain `aria-hidden` and `inert` so its links cannot receive focus.
-- The account page owns Overview, Bookings, Memberships, and Vehicles. It must expose booking/rebooking/cancellation, membership redemption/renewal, vehicle booking/removal, quick actions, loading states, and clear empty states.
+- The account page owns Overview, Bookings, Memberships, Vehicles, and Notifications. It must expose booking/rebooking/cancellation, membership redemption/renewal, vehicle booking/removal, localized notification recovery, quick actions, loading states, and clear empty states.
 - Account section controls follow the ARIA tabs pattern, including a single tab stop, `aria-selected`, linked tabpanels, Arrow Left/Right, Home, and End behavior. Avoid horizontally clipped mobile tabs.
 - Keep normal text contrast at WCAG AA, interactive targets at least 44×44px on mobile, visible `:focus-visible` outlines, contextual accessible names for repeated actions, and one page-level `<h1>` per rendered account state.
 - Respect `prefers-reduced-motion`. Use compositor-friendly opacity/transform motion for modal entrances, and avoid long scripted page-scroll animations between wizard steps.

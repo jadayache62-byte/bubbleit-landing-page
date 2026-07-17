@@ -8,10 +8,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { LANG_COOKIE, LANG_STORAGE_KEY, type Lang } from "@/lib/locale";
 
-export type Lang = "en" | "ar";
-
-const LANG_KEY = "bubbleit.lang";
+export type { Lang } from "@/lib/locale";
 
 // UI strings. Keys are English; Arabic provided per key.
 const AR: Record<string, string> = {
@@ -244,6 +243,25 @@ const AR: Record<string, string> = {
   "Cancel": "إلغاء",
   "Cancel this booking?": "إلغاء هذا الحجز؟",
   "Hi,": "أهلاً،",
+  "Notifications": "الإشعارات",
+  "Booking, payment, cancellation, refund, and appointment reminders appear here.":
+    "تظهر هنا تحديثات الحجز والدفع والإلغاء والاسترداد وتذكيرات المواعيد.",
+  "How delivery works": "آلية إرسال الإشعارات",
+  "Browser push is optional. Important transactional WhatsApp or SMS remains the fallback when push cannot be delivered.":
+    "إشعارات المتصفح اختيارية. تبقى رسائل واتساب أو الرسائل النصية المهمة هي البديل عند تعذر الإرسال الفوري.",
+  "Browser notifications are blocked. Change your browser permission to enable them.":
+    "إشعارات المتصفح محظورة. غيّر إذن المتصفح لتفعيلها.",
+  "This browser does not support push notifications.": "هذا المتصفح لا يدعم الإشعارات الفورية.",
+  "Enable browser notifications": "تفعيل إشعارات المتصفح",
+  "Turn off browser notifications": "إيقاف إشعارات المتصفح",
+  "Updating…": "جارٍ التحديث…",
+  "Could not load notifications.": "تعذّر تحميل الإشعارات.",
+  "Could not update notification settings.": "تعذّر تحديث إعدادات الإشعارات.",
+  "This notification is no longer available.": "لم يعد هذا الإشعار متاحاً.",
+  "Loading notifications…": "جارٍ تحميل الإشعارات…",
+  "No notifications yet": "لا توجد إشعارات بعد",
+  "Your transactional updates will appear here.": "ستظهر تحديثات معاملاتك هنا.",
+  "Open": "فتح",
 
   // Memberships
   "Wash Memberships": "اشتراكات الغسيل",
@@ -313,6 +331,320 @@ const AR: Record<string, string> = {
   "My bookings": "حجوزاتي",
   "App Store": "آب ستور",
   "Google Play": "جوجل بلاي",
+
+  // Account, booking, membership, location, and store workflow coverage
+  "+ Add another vehicle": "+ أضف مركبة أخرى",
+  "Account sections": "أقسام الحساب",
+  "Active plans": "الاشتراكات الفعّالة",
+  "Add car-care essentials and we’ll bring them with your wash.":
+    "أضف مستلزمات العناية بالسيارة وسنحضرها مع خدمة الغسيل.",
+  "Add new": "إضافة جديد",
+  "Add one": "أضف واحداً",
+  "Add products to your booking": "أضف منتجات إلى حجزك",
+  "Add through booking": "أضفها أثناء الحجز",
+  "Add to booking": "إضافة إلى الحجز",
+  "Add your first location using the form.": "أضف موقعك الأول باستخدام النموذج.",
+  "Address details / note": "تفاصيل العنوان / ملاحظة",
+  "Any vehicle": "أي مركبة",
+  "Back to account": "العودة إلى الحساب",
+  "Blue Plate": "اللوحة الزرقاء",
+  "Blue plate": "اللوحة الزرقاء",
+  "Blue plate details": "تفاصيل اللوحة الزرقاء",
+  "Book a new wash": "احجز غسلة جديدة",
+  "Book a wash": "احجز غسلة",
+  "Book again": "احجز مرة أخرى",
+  "Book in one tap": "احجز بخطوة واحدة",
+  "Booking products": "منتجات الحجز",
+  "Browse plans": "تصفح الاشتراكات",
+  "Browse products": "تصفح المنتجات",
+  "Building": "المبنى",
+  "Building No.": "رقم المبنى",
+  "Building number, area, and a confirmed map pin are required.":
+    "يلزم إدخال رقم المبنى والمنطقة وتأكيد الموقع على الخريطة.",
+  "Check the details before continuing. No request has been sent yet.":
+    "راجع التفاصيل قبل المتابعة. لم يتم إرسال أي طلب بعد.",
+  "Checking membership coverage…": "جارٍ التحقق من تغطية الاشتراك…",
+  "Choose a new time": "اختر موعداً جديداً",
+  "Choose a service and we’ll come to you.": "اختر الخدمة وسنصل إليك.",
+  "Choose this plan": "اختر هذا الاشتراك",
+  "Close": "إغلاق",
+  "Complete your wash": "أكمل تفاصيل الغسيل",
+  "Confirm an eligible Qatar location and refresh availability.":
+    "أكّد موقعاً مؤهلاً داخل قطر ثم حدّث المواعيد المتاحة.",
+  "Confirm and continue": "تأكيد ومتابعة",
+  "Confirm booking": "تأكيد الحجز",
+  "Confirm membership": "تأكيد الاشتراك",
+  "Confirm new time": "تأكيد الموعد الجديد",
+  "Confirm your map location before checking availability.":
+    "أكّد موقعك على الخريطة قبل التحقق من المواعيد المتاحة.",
+  "Continue Payment": "متابعة الدفع",
+  "Could not get your location. You can still drop the pin manually.":
+    "تعذّر تحديد موقعك. لا يزال بإمكانك وضع العلامة يدوياً.",
+  "Could not load reschedule options.": "تعذّر تحميل خيارات تغيير الموعد.",
+  "Could not remove this location.": "تعذّرت إزالة هذا الموقع.",
+  "Could not reschedule the booking.": "تعذّر تغيير موعد الحجز.",
+  "Could not save this location.": "تعذّر حفظ هذا الموقع.",
+  "Could not validate this location.": "تعذّر التحقق من هذا الموقع.",
+  "Date": "التاريخ",
+  "Edit": "تعديل",
+  "Edit added products": "تعديل المنتجات المضافة",
+  "Edit location": "تعديل الموقع",
+  "Explore Bubbleit": "استكشف ببلت",
+  "Extra details": "تفاصيل إضافية",
+  "Flat, floor, gate, parking level…": "الشقة، الطابق، البوابة، مستوى المواقف…",
+  "Get a membership": "اشترك في باقة",
+  "Go back": "رجوع",
+  "Home, Work, Marina…": "المنزل، العمل، المارينا…",
+  "Included": "مشمول",
+  "Label": "اسم الموقع",
+  "Loading account…": "جارٍ تحميل الحساب…",
+  "Loading available times…": "جارٍ تحميل المواعيد المتاحة…",
+  "Loading locations…": "جارٍ تحميل المواقع…",
+  "Loading membership plans…": "جارٍ تحميل الاشتراكات…",
+  "Location is not available in this browser.": "تحديد الموقع غير متاح في هذا المتصفح.",
+  "Location removed.": "تمت إزالة الموقع.",
+  "Location saved.": "تم حفظ الموقع.",
+  "Location updated.": "تم تحديث الموقع.",
+  "Locations": "المواقع",
+  "Manage": "إدارة",
+  "Manage locations": "إدارة المواقع",
+  "Membership plans": "باقات الاشتراك",
+  "Membership — no payment required": "الاشتراك — لا يلزم دفع",
+  "Most popular": "الأكثر طلباً",
+  "My memberships": "اشتراكاتي",
+  "My vehicles": "مركباتي",
+  "New booking": "حجز جديد",
+  "New location": "موقع جديد",
+  "Next up": "الموعد القادم",
+  "Next: enter the plate number.": "التالي: أدخل رقم اللوحة.",
+  "Next: select a saved car or enter the plate number.":
+    "التالي: اختر سيارة محفوظة أو أدخل رقم اللوحة.",
+  "No extra time": "لا وقت إضافي",
+  "No memberships yet": "لا توجد اشتراكات بعد",
+  "No products selected": "لم يتم اختيار منتجات",
+  "No saved locations yet": "لا توجد مواقع محفوظة بعد",
+  "No upcoming wash": "لا يوجد موعد غسيل قادم",
+  "No vehicles saved": "لا توجد مركبات محفوظة",
+  "Optional": "اختياري",
+  "Optional add-ons": "إضافات اختيارية",
+  "Out of stock": "نفد المخزون",
+  "Overview": "نظرة عامة",
+  "Payment is still unavailable. Your booking remains saved.":
+    "لا يزال الدفع غير متاح. حجزك محفوظ.",
+  "Pick one and continue without entering the Blue plate again.":
+    "اختر واحدة وتابع من دون إعادة إدخال اللوحة الزرقاء.",
+  "Prepaid wash bundles make every booking faster.":
+    "باقات الغسيل مسبقة الدفع تجعل كل حجز أسرع.",
+  "Processing…": "جارٍ التنفيذ…",
+  "Quick actions": "إجراءات سريعة",
+  "Remove one": "إزالة واحد",
+  "Remove this saved location?": "هل تريد إزالة هذا الموقع المحفوظ؟",
+  "Reschedule": "تغيير الموعد",
+  "Reschedule booking": "تغيير موعد الحجز",
+  "Rescheduling…": "جارٍ تغيير الموعد…",
+  "Review the authoritative service timing before confirming.":
+    "راجع مدة الخدمة المعتمدة قبل التأكيد.",
+  "Review upcoming and previous wash appointments.":
+    "راجع مواعيد الغسيل القادمة والسابقة.",
+  "Review your selection": "راجع اختياراتك",
+  "Save": "حفظ",
+  "Save changes": "حفظ التغييرات",
+  "Save location": "حفظ الموقع",
+  "Save more when you wash regularly.": "وفّر أكثر مع الغسيل المنتظم.",
+  "Save your home, office, or marina once. During booking, you can pick it instantly.":
+    "احفظ المنزل أو المكتب أو المارينا مرة واحدة، ثم اختره فوراً أثناء الحجز.",
+  "Saved location": "موقع محفوظ",
+  "Saved locations": "المواقع المحفوظة",
+  "Savings": "التوفير",
+  "Saving…": "جارٍ الحفظ…",
+  "Secure payment": "دفع آمن",
+  "See memberships": "عرض الاشتراكات",
+  "See remaining washes, validity, and book with a plan.":
+    "اطّلع على الغسلات المتبقية والصلاحية واحجز باستخدام اشتراك.",
+  "Service": "الخدمة",
+  "Service timing changed. Please choose your time again.":
+    "تغيّرت مدة الخدمة. يرجى اختيار الموعد مرة أخرى.",
+  "Service timing changed. Please review the updated time before confirming.":
+    "تغيّرت مدة الخدمة. راجع الوقت المحدّث قبل التأكيد.",
+  "Shop products": "تسوّق المنتجات",
+  "Sign in to manage locations": "سجّل الدخول لإدارة المواقع",
+  "Street": "الشارع",
+  "Street No.": "رقم الشارع",
+  "Tap the map or drag the pin if the current location is not exact.":
+    "اضغط على الخريطة أو حرّك العلامة إذا لم يكن الموقع الحالي دقيقاً.",
+  "The Qatar service-area map changed or this saved location needs confirmation. Please reselect the location.":
+    "تغيّرت خريطة منطقة الخدمة في قطر أو يحتاج هذا الموقع المحفوظ إلى تأكيد. يرجى اختيار الموقع مجدداً.",
+  "Upcoming": "القادمة",
+  "Upcoming booking": "الحجز القادم",
+  "Use a saved location": "استخدم موقعاً محفوظاً",
+  "Use my current location": "استخدم موقعي الحالي",
+  "Valid for 30 days": "صالح لمدة 30 يوماً",
+  "Validity": "الصلاحية",
+  "Vehicle": "المركبة",
+  "Vehicles": "المركبات",
+  "Vehicles saved during booking appear here.": "تظهر هنا المركبات المحفوظة أثناء الحجز.",
+  "View all": "عرض الكل",
+  "View all bookings": "عرض جميع الحجوزات",
+  "View all memberships": "عرض جميع الاشتراكات",
+  "Wash more, pay less": "اغسل أكثر وادفع أقل",
+  "Wash type": "نوع الغسيل",
+  "Welcome back": "مرحباً بعودتك",
+  "We’ll bring these with your service and include them in this payment.":
+    "سنحضرها مع خدمتك ونضيفها إلى هذه الدفعة.",
+  "Your password was reset. Sign in again on this device.":
+    "تمت إعادة تعيين كلمة المرور. سجّل الدخول مجدداً على هذا الجهاز.",
+  "Your payment, membership wash, products, and total stay attached to this booking.":
+    "تبقى الدفعة وغسلة الاشتراك والمنتجات والمجموع مرتبطة بهذا الحجز.",
+  "Your session has ended. Sign in again to continue.":
+    "انتهت جلستك. سجّل الدخول مجدداً للمتابعة.",
+  "Your vehicle is saved automatically when you book.":
+    "تُحفظ مركبتك تلقائياً عند الحجز.",
+  "Zone": "المنطقة",
+  "Zone No.": "رقم المنطقة",
+  "active membership plans": "اشتراكات فعّالة",
+  "days": "أيام",
+  "min": "دقيقة",
+  "saved locations": "مواقع محفوظة",
+  "saved vehicles": "مركبات محفوظة",
+  "selected": "محدد",
+  "upcoming bookings": "حجوزات قادمة",
+  "wash": "غسلة",
+  "Add a product to start your order.": "أضف منتجاً لبدء طلبك.",
+  "Add to cart": "أضف إلى السلة",
+  "Added": "تمت الإضافة",
+  "Available": "متوفر",
+  "Bubbleit Store": "متجر ببلت",
+  "Cart actions": "إجراءات السلة",
+  "Checkout": "إتمام الطلب",
+  "Checkout securely": "إتمام الطلب بأمان",
+  "Clear filters": "مسح عوامل التصفية",
+  "Close cart": "إغلاق السلة",
+  "Continue shopping": "متابعة التسوق",
+  "Delivery details are confirmed at checkout.": "تُؤكّد تفاصيل التوصيل عند إتمام الطلب.",
+  "Find products": "البحث عن المنتجات",
+  "Loading the store…": "جارٍ تحميل المتجر…",
+  "No products found": "لم يتم العثور على منتجات",
+  "Product categories": "فئات المنتجات",
+  "Professional car care, delivered": "عناية احترافية بالسيارة تصل إليك",
+  "Retry store": "إعادة تحميل المتجر",
+  "Search car care products": "ابحث في منتجات العناية بالسيارة",
+  "Search products": "البحث عن المنتجات",
+  "Shop all products": "تسوّق جميع المنتجات",
+  "The same practical tools and towels trusted by Bubbleit detailers, ready for delivery across Qatar.":
+    "الأدوات والمناشف العملية نفسها التي يعتمد عليها مختصو ببلت، جاهزة للتوصيل في جميع أنحاء قطر.",
+  "The store is temporarily unavailable": "المتجر غير متاح مؤقتاً",
+  "Try a different search or category.": "جرّب عبارة بحث أو فئة أخرى.",
+  "View cart": "عرض السلة",
+  "We couldn’t verify current products or stock. No offline products have been added to your cart.":
+    "تعذّر التحقق من المنتجات أو المخزون الحالي. لم تُضف أي منتجات غير متصلة إلى سلتك.",
+  "We’re checking current products, prices, and stock.":
+    "جارٍ التحقق من المنتجات والأسعار والمخزون الحالي.",
+  "Your cart": "سلتك",
+  "Your cart is empty": "سلتك فارغة",
+  "in cart": "في السلة",
+  "item": "منتج",
+  "items": "منتجات",
+  "products": "منتجات",
+  "Account owner": "صاحب الحساب",
+  "Back to cart": "العودة إلى السلة",
+  "Back to store": "العودة إلى المتجر",
+  "Bubbleit customer": "عميل ببلت",
+  "By placing your order, you confirm the delivery and contact details above.":
+    "بإتمام الطلب، فإنك تؤكد تفاصيل التوصيل والتواصل الموضحة أعلاه.",
+  "Checking your cart…": "جارٍ التحقق من سلتك…",
+  "Checkout is temporarily unavailable": "إتمام الطلب غير متاح مؤقتاً",
+  "Checkout progress": "مراحل إتمام الطلب",
+  "Choose your products before starting checkout.": "اختر منتجاتك قبل بدء إتمام الطلب.",
+  "Confirm the delivery pin before checkout.": "أكّد علامة موقع التوصيل قبل إتمام الطلب.",
+  "Confirm updated total and pay": "أكّد المجموع المحدّث وادفع",
+  "Continue to contact": "المتابعة إلى الحساب",
+  "Could not place the order. Please try again.": "تعذّر إرسال الطلب. يرجى المحاولة مجدداً.",
+  "Creating order…": "جارٍ إنشاء الطلب…",
+  "Deliver to": "التوصيل إلى",
+  "Delivery fee": "رسوم التوصيل",
+  "Finding your location…": "جارٍ تحديد موقعك…",
+  "Flat, floor, gate, parking level": "الشقة، الطابق، البوابة، مستوى المواقف",
+  "Loading map…": "جارٍ تحميل الخريطة…",
+  "Location access failed. Tap the map to place the pin manually.":
+    "تعذّر الوصول إلى موقعك. اضغط على الخريطة لوضع العلامة يدوياً.",
+  "Location pinned successfully": "تم تثبيت الموقع بنجاح",
+  "Order": "الطلب",
+  "Payment could not start because no checkout link was returned. Please retry payment.":
+    "تعذّر بدء الدفع لعدم توفر رابط الدفع. يرجى إعادة محاولة الدفع.",
+  "Payment could not start. Your order is saved; please retry payment.":
+    "تعذّر بدء الدفع. طلبك محفوظ؛ يرجى إعادة محاولة الدفع.",
+  "Pin the exact location, then add the building details.":
+    "حدّد الموقع بدقة، ثم أضف تفاصيل المبنى.",
+  "Place order": "إرسال الطلب",
+  "Pricing changed since your first review. This updated QAR total must be confirmed before payment starts.":
+    "تغيّرت الأسعار منذ المراجعة الأولى. يجب تأكيد المجموع المحدّث بالريال القطري قبل بدء الدفع.",
+  "Qty": "الكمية",
+  "Redirecting…": "جارٍ التحويل…",
+  "Retry checkout": "إعادة محاولة إتمام الطلب",
+  "Retry payment": "إعادة محاولة الدفع",
+  "Retry payment to continue.": "أعد محاولة الدفع للمتابعة.",
+  "Review order": "مراجعة الطلب",
+  "Review your order": "راجع طلبك",
+  "Sign in or create your verified account before checkout.":
+    "سجّل الدخول أو أنشئ حساباً موثّقاً قبل إتمام الطلب.",
+  "Sign in or verify your account to continue": "سجّل الدخول أو وثّق حسابك للمتابعة",
+  "Starting payment…": "جارٍ بدء الدفع…",
+  "Step 1 of 3": "الخطوة 1 من 3",
+  "Step 2 of 3": "الخطوة 2 من 3",
+  "Step 3 of 3": "الخطوة 3 من 3",
+  "Store checkout requires a signed-in customer account. Your cart stays here while you sign in or verify a new account by OTP.":
+    "يتطلب إتمام طلب المتجر حساب عميل مسجلاً. ستبقى سلتك محفوظة أثناء تسجيل الدخول أو توثيق حساب جديد برمز التحقق.",
+  "Store order received": "تم استلام طلب المتجر",
+  "Store product": "منتج من المتجر",
+  "The store total changed. Review the updated prices and confirm again to continue to payment.":
+    "تغيّر مجموع المتجر. راجع الأسعار المحدّثة وأكّدها مجدداً للمتابعة إلى الدفع.",
+  "Update precise location": "تحديث الموقع الدقيق",
+  "Use my precise location": "استخدم موقعي الدقيق",
+  "Using signed-in account": "استخدام الحساب المسجّل",
+  "Verify your account": "تحقق من حسابك",
+  "View": "عرض",
+  "We couldn’t verify the live catalogue. Your saved cart has not been submitted or replaced with offline products.":
+    "تعذّر التحقق من الكتالوج المباشر. لم تُرسل سلتك المحفوظة ولم تُستبدل بمنتجات غير متصلة.",
+  "We’re verifying every product, price, and stock level with Bubbleit.":
+    "جارٍ التحقق من كل منتج وسعر ومستوى مخزون لدى ببلت.",
+  "Where should we deliver?": "إلى أين نوصّل طلبك؟",
+  "Your Bubbleit store order has been captured. The team will contact you to confirm delivery and payment details.":
+    "تم تسجيل طلبك من متجر ببلت. سيتواصل معك الفريق لتأكيد تفاصيل التوصيل والدفع.",
+  "e.g. West Bay, The Pearl": "مثال: الخليج الغربي، اللؤلؤة",
+  "is saved.": "محفوظ.",
+  "Booking": "الحجز",
+  "Booking progress": "مراحل الحجز",
+  "Bubbleit home": "الصفحة الرئيسية لببلت",
+  "Go to my bookings": "الانتقال إلى حجوزاتي",
+  "Loading…": "جارٍ التحميل…",
+  "Map — drag the pin to your exact location": "الخريطة — حرّك العلامة إلى موقعك الدقيق",
+  "Menu": "القائمة",
+  "Bubbleit logo": "شعار ببلت",
+  "Open navigation menu": "فتح قائمة التنقل",
+  "Close navigation menu": "إغلاق قائمة التنقل",
+  "Mobile navigation": "التنقل على الهاتف",
+  "Nothing to pay here": "لا توجد دفعة مطلوبة هنا",
+  "Pay now": "ادفع الآن",
+  "Primary navigation": "التنقل الرئيسي",
+  "Secure Checkout (Demo)": "دفع آمن (تجريبي)",
+  "QR code placeholder": "موضع رمز الاستجابة السريعة",
+  "This booking isn't awaiting payment, or your session expired.":
+    "هذا الحجز لا ينتظر الدفع، أو أن جلستك انتهت.",
+  "This is a demo checkout. In production this page is the payment gateway's hosted card form.":
+    "هذه صفحة دفع تجريبية. في الإنتاج ستظهر هنا صفحة البطاقة المستضافة لدى بوابة الدفع.",
+  "Bubbleit on": "ببلت على",
+  "coming soon": "قريباً",
+  "Coming soon": "قريباً",
+  "Today, 3:30 PM": "اليوم، ٣:٣٠ م",
+  "Full Car Wash": "غسيل كامل للسيارة",
+  "Confirmed": "مؤكّد",
+  "Your address is pinned and ready for arrival.": "تم تثبيت عنوانك وهو جاهز لوصول الفريق.",
+  "Exterior + Interior": "خارجي + داخلي",
+  "Secure checkout": "دفع آمن",
+  "App coming soon": "التطبيق قريباً",
+  "LIVE BOOKING": "حجز مباشر",
+  "Time": "الوقت",
+  "Track": "التتبع",
 };
 
 type I18n = {
@@ -327,13 +659,14 @@ const I18nContext = createContext<I18n>({
   setLang: () => {},
 });
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>("en");
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(LANG_KEY);
-    if (stored === "ar" || stored === "en") queueMicrotask(() => setLangState(stored));
-  }, []);
+export function LanguageProvider({
+  children,
+  initialLang,
+}: {
+  children: ReactNode;
+  initialLang: Lang;
+}) {
+  const [lang, setLangState] = useState<Lang>(initialLang);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -342,7 +675,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   const setLang = useCallback((next: Lang) => {
     setLangState(next);
-    window.localStorage.setItem(LANG_KEY, next);
+    window.localStorage.setItem(LANG_STORAGE_KEY, next);
+    document.cookie = `${LANG_COOKIE}=${next}; Path=/; Max-Age=31536000; SameSite=Lax`;
   }, []);
 
   const t = useCallback(

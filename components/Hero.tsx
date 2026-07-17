@@ -139,7 +139,7 @@ export function Hero() {
 
                   <div className="mt-6 flex items-center justify-between">
                     <div className="rounded-full bg-white/72 px-3 py-1.5 text-[0.7rem] font-semibold tracking-[0.14em] text-[color:var(--blue)] shadow-[0_10px_24px_rgba(20,137,222,0.08)] backdrop-blur-md">
-                      LIVE BOOKING
+                      {t("LIVE BOOKING")}
                     </div>
                     <div className="rounded-full bg-white/72 px-3 py-1.5 text-[0.75rem] font-medium text-[#3a5177] backdrop-blur-md">
                       Bubbleit
@@ -151,14 +151,14 @@ export function Hero() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-[0.72rem] font-medium uppercase tracking-[0.14em] text-white/72">
-                            Today, 3:30 PM
+                            {t("Today, 3:30 PM")}
                           </p>
                           <p className="mt-2 text-[1.75rem] font-semibold tracking-[-0.04em]">
-                            Full Car Wash
+                            {t("Full Car Wash")}
                           </p>
                         </div>
                         <div className="rounded-full bg-white/16 px-3 py-1.5 text-[0.78rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
-                          Confirmed
+                          {t("Confirmed")}
                         </div>
                       </div>
 
@@ -169,10 +169,10 @@ export function Hero() {
                           </div>
                           <div>
                             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-white/64">
-                              Location
+                              {t("Location")}
                             </p>
                             <p className="mt-1 text-[0.88rem] leading-6 text-white/92">
-                              Your address is pinned and ready for arrival.
+                              {t("Your address is pinned and ready for arrival.")}
                             </p>
                           </div>
                         </div>
@@ -182,18 +182,18 @@ export function Hero() {
                     <div className="mt-3 grid grid-cols-2 gap-3">
                       <div className="rounded-[1.5rem] bg-[#f6fbff] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
                         <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--blue)]">
-                          Service
+                          {t("Service")}
                         </p>
                         <p className="mt-2 text-[0.92rem] font-semibold text-[color:var(--foreground)]">
-                          Exterior + Interior
+                          {t("Exterior + Interior")}
                         </p>
                       </div>
                       <div className="rounded-[1.5rem] bg-[#f6fbff] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
                         <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--blue)]">
-                          Payment
+                          {t("Payment")}
                         </p>
                         <p className="mt-2 text-[0.92rem] font-semibold text-[color:var(--foreground)]">
-                          Secure checkout
+                          {t("Secure checkout")}
                         </p>
                       </div>
                     </div>
@@ -211,7 +211,7 @@ export function Hero() {
                             <PhoneActionIcon icon={item.icon} />
                           </span>
                           <span className="mt-2 block text-[0.74rem] font-semibold text-[color:var(--foreground)]">
-                            {item.label}
+                            {t(item.label)}
                           </span>
                         </button>
                       ))}

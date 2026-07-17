@@ -344,6 +344,10 @@ function allocateMemberships(
 }
 
 async function handle(req: NextRequest, segments: string[]) {
+  if (process.env.NODE_ENV === "production") {
+    return fail(404, "Development API is unavailable in production.");
+  }
+
   const store = db();
   const path = segments.join("/");
   const method = req.method;
@@ -405,7 +409,7 @@ async function handle(req: NextRequest, segments: string[]) {
 
     const orderLines: StoreOrderLine[] = [];
     for (const input of linesInput) {
-      const product = store.storeProducts.find((item) => item.id === String(input.product_id));
+      const product = store.storeProducts.find((item) => item.id === Number(input.product_id));
       const quantity = Number(input.quantity ?? 0);
       if (!product || product.is_available === false || !Number.isInteger(quantity) || quantity < 1) {
         return fail(422, "Validation failed.", { lines: ["Invalid product or quantity."] });
@@ -914,14 +918,14 @@ async function handle(req: NextRequest, segments: string[]) {
     });
 
     const quotedProducts: {
-      product_id: string | number;
+      product_id: number;
       sku: string;
       name: string;
       quantity: number;
       unit_price: number;
       line_total: number;
-    }[] = (Array.isArray(body.product_lines) ? body.product_lines : []).flatMap((line: { product_id?: string | number; quantity?: number }) => {
-      const product = store.storeProducts.find((item) => String(item.id) === String(line.product_id));
+    }[] = (Array.isArray(body.product_lines) ? body.product_lines : []).flatMap((line: { product_id?: number; quantity?: number }) => {
+      const product = store.storeProducts.find((item) => item.id === Number(line.product_id));
       const quantity = Number(line.quantity ?? 0);
       if (!product || !Number.isInteger(quantity) || quantity < 1) return [];
       return [{
@@ -1130,7 +1134,7 @@ async function handle(req: NextRequest, segments: string[]) {
     const requestedProductQuantities: Record<string, number> = {};
     let productTotal = 0;
     for (const input of productInput) {
-      const product = store.storeProducts.find((item) => String(item.id) === String(input.product_id));
+      const product = store.storeProducts.find((item) => item.id === Number(input.product_id));
       const quantity = Number(input.quantity ?? 0);
       const available = product
         ? Math.max(0, product.stock_quantity - product.reserved_quantity)

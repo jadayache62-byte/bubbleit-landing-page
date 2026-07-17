@@ -10,6 +10,9 @@ import type {
   CreateBookingPayload,
   Customer,
   CustomerMembership,
+  CustomerNotification,
+  CustomerNotificationDevice,
+  CustomerNotificationPreference,
   Envelope,
   MembershipPlan,
   Paginated,
@@ -34,6 +37,7 @@ export class ApiError extends Error {
   retryAfterSeconds: number | null;
   code: string | null;
   data: unknown;
+  requestId: string | null;
 
   constructor(
     status: number,
@@ -42,17 +46,19 @@ export class ApiError extends Error {
     retryAfterSeconds: number | null = null,
     code: string | null = null,
     data: unknown = null,
+    requestId: string | null = null,
   ) {
     super(
-      retryAfterSeconds !== null && retryAfterSeconds > 0
+      `${retryAfterSeconds !== null && retryAfterSeconds > 0
         ? `${message} Try again in ${retryAfterSeconds} seconds.`
-        : message,
+        : message}${requestId ? ` Reference: ${requestId}.` : ""}`,
     );
     this.status = status;
     this.errors = errors;
     this.retryAfterSeconds = retryAfterSeconds;
     this.code = code;
     this.data = data;
+    this.requestId = requestId;
   }
 }
 
@@ -77,7 +83,15 @@ async function request<T>(
   try {
     envelope = (await res.json()) as Envelope<T>;
   } catch {
-    throw new ApiError(res.status, "Unexpected server response.");
+    throw new ApiError(
+      res.status,
+      "Unexpected server response.",
+      null,
+      null,
+      null,
+      null,
+      res.headers.get("x-request-id"),
+    );
   }
 
   if (
@@ -106,6 +120,7 @@ async function request<T>(
       Number.isFinite(retryAfter) ? retryAfter : null,
       envelope.code ?? null,
       envelope.data,
+      res.headers.get("x-request-id"),
     );
   }
   return envelope.data;
@@ -242,6 +257,49 @@ export async function logout() {
   await request<null>("/auth/logout", { method: "POST" });
 }
 
+// ── Customer notifications ─────────────────────────────────────────────────
+
+export function listCustomerNotifications() {
+  return request<Paginated<CustomerNotification>>("/notifications").then((result) => result.data);
+}
+
+export function markCustomerNotificationRead(notificationId: number) {
+  return request<CustomerNotification>(`/notifications/${notificationId}/read`, { method: "POST" });
+}
+
+export function resolveCustomerNotification(notificationId: number) {
+  return request<{ path: string }>(`/notifications/${notificationId}/resolve`, { method: "POST" });
+}
+
+export function getCustomerNotificationPreferences() {
+  return request<CustomerNotificationPreference>("/notification-preferences");
+}
+
+export function updateCustomerNotificationPreferences(payload: {
+  locale: "en" | "ar";
+  push_enabled: boolean;
+}) {
+  return request<CustomerNotificationPreference>("/notification-preferences", {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+export function registerCustomerNotificationDevice(payload: {
+  token: string;
+  locale: "en" | "ar";
+  name?: string;
+}) {
+  return request<CustomerNotificationDevice>("/notification-devices", {
+    method: "POST",
+    body: { ...payload, platform: "web" },
+  });
+}
+
+export function removeCustomerNotificationDevice(deviceId: number) {
+  return request<null>(`/notification-devices/${deviceId}`, { method: "DELETE" });
+}
+
 export function updateProfile(payload: { name: string; email?: string; password?: string }) {
   return request<Customer>("/profile", { method: "PUT", body: payload });
 }
@@ -345,7 +403,7 @@ export function getQuote(payload: {
   duration_version: string;
   use_membership?: boolean;
   preselect_memberships?: boolean;
-  product_lines?: { product_id: string | number; quantity: number }[];
+  product_lines?: { product_id: number; quantity: number }[];
   promo_code?: string;
   address_id?: number;
   latitude?: number;

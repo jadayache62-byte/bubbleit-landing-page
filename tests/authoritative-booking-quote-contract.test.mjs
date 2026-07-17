@@ -11,7 +11,7 @@ test("quote and commit carry one versioned authoritative cart snapshot", () => {
   assert.match(types, /quote_id: string/);
   assert.match(types, /quote_version: string/);
   assert.match(types, /product_total: number/);
-  assert.match(client, /product_lines\?: \{ product_id: string \| number; quantity: number \}\[\]/);
+  assert.match(client, /product_lines\?: \{ product_id: number; quantity: number \}\[\]/);
   assert.match(wizard, /quote_id: quote\.quote_id/);
   assert.match(wizard, /quote_version: quote\.quote_version/);
   assert.match(wizard, /const dueTotal = quote\?\.total_price/);

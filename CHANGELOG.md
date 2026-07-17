@@ -2,6 +2,30 @@
 
 ---
 
+## [2026-07-16] — Customer notification inbox and safe browser delivery (MAD-58)
+
+### Added
+- Added a localized account notification inbox, permission education, optional browser push registration, foreground refresh, background system alerts, and terminated-state notification opening.
+- Browser taps ignore provider-supplied links and enter through an authenticated notification ID that the backend resolves only after rechecking notification and target ownership.
+- Logout detaches only the current browser subscription; the backend retains other customer devices and uses transactional WhatsApp/SMS as the critical fallback when push cannot deliver.
+
+## [2026-07-16] — Browser release and request-correlation gates (MAD-63)
+
+### Added
+- Added blocking landing CI for lint, contract/regression tests, production build, and Playwright catalogue/checkout outage fault injection.
+- The customer BFF now forwards one safe `X-Request-ID`, returns the authoritative backend ID, and includes it in customer-visible API recovery messages.
+- CI now blocks on moderate dependency advisories; the vulnerable nested PostCSS and JS-YAML versions are pinned to patched releases.
+
+## [2026-07-16] — Honest store outage and API contract (MAD-62)
+
+### Added
+- Added the byte-identical backend-owned `public-contract-v1` JSON Schema and consumer tests for enums, fields, nullability, errors, pagination, mock parity, and forced catalogue outage.
+
+### Fixed
+- Booking account UI now covers `driver_accepted`, `phone_confirmed`, and `refund_requested`, plus every backend vehicle type.
+- Store catalogue and checkout now start empty, accept only integer server product IDs, remove stale/synthetic cart lines after a verified fetch, and show explicit retry UI when live products cannot be verified.
+- The development API now returns 404 in production instead of exposing mock catalogue or payment state.
+
 ## [2026-07-15] — Large membership validity windows (MAD-33)
 
 ### Fixed

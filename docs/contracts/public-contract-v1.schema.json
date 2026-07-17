@@ -1,0 +1,351 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:bubbleit:api:public-contract:v1",
+  "title": "BubbleIt public API contract v1",
+  "description": "Backend-owned response, pagination, enum, and customer commerce resource contract shared by BubbleIt clients.",
+  "x-contract-version": "public-contract-v1",
+  "x-http-error-statuses": [400, 401, 403, 404, 409, 422, 429, 500, 503],
+  "type": "object",
+  "required": ["success", "message", "data", "errors"],
+  "properties": {
+    "success": { "type": "boolean" },
+    "message": { "type": "string" },
+    "data": {},
+    "errors": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "code": { "$ref": "#/$defs/ErrorCode" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "BookingStatus": {
+      "type": "string",
+      "enum": [
+        "pending_payment",
+        "paid",
+        "assigned",
+        "driver_accepted",
+        "phone_confirmed",
+        "in_progress",
+        "completed",
+        "no_show",
+        "refund_requested",
+        "cancelled_by_admin",
+        "cancelled_by_customer"
+      ]
+    },
+    "StoreOrderStatus": {
+      "type": "string",
+      "enum": [
+        "pending_payment",
+        "paid",
+        "confirmed",
+        "preparing",
+        "out_for_delivery",
+        "delivered",
+        "cancelled",
+        "refunded"
+      ]
+    },
+    "StorePaymentStatus": {
+      "type": "string",
+      "enum": ["unpaid", "pending", "paid", "failed", "refunded"]
+    },
+    "PaymentStateStatus": {
+      "type": "string",
+      "enum": [
+        "not_started",
+        "not_required",
+        "ready",
+        "retryable",
+        "pending",
+        "paid",
+        "partially_refunded",
+        "refunded",
+        "reconciliation_required"
+      ]
+    },
+    "VehicleType": {
+      "type": "string",
+      "enum": ["sedan", "suv", "truck", "van", "caravan", "jet_ski", "jet_boat", "other"]
+    },
+    "CustomerMembershipStatus": {
+      "type": "string",
+      "enum": ["pending_payment", "active", "exhausted", "expired", "cancelled"]
+    },
+    "PaymentMethod": {
+      "type": "string",
+      "enum": ["pay_on_site", "online", "membership"]
+    },
+    "CustomerNotificationType": {
+      "type": "string",
+      "enum": [
+        "booking_created",
+        "payment_confirmed",
+        "booking_cancelled",
+        "booking_status_changed",
+        "booking_reminder_24h",
+        "booking_reminder_2h",
+        "refund_status_changed",
+        "membership_status_changed",
+        "store_order_status_changed"
+      ]
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "DURATION_VERSION_STALE",
+        "IDEMPOTENCY_KEY_REUSED",
+        "PAYMENT_ALREADY_CAPTURED",
+        "PAYMENT_IDEMPOTENCY_KEY_INVALID",
+        "PAYMENT_INITIALIZATION_RETRYABLE",
+        "PAYMENT_PURCHASE_CHANGED",
+        "PAYMENT_RECONCILIATION_REQUIRED",
+        "SERVICE_AREA_OUTSIDE_QATAR",
+        "SERVICE_AREA_STALE",
+        "STORE_PRICING_CHANGED",
+        "STORE_PRICING_CONFIRMATION_REQUIRED",
+        "VALIDATION_FAILED"
+      ]
+    },
+    "PaginationMeta": {
+      "type": "object",
+      "required": ["current_page", "last_page", "per_page", "total"],
+      "properties": {
+        "current_page": { "type": "integer", "minimum": 1 },
+        "last_page": { "type": "integer", "minimum": 1 },
+        "per_page": { "type": "integer", "minimum": 1 },
+        "total": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "PaginatedData": {
+      "type": "object",
+      "required": ["data", "meta"],
+      "properties": {
+        "data": { "type": "array" },
+        "meta": { "$ref": "#/$defs/PaginationMeta" }
+      },
+      "additionalProperties": true
+    },
+    "PaymentState": {
+      "type": "object",
+      "required": ["status", "captured", "reconciliation_reason", "checkout_url"],
+      "properties": {
+        "status": { "$ref": "#/$defs/PaymentStateStatus" },
+        "captured": { "type": "boolean" },
+        "reconciliation_reason": { "type": ["string", "null"] },
+        "checkout_url": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "CustomerNotification": {
+      "type": "object",
+      "required": ["id", "type", "title", "body", "locale", "is_read", "deep_link", "created_at"],
+      "properties": {
+        "id": { "type": "integer" },
+        "type": { "$ref": "#/$defs/CustomerNotificationType" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "locale": { "enum": ["en", "ar"] },
+        "is_read": { "type": "boolean" },
+        "deep_link": { "type": "string", "pattern": "^/account\\?notification=[0-9]+$" },
+        "created_at": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "CustomerNotificationPreference": {
+      "type": "object",
+      "required": ["locale", "push_enabled", "transactional_fallback"],
+      "properties": {
+        "locale": { "enum": ["en", "ar"] },
+        "push_enabled": { "type": "boolean" },
+        "transactional_fallback": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "CustomerNotificationDevice": {
+      "type": "object",
+      "required": ["id", "platform", "name", "locale", "last_seen_at"],
+      "properties": {
+        "id": { "type": "integer" },
+        "platform": { "enum": ["web", "ios", "android"] },
+        "name": { "type": ["string", "null"] },
+        "locale": { "enum": ["en", "ar"] },
+        "last_seen_at": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "NotificationDeepLinkResolution": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^/(account|store/checkout)\\?" }
+      },
+      "additionalProperties": false
+    },
+    "StoreProduct": {
+      "type": "object",
+      "required": [
+        "id",
+        "sku",
+        "name",
+        "name_ar",
+        "description",
+        "description_ar",
+        "price",
+        "imageSrc",
+        "stock_quantity",
+        "sold_quantity",
+        "reserved_quantity",
+        "available_quantity",
+        "accounting_code",
+        "is_available"
+      ],
+      "properties": {
+        "id": { "type": "integer" },
+        "sku": { "type": "string" },
+        "name": { "type": "string" },
+        "name_ar": { "type": ["string", "null"] },
+        "description": { "type": ["string", "null"] },
+        "description_ar": { "type": ["string", "null"] },
+        "price": { "type": "number", "minimum": 0 },
+        "imageSrc": { "type": ["string", "null"] },
+        "stock_quantity": { "type": "number", "minimum": 0 },
+        "sold_quantity": { "type": "number", "minimum": 0 },
+        "reserved_quantity": { "type": "number", "minimum": 0 },
+        "available_quantity": { "type": "number", "minimum": 0 },
+        "accounting_code": { "type": ["string", "null"] },
+        "is_available": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "Booking": {
+      "type": "object",
+      "required": [
+        "id",
+        "reference",
+        "status",
+        "status_label",
+        "scheduled_at",
+        "scheduled_end_at",
+        "service_date",
+        "timezone",
+        "duration_minutes",
+        "duration_label",
+        "duration",
+        "time_range_label",
+        "payment_method",
+        "payment",
+        "membership_applied",
+        "membership_reserved",
+        "total",
+        "product_total",
+        "address_label",
+        "address_area",
+        "address_street",
+        "building_number",
+        "zone_number",
+        "street_number",
+        "notes",
+        "service_area",
+        "created_at",
+        "cars",
+        "products"
+      ],
+      "properties": {
+        "id": { "type": "integer" },
+        "reference": { "type": "string" },
+        "status": { "$ref": "#/$defs/BookingStatus" },
+        "status_label": { "type": "string" },
+        "scheduled_at": { "type": ["string", "null"] },
+        "scheduled_end_at": { "type": ["string", "null"] },
+        "service_date": { "type": ["string", "null"] },
+        "timezone": { "const": "Asia/Qatar" },
+        "duration_minutes": { "type": "integer", "minimum": 0 },
+        "duration_label": { "type": "string" },
+        "duration": { "type": "object" },
+        "time_range_label": { "type": ["string", "null"] },
+        "payment_method": { "$ref": "#/$defs/PaymentMethod" },
+        "payment": { "$ref": "#/$defs/PaymentState" },
+        "membership_applied": { "type": "boolean" },
+        "membership_reserved": { "type": "boolean" },
+        "total": { "type": "number", "minimum": 0 },
+        "product_total": { "type": "number", "minimum": 0 },
+        "address_label": { "type": ["string", "null"] },
+        "address_area": { "type": "string" },
+        "address_street": { "type": ["string", "null"] },
+        "building_number": { "type": ["string", "null"] },
+        "zone_number": { "type": ["string", "null"] },
+        "street_number": { "type": ["string", "null"] },
+        "notes": { "type": "string" },
+        "service_area": { "type": "object" },
+        "created_at": { "type": ["string", "null"] },
+        "cars": { "type": "array" },
+        "products": { "type": "array" }
+      },
+      "additionalProperties": false
+    },
+    "StoreOrder": {
+      "type": "object",
+      "required": [
+        "id",
+        "customer_id",
+        "reference",
+        "status",
+        "payment_status",
+        "payment",
+        "accounting_status",
+        "pricing",
+        "customer_name",
+        "customer_phone",
+        "delivery_area",
+        "delivery_details",
+        "latitude",
+        "longitude",
+        "service_area",
+        "subtotal",
+        "delivery_fee",
+        "discount_total",
+        "total",
+        "lines",
+        "expires_at",
+        "created_at"
+      ],
+      "properties": {
+        "id": { "type": "integer" },
+        "customer_id": { "type": "integer" },
+        "reference": { "type": "string" },
+        "status": { "$ref": "#/$defs/StoreOrderStatus" },
+        "payment_status": { "$ref": "#/$defs/StorePaymentStatus" },
+        "payment": { "$ref": "#/$defs/PaymentState" },
+        "accounting_status": { "type": "string" },
+        "pricing": { "type": "object" },
+        "customer_name": { "type": "string" },
+        "customer_phone": { "type": "string" },
+        "delivery_area": { "type": "string" },
+        "delivery_details": { "type": "string" },
+        "latitude": { "type": ["number", "null"] },
+        "longitude": { "type": ["number", "null"] },
+        "service_area": { "type": "object" },
+        "subtotal": { "type": "number", "minimum": 0 },
+        "delivery_fee": { "type": "number", "minimum": 0 },
+        "discount_total": { "type": "number", "minimum": 0 },
+        "total": { "type": "number", "minimum": 0 },
+        "lines": { "type": "array" },
+        "expires_at": { "type": ["string", "null"] },
+        "created_at": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    }
+  }
+}

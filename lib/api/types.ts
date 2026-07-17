@@ -52,7 +52,15 @@ export type AddOn = {
   extends_duration: boolean;
 };
 
-export type VehicleType = "sedan" | "suv" | "caravan" | "jet_ski" | "jet_boat";
+export type VehicleType =
+  | "sedan"
+  | "suv"
+  | "truck"
+  | "van"
+  | "caravan"
+  | "jet_ski"
+  | "jet_boat"
+  | "other";
 
 export type WashTarget = "car" | "caravan" | "jet_ski" | "jet_boat";
 
@@ -163,11 +171,14 @@ export type BookingStatus =
   | "pending_payment"
   | "paid"
   | "assigned"
+  | "driver_accepted"
+  | "phone_confirmed"
   | "in_progress"
   | "completed"
-  | "cancelled_by_customer"
+  | "no_show"
+  | "refund_requested"
   | "cancelled_by_admin"
-  | "no_show";
+  | "cancelled_by_customer";
 
 export type BookingCar = {
   vehicle: Vehicle;
@@ -194,7 +205,7 @@ export type Booking = {
   total: number;
   product_total?: number;
   products?: {
-    product_id: string | number;
+    product_id: number;
     sku: string;
     name: string;
     quantity: number;
@@ -243,7 +254,7 @@ export type CreateBookingPayload = {
   use_membership?: boolean;
   notes?: string;
   promo_code?: string;
-  product_lines?: { product_id: string | number; quantity: number }[];
+  product_lines?: { product_id: number; quantity: number }[];
 };
 
 export type BookingRescheduleOptions = {
@@ -320,7 +331,7 @@ export type BookingQuote = {
   }[];
   service_area: ServiceAreaSnapshot;
   products: {
-    product_id: string | number;
+    product_id: number;
     sku: string;
     name: string;
     quantity: number;
@@ -341,10 +352,12 @@ export type PromoValidation = {
 };
 
 export type StoreProductInventory = {
-  id: string | number;
+  id: number;
   sku: string;
   name: string;
+  name_ar: string | null;
   description: string | null;
+  description_ar: string | null;
   price: number;
   imageSrc: string | null;
   imageAlt?: string;
@@ -358,7 +371,7 @@ export type StoreProductInventory = {
 
 export type StoreOrderLine = {
   id?: number;
-  product_id: string | number;
+  product_id: number;
   inventory_item_id?: number;
   sku: string;
   name: string;
@@ -371,7 +384,7 @@ export type StoreOrderLine = {
 };
 
 export type StorePricingLine = {
-  product_id: string | number;
+  product_id: number;
   sku?: string;
   name?: string;
   quantity: number;
@@ -401,9 +414,7 @@ export type StoreOrder = {
     | "out_for_delivery"
     | "delivered"
     | "cancelled"
-    | "refunded"
-    | "received"
-    | "fulfilled";
+    | "refunded";
   payment_status?: "unpaid" | "pending" | "paid" | "failed" | "refunded";
   payment_method?: string;
   payment?: PaymentState;
@@ -438,7 +449,7 @@ export type CreateStoreOrderPayload = {
   service_area_version: string;
   notes?: string;
   pricing_confirmation: StorePricingConfirmation;
-  lines: { product_id: string | number; inventory_item_id?: number; quantity: number }[];
+  lines: { product_id: number; inventory_item_id?: number; quantity: number }[];
 };
 
 export type StoreOrderPayment = {
@@ -448,4 +459,40 @@ export type StoreOrderPayment = {
   checkout_url: string;
   payment_reference: string;
   status: "ready" | "retryable" | "pending";
+};
+
+export type CustomerNotificationType =
+  | "booking_created"
+  | "payment_confirmed"
+  | "booking_cancelled"
+  | "booking_status_changed"
+  | "booking_reminder_24h"
+  | "booking_reminder_2h"
+  | "refund_status_changed"
+  | "membership_status_changed"
+  | "store_order_status_changed";
+
+export type CustomerNotification = {
+  id: number;
+  type: CustomerNotificationType;
+  title: string;
+  body: string;
+  locale: "en" | "ar";
+  is_read: boolean;
+  deep_link: string;
+  created_at: string | null;
+};
+
+export type CustomerNotificationPreference = {
+  locale: "en" | "ar";
+  push_enabled: boolean;
+  transactional_fallback: true;
+};
+
+export type CustomerNotificationDevice = {
+  id: number;
+  platform: "web" | "ios" | "android";
+  name: string | null;
+  locale: "en" | "ar";
+  last_seen_at: string | null;
 };
