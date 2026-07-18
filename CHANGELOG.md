@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-07-18 — Returning-customer SMS OTP sign-in (MAD-78)
+
+- Added direct SMS-code sign-in for returning customers without requiring a password reset.
+- Kept registration and authentication OTP purposes isolated and updated customer auth copy from WhatsApp to Twilio SMS.
+
 ---
 
 ## [2026-07-18] — Bilingual legal, privacy, and account deletion (MAD-60)

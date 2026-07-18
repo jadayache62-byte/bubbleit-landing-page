@@ -304,22 +304,26 @@ const AR: Record<string, string> = {
   "Welcome back!": "أهلاً بعودتك!",
   "Choose how you would like to continue.": "اختر كيف تريد المتابعة.",
   "Sign in with password": "تسجيل الدخول بكلمة المرور",
+  "Sign in with SMS code": "تسجيل الدخول برمز عبر الرسائل النصية",
+  "SMS verification code": "رمز التحقق عبر الرسائل النصية",
+  "We sent a 6-digit SMS code. Enter it to sign in.":
+    "أرسلنا رمزاً من 6 أرقام عبر الرسائل النصية. أدخله لتسجيل الدخول.",
   "Create or claim an account": "إنشاء حساب أو استلام حساب",
   "Reset my password": "إعادة تعيين كلمة المرور",
   "Enter your account password.": "أدخل كلمة مرور حسابك.",
-  "Create or claim your account after WhatsApp verification.":
-    "أنشئ حسابك أو استلمه بعد التحقق عبر واتساب.",
+  "Create or claim your account after SMS verification.":
+    "أنشئ حسابك أو استلمه بعد التحقق عبر الرسائل النصية.",
   "Password": "كلمة المرور",
   "Forgot password?": "نسيت كلمة المرور؟",
   "New number — let's set up your account.": "رقم جديد — لننشئ حسابك.",
   "Add a password for your account": "أضف كلمة مرور لحسابك",
-  "Verify on WhatsApp": "تحقق عبر واتساب",
+  "Verify by SMS": "تحقق عبر الرسائل النصية",
   "Password must be at least 6 characters.": "كلمة المرور 6 أحرف على الأقل.",
-  "We sent a 6-digit code to your WhatsApp — enter it to finish.":
-    "أرسلنا رمزاً من 6 أرقام إلى واتساب — أدخله للإكمال.",
+  "We sent a 6-digit code by SMS — enter it to finish.":
+    "أرسلنا رمزاً من 6 أرقام عبر الرسائل النصية — أدخله للإكمال.",
   "Create account": "إنشاء الحساب",
-  "We sent a 6-digit code to your WhatsApp. Enter it and choose a new password.":
-    "أرسلنا رمزاً من 6 أرقام إلى واتساب. أدخله واختر كلمة مرور جديدة.",
+  "We sent a 6-digit SMS code. Enter it and choose a new password.":
+    "أرسلنا رمزاً من 6 أرقام عبر الرسائل النصية. أدخله واختر كلمة مرور جديدة.",
   "New password": "كلمة مرور جديدة",
   "Sign in to confirm your booking.": "سجّل الدخول لتأكيد حجزك.",
   "Redirecting to secure payment…": "جاري التحويل إلى الدفع الآمن…",

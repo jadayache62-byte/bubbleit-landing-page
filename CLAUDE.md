@@ -57,6 +57,9 @@ Repository notes for agents working on the Bubble It marketing site and customer
   registration/account claim, or recovery. Keep the local mock response and no-store behavior aligned.
 - OTP requests must include `purpose=registration` for signup/account claim and
   `purpose=authentication` for credential recovery. The local mock must reject cross-purpose reuse.
+- Returning customers may sign in directly with a Twilio SMS code. That flow requests
+  `purpose=authentication`, calls `verify-otp`, and must not require or change a password.
+  Registration/account claim remains isolated under `purpose=registration`.
 
 ## Membership Rules
 

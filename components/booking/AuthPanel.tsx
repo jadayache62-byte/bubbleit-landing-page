@@ -18,7 +18,7 @@ import {
 import type { Customer } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
 
-type Stage = "phone" | "method" | "password" | "register" | "register_code" | "forgot";
+type Stage = "phone" | "method" | "password" | "otp_login" | "register" | "register_code" | "forgot";
 
 function normalizeQatarPhone(value: string) {
   let digits = value.replace(/\D/g, "");
@@ -139,6 +139,34 @@ export function AuthPanel({
     }
   }
 
+  async function startOtpLogin() {
+    setBusy(true);
+    setError(null);
+    try {
+      await requestOtp(normalizeQatarPhone(phone), "authentication");
+      setCode("");
+      setStage("otp_login");
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitOtpLogin() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await verifyOtp(normalizeQatarPhone(phone), code.trim());
+      setCode("");
+      onAuthed(result.customer);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitForgot() {
     setBusy(true);
     setError(null);
@@ -244,6 +272,14 @@ export function AuthPanel({
             </button>
             <button
               type="button"
+              className="secondary-button"
+              disabled={busy}
+              onClick={startOtpLogin}
+            >
+              {busy ? t("Sending…") : t("Sign in with SMS code")}
+            </button>
+            <button
+              type="button"
               className="cursor-pointer self-start border-none bg-transparent p-0 text-xs font-semibold text-[color:var(--blue)] hover:underline"
               onClick={startForgot}
             >
@@ -260,6 +296,9 @@ export function AuthPanel({
             </p>
             <button type="button" className="primary-button" onClick={() => setStage("password")}>
               {t("Sign in with password")}
+            </button>
+            <button type="button" className="secondary-button" disabled={busy} onClick={startOtpLogin}>
+              {busy ? t("Sending…") : t("Sign in with SMS code")}
             </button>
             <button type="button" className="secondary-button" onClick={() => setStage("register")}>
               {t("Create or claim an account")}
@@ -279,7 +318,7 @@ export function AuthPanel({
           <>
             {phoneChip}
             <p className="text-sm font-semibold text-[color:var(--blue)]">
-              {t("Create or claim your account after WhatsApp verification.")}
+              {t("Create or claim your account after SMS verification.")}
             </p>
             <input
               className="wizard-input"
@@ -300,7 +339,7 @@ export function AuthPanel({
               disabled={busy || !name.trim() || password.length < 6}
               onClick={sendRegisterCode}
             >
-              {busy ? t("Sending…") : t("Verify on WhatsApp")}
+              {busy ? t("Sending…") : t("Verify by SMS")}
             </button>
             {password.length > 0 && password.length < 6 && (
               <p className="text-xs text-[color:var(--muted-foreground)]">
@@ -314,7 +353,7 @@ export function AuthPanel({
           <>
             {phoneChip}
             <p className="text-sm text-[color:var(--muted-foreground)]">
-              {t("We sent a 6-digit code to your WhatsApp — enter it to finish.")}
+              {t("We sent a 6-digit code by SMS — enter it to finish.")}
             </p>
             <input
               className="wizard-input tracking-[0.4em]"
@@ -344,11 +383,49 @@ export function AuthPanel({
           </>
         )}
 
+        {stage === "otp_login" && (
+          <>
+            {phoneChip}
+            <p className="text-sm text-[color:var(--muted-foreground)]">
+              {t("We sent a 6-digit SMS code. Enter it to sign in.")}
+            </p>
+            <input
+              className="wizard-input tracking-[0.4em]"
+              aria-label={t("SMS verification code")}
+              placeholder="••••••"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              dir="ltr"
+              maxLength={6}
+              value={code}
+              autoFocus
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              onKeyDown={(e) => e.key === "Enter" && code.length === 6 && submitOtpLogin()}
+            />
+            <button
+              type="button"
+              className="primary-button disabled:opacity-40"
+              disabled={busy || code.length !== 6}
+              onClick={submitOtpLogin}
+            >
+              {busy ? t("Verifying…") : t("Sign in")}
+            </button>
+            <button
+              type="button"
+              className="cursor-pointer self-start border-none bg-transparent p-0 text-xs font-semibold text-[color:var(--blue)] hover:underline"
+              disabled={busy}
+              onClick={startOtpLogin}
+            >
+              {t("Resend code")}
+            </button>
+          </>
+        )}
+
         {stage === "forgot" && (
           <>
             {phoneChip}
             <p className="text-sm text-[color:var(--muted-foreground)]">
-              {t("We sent a 6-digit code to your WhatsApp. Enter it and choose a new password.")}
+              {t("We sent a 6-digit SMS code. Enter it and choose a new password.")}
             </p>
             <input
               className="wizard-input tracking-[0.4em]"
