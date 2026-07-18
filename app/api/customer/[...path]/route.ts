@@ -178,6 +178,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
   if (
     upstream.status === 401 ||
     path === "auth/logout" ||
+    (path === "privacy/delete-account" && upstream.ok) ||
     upstream.headers.get("x-reauthentication-required") === "true"
   ) {
     expireSession(response);

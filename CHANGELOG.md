@@ -2,6 +2,13 @@
 
 ---
 
+## [2026-07-18] — Bilingual legal, privacy, and account deletion (MAD-60)
+
+- Published owner-approved English/Arabic Privacy Policy and Terms from one paired, versioned `2026-07-18-v1` source for Bubble It Cars Washing LLC, CR 182268.
+- Added canonical privacy, terms, and account-deletion pages, footer links, robots/sitemap entries, metadata, and store privacy/data-safety declarations for the approved domains.
+- Added authenticated one-use customer data export and fresh-OTP permanent deletion UI through the same-origin HttpOnly BFF, including session-cookie expiry after deletion.
+- Added contract, link, RTL, build, and automated WCAG A/AA browser gates for every new public surface.
+
 ## [2026-07-17] — Web security policy and token boundary (MAD-64)
 
 - Added request-specific CSP nonces with an explicit report-only-to-enforced rollout mode, allowlisting only the same origin, OpenStreetMap tiles, and Nominatim required by current customer flows.

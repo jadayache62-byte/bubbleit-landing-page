@@ -82,16 +82,22 @@ export function Footer() {
               </h2>
               <div className="mt-4 flex flex-col gap-3 text-base">
                 <a
-                  href="#"
+                  href="/privacy"
                   className="text-white/82 transition hover:text-[color:var(--cyan)]"
                 >
                   {t("Privacy Policy")}
                 </a>
                 <a
-                  href="#"
+                  href="/terms"
                   className="text-white/82 transition hover:text-[color:var(--cyan)]"
                 >
                   {t("Terms & Conditions")}
+                </a>
+                <a
+                  href="/account-deletion"
+                  className="text-white/82 transition hover:text-[color:var(--cyan)]"
+                >
+                  {t("Account deletion")}
                 </a>
               </div>
             </div>

@@ -9,6 +9,8 @@ import type {
   CreateStoreOrderPayload,
   CreateBookingPayload,
   Customer,
+  CustomerDataExportRequest,
+  CustomerDeletionResult,
   CustomerMembership,
   CustomerNotification,
   CustomerNotificationDevice,
@@ -302,6 +304,24 @@ export function removeCustomerNotificationDevice(deviceId: number) {
 
 export function updateProfile(payload: { name: string; email?: string; password?: string }) {
   return request<Customer>("/profile", { method: "PUT", body: payload });
+}
+
+export function createCustomerDataExport() {
+  return request<CustomerDataExportRequest>("/privacy/export", { method: "POST" });
+}
+
+export function downloadCustomerDataExport(requestId: number, token: string) {
+  return request<Record<string, unknown>>(`/privacy/export/${requestId}/download`, {
+    method: "POST",
+    body: { token },
+  });
+}
+
+export function deleteCustomerAccount(code: string) {
+  return request<CustomerDeletionResult>("/privacy/delete-account", {
+    method: "POST",
+    body: { code, confirmation: "DELETE" },
+  });
 }
 
 // ── Vehicles & addresses ─────────────────────────────────────────────────────

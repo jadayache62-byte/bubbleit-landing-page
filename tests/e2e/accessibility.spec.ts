@@ -1,7 +1,15 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-for (const path of ["/", "/store", "/book", "/memberships"]) {
+for (const path of [
+  "/",
+  "/store",
+  "/book",
+  "/memberships",
+  "/privacy",
+  "/terms",
+  "/account-deletion",
+]) {
   test(`${path} has no automated WCAG A/AA violations`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const response = await page.goto(path);

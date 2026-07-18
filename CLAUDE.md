@@ -94,6 +94,8 @@ Repository notes for agents working on the Bubble It marketing site and customer
 
 ## Navigation, Account, and Accessibility
 
+- `/privacy`, `/terms`, and `/account-deletion` are canonical public release surfaces. Their English/Arabic content comes from `lib/legal/policies.ts`, where both languages are paired under the single version `2026-07-18-v1`; never fork language-specific policy files or versions. Keep legal identity, domains, schema version, retention text, store declarations, sitemap, and footer links synchronized.
+- The account-deletion page must preserve the same-origin HttpOnly token boundary. Data export is authenticated, one-use, and downloaded immediately; deletion requires a fresh authentication OTP plus explicit irreversible confirmation, and successful deletion expires the BFF session cookie.
 - Global navigation is organized around **Services, Memberships, Store, Account**, with one dominant **Book a Wash** CTA. The closed mobile menu must remain `aria-hidden` and `inert` so its links cannot receive focus.
 - The account page owns Overview, Bookings, Memberships, Vehicles, and Notifications. It must expose booking/rebooking/cancellation, membership redemption/renewal, vehicle booking/removal, localized notification recovery, quick actions, loading states, and clear empty states.
 - Account section controls follow the ARIA tabs pattern, including a single tab stop, `aria-selected`, linked tabpanels, Arrow Left/Right, Home, and End behavior. Avoid horizontally clipped mobile tabs.

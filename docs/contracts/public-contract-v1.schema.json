@@ -295,6 +295,41 @@
       },
       "additionalProperties": false
     },
+    "CustomerDataExportRequest": {
+      "type": "object",
+      "required": ["request_id", "token", "expires_at", "policy_version"],
+      "properties": {
+        "request_id": { "type": "integer", "minimum": 1 },
+        "token": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "policy_version": { "const": "2026-07-18-v1" }
+      },
+      "additionalProperties": false
+    },
+    "CustomerDeletionResult": {
+      "type": "object",
+      "required": ["request_id", "completed_at", "policy_version", "retention"],
+      "properties": {
+        "request_id": { "type": "integer", "minimum": 1 },
+        "completed_at": { "type": "string", "format": "date-time" },
+        "policy_version": { "const": "2026-07-18-v1" },
+        "retention": {
+          "type": "object",
+          "required": [
+            "sessions_and_device_tokens",
+            "otp_and_notification_delivery_logs",
+            "security_and_access_logs",
+            "support_records",
+            "bookings_and_service_history",
+            "financial_order_membership_ledgers",
+            "legal_holds",
+            "irreversibly_anonymous_statistics"
+          ],
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
     "StoreOrder": {
       "type": "object",
       "required": [
