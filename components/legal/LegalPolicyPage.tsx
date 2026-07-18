@@ -20,7 +20,7 @@ export function LegalPolicyPage({ policy }: { policy: LegalPolicy }) {
       <Navbar />
       <main id="main-content" className="section-shell py-10 sm:py-16">
         <article className="mx-auto max-w-4xl">
-          <header className="commerce-card bg-[color:var(--navy)] p-6 text-white sm:p-10">
+          <header className="rounded-[var(--radius-card)] border border-slate-800 bg-[#061a2e] p-6 text-white shadow-[0_8px_24px_rgba(38,34,98,0.12)] sm:p-10">
             <p className="text-sm font-bold uppercase tracking-[0.14em] text-white/70">
               {lang === "ar" ? `الإصدار ${LEGAL_POLICY_VERSION}` : `Version ${LEGAL_POLICY_VERSION}`}
             </p>
