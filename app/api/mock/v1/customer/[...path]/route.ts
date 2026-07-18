@@ -94,6 +94,12 @@ const bookingQuotes = new Map<string, {
   expiresAt: string;
   cars: { index: number; membership_id: number | null }[];
 }>();
+const privacyExports = new Map<number, {
+  customerId: number;
+  token: string;
+  expiresAt: number;
+  used: boolean;
+}>();
 
 function mockPayment(subject: "BKG" | "MEM" | "STO", id: number) {
   const key = `${subject}:${id}`;
@@ -684,6 +690,68 @@ async function handle(req: NextRequest, segments: string[]) {
     });
     if (passwordChanged) response.headers.set("X-Reauthentication-Required", "true");
     return response;
+  }
+
+  if (method === "POST" && path === "privacy/export") {
+    const id = store.nextId++;
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (value) => value.toString(16).padStart(2, "0")).join("");
+    const expiresAt = Date.now() + 15 * 60 * 1000;
+    privacyExports.set(id, { customerId: customer.id, token, expiresAt, used: false });
+    return envelope({
+      request_id: id,
+      token,
+      expires_at: new Date(expiresAt).toISOString(),
+      policy_version: "2026-07-18-v1",
+    }, { status: 201, message: "Your data export is ready for one download." });
+  }
+
+  const privacyDownload = path.match(/^privacy\/export\/(\d+)\/download$/);
+  if (method === "POST" && privacyDownload) {
+    const record = privacyExports.get(Number(privacyDownload[1]));
+    if (!record || record.customerId !== customer.id) return fail(404, "Data export not found.");
+    if (record.used || record.expiresAt <= Date.now() || record.token !== String(body.token ?? "")) {
+      return fail(410, "This data export link has expired or has already been used.");
+    }
+    record.used = true;
+    const { password: _password, vehicles, addresses, ...profile } = customer;
+    return envelope({
+      policy_version: "2026-07-18-v1",
+      generated_at: new Date().toISOString(),
+      profile,
+      addresses,
+      vehicles,
+      bookings: store.bookings.filter((booking) => booking.customer_id === customer.id),
+      memberships: store.memberships.filter((membership) => membership.customer_id === customer.id),
+      store_orders: store.storeOrders.filter((order) => order.customer_id === customer.id),
+    });
+  }
+
+  if (method === "POST" && path === "privacy/delete-account") {
+    const key = otpKey(customer.phone, "authentication");
+    if (body.confirmation !== "DELETE" || store.otps.get(key) !== String(body.code ?? "")) {
+      return fail(422, "The verification code is invalid or has expired.");
+    }
+    store.otps.delete(key);
+    for (const [token, customerId] of store.tokens.entries()) {
+      if (customerId === customer.id) store.tokens.delete(token);
+    }
+    const index = store.customers.findIndex((candidate) => candidate.id === customer.id);
+    if (index >= 0) store.customers.splice(index, 1);
+    return envelope({
+      request_id: store.nextId++,
+      completed_at: new Date().toISOString(),
+      policy_version: "2026-07-18-v1",
+      retention: {
+        sessions_and_device_tokens: "revoked_immediately",
+        otp_and_notification_delivery_logs: "90_days",
+        security_and_access_logs: "12_months",
+        support_records: "2_years",
+        bookings_and_service_history: "5_years_pseudonymized",
+        financial_order_membership_ledgers: "10_years_pseudonymized",
+        legal_holds: "until_final_resolution",
+        irreversibly_anonymous_statistics: "indefinite",
+      },
+    }, { message: "Your BubbleIt account has been deleted." });
   }
 
   // ── Vehicles ──

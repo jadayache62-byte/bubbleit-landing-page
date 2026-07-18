@@ -27,6 +27,7 @@ const AR: Record<string, string> = {
   "Legal": "قانوني",
   "Privacy Policy": "سياسة الخصوصية",
   "Terms & Conditions": "الشروط والأحكام",
+  "Account deletion": "حذف الحساب",
   "WhatsApp": "واتساب",
   "All rights reserved.": "جميع الحقوق محفوظة.",
   "Bubbleit makes mobile car wash booking simple, fast, and convenient.":

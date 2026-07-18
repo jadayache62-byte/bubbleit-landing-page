@@ -9,6 +9,20 @@ export type Envelope<T> = {
   code?: string;
 };
 
+export type CustomerDataExportRequest = {
+  request_id: number;
+  token: string;
+  expires_at: string;
+  policy_version: string;
+};
+
+export type CustomerDeletionResult = {
+  request_id: number;
+  completed_at: string;
+  policy_version: string;
+  retention: Record<string, string>;
+};
+
 export type ServiceAreaSnapshot = {
   version: string;
   eligible: boolean;
