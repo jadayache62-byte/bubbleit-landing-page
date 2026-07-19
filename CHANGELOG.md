@@ -9,6 +9,7 @@
 
 - Removed the unsupported `browsing-topics` Permissions-Policy feature that generated browser warnings.
 - Limited `upgrade-insecure-requests` to enforced CSP, avoiding a misleading no-op directive during report-only observation while preserving it for release enforcement.
+- Removed the app-level `X-Frame-Options` duplicate after hosted verification showed nginx already owns that compatibility header; enforced CSP continues to deny framing.
 - Added executable policy-mode regression coverage and retained the bounded CSP reporting endpoint.
 
 ## 2026-07-18 — Reschedule modal matches booking-flow time selection
