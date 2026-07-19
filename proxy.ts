@@ -8,9 +8,11 @@ import {
 
 export function proxy(request: NextRequest) {
   const nonce = crypto.randomUUID().replaceAll("-", "");
+  const mode = cspMode();
   const policy = contentSecurityPolicy(
     nonce,
     process.env.NODE_ENV === "development",
+    mode,
   );
   const requestHeaders = new Headers(request.headers);
 
@@ -20,7 +22,7 @@ export function proxy(request: NextRequest) {
   requestHeaders.set("x-nonce", nonce);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
-  response.headers.set(cspResponseHeader(cspMode()), policy);
+  response.headers.set(cspResponseHeader(mode), policy);
   response.headers.set(
     "Reporting-Endpoints",
     'csp-endpoint="/api/csp-report"',

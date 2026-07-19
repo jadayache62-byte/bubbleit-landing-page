@@ -13,12 +13,14 @@ test("security headers include transport, permission, isolation, and MIME defens
   assert.match(nextConfig, /max-age=63072000; includeSubDomains/);
   assert.match(nextConfig, /Permissions-Policy/);
   assert.match(nextConfig, /geolocation=\(self\)/);
+  assert.doesNotMatch(nextConfig, /browsing-topics/);
   assert.match(nextConfig, /X-Content-Type-Options/);
   assert.match(nextConfig, /poweredByHeader: false/);
 });
 
 test("CSP supports report-only rollout and explicit enforcement", () => {
-  assert.match(proxy, /cspResponseHeader\(cspMode\(\)\)/);
+  assert.match(proxy, /const mode = cspMode\(\)/);
+  assert.match(proxy, /cspResponseHeader\(mode\)/);
   assert.match(csp, /Content-Security-Policy-Report-Only/);
   assert.match(csp, /Content-Security-Policy/);
   assert.match(csp, /script-src 'self' 'nonce-\$\{nonce\}' 'strict-dynamic'/);
@@ -26,6 +28,7 @@ test("CSP supports report-only rollout and explicit enforcement", () => {
   assert.match(csp, /frame-ancestors 'none'/);
   assert.match(csp, /https:\/\/tile\.openstreetmap\.org/);
   assert.match(csp, /https:\/\/nominatim\.openstreetmap\.org/);
+  assert.match(csp, /mode === "enforce" \? \["upgrade-insecure-requests"\] : \[\]/);
 });
 
 test("the browser token boundary stays same-origin and HttpOnly", () => {

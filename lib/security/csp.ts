@@ -6,7 +6,11 @@ export function cspMode(value = process.env.CSP_MODE): CspMode {
   return value === "enforce" ? "enforce" : "report-only";
 }
 
-export function contentSecurityPolicy(nonce: string, development: boolean) {
+export function contentSecurityPolicy(
+  nonce: string,
+  development: boolean,
+  mode: CspMode,
+) {
   const directives = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${development ? " 'unsafe-eval'" : ""}`,
@@ -21,7 +25,7 @@ export function contentSecurityPolicy(nonce: string, development: boolean) {
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "upgrade-insecure-requests",
+    ...(mode === "enforce" ? ["upgrade-insecure-requests"] : []),
     `report-uri ${REPORT_ENDPOINT}`,
     "report-to csp-endpoint",
   ];
