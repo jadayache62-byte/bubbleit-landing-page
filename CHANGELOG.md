@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-07-19 — Mobile time-picker viewport containment (MAD-69)
+
+- Moved quarter-hour option popovers to a document-level portal and clamp them inside the current viewport on every open, scroll, and resize.
+- Added right-edge, left-edge, bottom-edge, and large-text positioning regressions while preserving outside-click, Escape, selection, and focus restoration behavior.
+
 ## 2026-07-19 — Hosted web security policy cleanup (MAD-64)
 
 - Removed the unsupported `browsing-topics` Permissions-Policy feature that generated browser warnings.
