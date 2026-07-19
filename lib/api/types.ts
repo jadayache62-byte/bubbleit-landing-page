@@ -160,6 +160,8 @@ export type MembershipPlan = {
   id: number;
   name: string;
   name_ar: string;
+  description: string | null;
+  description_ar: string | null;
   scope: "full_wash" | "exterior" | "midnight_exterior";
   vehicle_type: "sedan" | "suv" | null;
   washes_count: number;

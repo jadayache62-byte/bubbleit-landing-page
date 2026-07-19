@@ -95,6 +95,8 @@ const plan = (
   window: [string, string] | null = null,
 ): MembershipPlan => ({
   id, name, name_ar, scope, vehicle_type, washes_count, price,
+  description: null,
+  description_ar: null,
   validity_days: washes_count === 24 ? 180 : washes_count === 48 ? 365 : 30,
   window_start: window?.[0] ?? null,
   window_end: window?.[1] ?? null,
