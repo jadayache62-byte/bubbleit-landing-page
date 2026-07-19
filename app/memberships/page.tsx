@@ -340,6 +340,11 @@ export default function MembershipsPage() {
               <span className="text-xs text-[color:var(--muted-foreground)]">
                 {lang === "ar" ? `صالح لمدة ${plan.validity_days} يومًا` : `Valid for ${plan.validity_days} days`}
               </span>
+              {(lang === "ar" ? plan.description_ar ?? plan.description : plan.description) && (
+                <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+                  {lang === "ar" ? plan.description_ar ?? plan.description : plan.description}
+                </p>
+              )}
               <button
                 type="button"
                 disabled={busy}
