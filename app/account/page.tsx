@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
+import { HourSlotPicker } from "@/components/booking/HourSlotPicker";
 import { CustomerNotifications } from "@/components/account/CustomerNotifications";
 import { useI18n } from "@/lib/i18n";
 import { formatQar } from "@/lib/money";
@@ -34,7 +35,7 @@ import type {
   Vehicle,
   VehicleType,
 } from "@/lib/api/types";
-import { formatQatarDateTime, qatarServiceDate, qatarToday, serializeQatarBookingDateTime } from "@/lib/datetime";
+import { formatQatarDateTime, nextQatarDays, qatarServiceDate, serializeQatarBookingDateTime } from "@/lib/datetime";
 
 const STATUS_STYLES: Record<BookingStatus, string> = {
   pending_payment: "bg-amber-100 text-amber-700",
@@ -80,6 +81,7 @@ export default function AccountPage() {
   const [reschedule, setReschedule] = useState<{
     booking: Booking;
     date: string;
+    days: ReturnType<typeof nextQatarDays>;
     options: BookingRescheduleOptions | null;
     slot: string | null;
     key: string;
@@ -87,6 +89,8 @@ export default function AccountPage() {
     error: string | null;
   } | null>(null);
   const rescheduleOpen = Boolean(reschedule);
+  // Reference "now" captured when reschedule slots load, used to hide today's past slots.
+  const [rescheduleNowMs, setRescheduleNowMs] = useState(0);
 
   useEffect(() => {
     if (!rescheduleOpen) return;
@@ -96,6 +100,8 @@ export default function AccountPage() {
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        // An open hour popover consumes Escape first (HourSlotPicker closes it).
+        if (rescheduleDialogRef.current?.querySelector('[role="listbox"]')) return;
         event.preventDefault();
         setReschedule(null);
         return;
@@ -186,16 +192,20 @@ export default function AccountPage() {
     }
   }
 
-  async function loadRescheduleOptions(booking: Booking, date: string, key = window.crypto.randomUUID()) {
+  async function loadRescheduleOptions(booking: Booking, requestedDate: string, key = window.crypto.randomUUID()) {
+    const days = nextQatarDays(7);
+    const date = days.some((day) => day.date === requestedDate) ? requestedDate : days[0].date;
     setError(null);
-    setReschedule({ booking, date, options: null, slot: null, key, busy: true, error: null });
+    setReschedule({ booking, date, days, options: null, slot: null, key, busy: true, error: null });
     try {
       const options = await getBookingRescheduleOptions(booking.id, date);
-      setReschedule({ booking, date, options, slot: null, key, busy: false, error: null });
+      setRescheduleNowMs(Date.now());
+      setReschedule({ booking, date, days, options, slot: null, key, busy: false, error: null });
     } catch (caught) {
       setReschedule({
         booking,
         date,
+        days,
         options: null,
         slot: null,
         key,
@@ -352,12 +362,41 @@ export default function AccountPage() {
       </main>
       {reschedule && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" role="presentation">
-          <section ref={rescheduleDialogRef} role="dialog" aria-modal="true" aria-labelledby="reschedule-booking-title" tabIndex={-1} className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+          <section ref={rescheduleDialogRef} role="dialog" aria-modal="true" aria-labelledby="reschedule-booking-title" tabIndex={-1} className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
             <div className="flex items-center justify-between gap-4"><h2 id="reschedule-booking-title" className="text-xl font-bold">{t("Choose a new time")}</h2><button ref={rescheduleCloseRef} type="button" className="secondary-button" onClick={() => setReschedule(null)}>{t("Close")}</button></div>
-            <label className="mt-5 block text-sm font-semibold">{t("Date")}<input type="date" min={qatarToday()} value={reschedule.date} className="mt-2 w-full rounded-xl border p-3" onChange={(event) => loadRescheduleOptions(reschedule.booking, event.target.value, reschedule.key)} /></label>
-            {reschedule.busy && !reschedule.options ? <p className="mt-5 text-sm">{t("Loading available times…")}</p> : (
-              <div className="mt-5 grid grid-cols-3 gap-2">{reschedule.options?.slots.filter((slot) => slot.available).map((slot) => <button key={slot.start} type="button" className={clsx("rounded-xl border p-3 text-sm font-bold", reschedule.slot === slot.start && "border-[color:var(--blue)] bg-sky-50")} onClick={() => setReschedule({ ...reschedule, slot: slot.start })}>{slot.start}</button>)}</div>
-            )}
+            <div className="mt-5 flex gap-2 overflow-x-auto pb-2">
+              {reschedule.days.map((day) => (
+                <button
+                  key={day.date}
+                  type="button"
+                  onClick={() => loadRescheduleOptions(reschedule.booking, day.date, reschedule.key)}
+                  className={clsx(
+                    "flex min-w-[4.5rem] flex-col items-center rounded-2xl border px-3 py-2.5 text-sm transition",
+                    reschedule.date === day.date
+                      ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                      : "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)]",
+                  )}
+                >
+                  <span className="text-xs opacity-75">{day.weekday}</span>
+                  <span className="font-semibold">{t(day.label)}</span>
+                </button>
+              ))}
+            </div>
+            {reschedule.busy && !reschedule.options ? (
+              <div aria-label={t("Checking availability…")} className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {Array.from({ length: 12 }, (_, index) => (
+                  <span key={index} aria-hidden="true" className="block h-11 w-full animate-pulse rounded-xl bg-slate-200/80" />
+                ))}
+              </div>
+            ) : reschedule.options ? (
+              <HourSlotPicker
+                date={reschedule.date}
+                slots={reschedule.options.slots}
+                selectedSlot={reschedule.slot}
+                nowMs={rescheduleNowMs}
+                onSelect={(start) => setReschedule((current) => (current ? { ...current, slot: start } : current))}
+              />
+            ) : null}
             {reschedule.error && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{reschedule.error}</p>}
             <p className="mt-4 text-xs text-[color:var(--muted-foreground)]">{t("Your payment, membership wash, products, and total stay attached to this booking.")}</p>
             <button type="button" className="primary-button mt-5 w-full" disabled={!reschedule.slot || reschedule.busy} onClick={commitReschedule}>{reschedule.busy ? t("Rescheduling…") : t("Confirm new time")}</button>

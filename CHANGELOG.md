@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-07-18 — Reschedule modal matches booking-flow time selection
+
+- Replaced the account reschedule modal's date input and flat slot list with the booking wizard's day-pill strip, availability skeleton grid, and hour-pill `HourSlotPicker` quarter-hour popover.
+- Past quarter-hours and unavailable slots now render visibly disabled in the reschedule dialog, matching the booking flow, and Escape closes an open time popover before closing the dialog.
+
 ## 2026-07-18 — Returning-customer SMS OTP sign-in (MAD-78)
 
 - Added direct SMS-code sign-in for returning customers without requiring a password reset.
