@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import type { Slot } from "@/lib/api/types";
 import { qatarSlotMs } from "@/lib/datetime";
+import {
+  positionPopoverInViewport,
+  type PopoverPosition,
+} from "@/lib/ui/position-popover";
 
 type HourSlotPickerProps = {
   date: string;
@@ -28,7 +33,9 @@ export function HourSlotPicker({
   onSelect,
 }: HourSlotPickerProps) {
   const [openHour, setOpenHour] = useState<string | null>(null);
+  const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const hours = useMemo(() => {
     const grouped = new Map<string, Map<string, Slot>>();
@@ -62,7 +69,13 @@ export function HourSlotPicker({
 
   useEffect(() => {
     const closeOnOutsideClick = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpenHour(null);
+      const target = event.target as Node;
+      if (
+        !rootRef.current?.contains(target) &&
+        !popoverRef.current?.contains(target)
+      ) {
+        setOpenHour(null);
+      }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && openHour) {
@@ -76,6 +89,32 @@ export function HourSlotPicker({
     return () => {
       document.removeEventListener("mousedown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openHour]);
+
+  useLayoutEffect(() => {
+    if (!openHour) return;
+
+    let animationFrame = 0;
+    const update = () => {
+      const trigger = triggerRefs.current.get(openHour);
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const measuredHeight = popoverRef.current?.getBoundingClientRect().height ?? 112;
+      setPopoverPosition(positionPopoverInViewport(
+        { left: rect.left, top: rect.top, bottom: rect.bottom },
+        { width: window.innerWidth, height: window.innerHeight },
+        measuredHeight,
+      ));
+    };
+
+    animationFrame = requestAnimationFrame(update);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
     };
   }, [openHour]);
 
@@ -99,7 +138,10 @@ export function HourSlotPicker({
               aria-expanded={openHour === hour}
               aria-haspopup="listbox"
               aria-controls={`time-options-${hour}`}
-              onClick={() => setOpenHour(openHour === hour ? null : hour)}
+              onClick={() => {
+                setPopoverPosition(null);
+                setOpenHour(openHour === hour ? null : hour);
+              }}
               className={clsx(
                 "w-full rounded-xl border px-2 py-2.5 text-sm font-semibold transition",
                 selectedInHour
@@ -111,12 +153,14 @@ export function HourSlotPicker({
             >
               {selectedInHour ? selectedSlot : `${hour}:00`}
             </button>
-            {openHour === hour && (
+            {openHour === hour && popoverPosition && createPortal(
               <div
+                ref={popoverRef}
                 id={`time-options-${hour}`}
                 role="listbox"
                 aria-label={`${hour}:00 time options`}
-                className="absolute z-50 mt-2 grid w-[13rem] max-w-[calc(100vw-2rem)] grid-cols-2 gap-1 rounded-2xl border border-[color:var(--border)] bg-white p-2 shadow-xl"
+                className="fixed z-[100] grid grid-cols-2 gap-1 rounded-2xl border border-[color:var(--border)] bg-white p-2 shadow-xl"
+                style={popoverPosition}
               >
                 {options.map((option) => {
                   const optionEnabled = option.isApiSlot && option.available && qatarSlotMs(date, option.start) > nowMs;
@@ -145,7 +189,8 @@ export function HourSlotPicker({
                     </button>
                   );
                 })}
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
         );

@@ -19,6 +19,8 @@ test("time picker restores keyboard focus after selection or Escape", () => {
   assert.match(hourPicker, /triggerRefs\.current\.get\(hour\)\?\.focus\(\)/);
   assert.match(hourPicker, /aria-controls=\{`time-options-\$\{hour\}`\}/);
   assert.match(hourPicker, /id=\{`time-options-\$\{hour\}`\}/);
+  assert.match(hourPicker, /createPortal/);
+  assert.match(hourPicker, /positionPopoverInViewport/);
 });
 
 test("account reschedule dialog traps focus, supports Escape, and restores focus", () => {
