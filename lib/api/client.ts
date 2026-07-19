@@ -15,6 +15,7 @@ import type {
   CustomerNotification,
   CustomerNotificationDevice,
   CustomerNotificationPreference,
+  CustomerReviewInvitation,
   Envelope,
   MembershipPlan,
   Paginated,
@@ -300,6 +301,17 @@ export function registerCustomerNotificationDevice(payload: {
 
 export function removeCustomerNotificationDevice(deviceId: number) {
   return request<null>(`/notification-devices/${deviceId}`, { method: "DELETE" });
+}
+
+export function getCustomerReviewInvitation(publicId: string) {
+  return request<CustomerReviewInvitation>(`/review-invitations/${encodeURIComponent(publicId)}`);
+}
+
+export function submitCustomerReview(publicId: string, rating: number, comment?: string) {
+  return request<CustomerReviewInvitation>(`/review-invitations/${encodeURIComponent(publicId)}`, {
+    method: "POST",
+    body: { rating, comment: comment?.trim() || null },
+  });
 }
 
 export function updateProfile(payload: { name: string; email?: string; password?: string }) {

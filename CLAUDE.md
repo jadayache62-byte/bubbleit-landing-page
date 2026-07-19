@@ -16,6 +16,8 @@ The customer web security policy is request-nonced in `proxy.ts`. `CSP_MODE` def
 
 Customer notification push is optional and session/device scoped. Never ask for permission before an explicit customer action. A push payload may carry only a numeric notification ID and `/account?notification={id}`; the service worker must reconstruct that internal entry point and the authenticated backend resolve endpoint must reauthorize the notification and target before navigation. `NEXT_PUBLIC_WEB_PUSH_PUBLIC_KEY` and a live backend adapter remain external release inputs. Important transactional WhatsApp/SMS remains the server-owned fallback.
 
+Post-service reviews open only from the backend-resolved opaque `/review/{invitation}` path. The page must remain `noindex`, fetch and submit through the same-origin authenticated BFF, show the star selector before optional notes, and preserve loading, sign-in, expiry, error, submitting, and submitted states. Never place customer IDs or numeric booking IDs in review URLs, and never bypass backend ownership, completion, expiry, one-use, or pending-moderation checks.
+
 ## Arabic localization and RTL (MAD-59)
 
 - Derive the initial document language and direction on the server from the locale cookie, and persist explicit language changes immediately. Arabic pages must render with `lang="ar"` and `dir="rtl"` before hydration.

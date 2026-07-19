@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-19 — Direct post-service customer reviews (MAD-71)
+
+- Added a noindex, mobile-first review page opened from an owner-reauthorized opaque notification link.
+- Added native keyboard-accessible star selection, optional 2,000-character notes, skeleton/error/expired/sign-in/submitting/submitted states, and complete English/Arabic RTL copy.
+- Added contract and browser evidence for authenticated one-use submission, WCAG A/AA automation, 320px viewport containment, and pending-moderation confirmation.
+
 ## 2026-07-19 — Mobile time-picker viewport containment (MAD-69)
 
 - Moved quarter-hour option popovers to a document-level portal and clamp them inside the current viewport on every open, scroll, and resize.
