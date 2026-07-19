@@ -15,6 +15,7 @@ test("security headers include transport, permission, isolation, and MIME defens
   assert.match(nextConfig, /geolocation=\(self\)/);
   assert.doesNotMatch(nextConfig, /browsing-topics/);
   assert.match(nextConfig, /X-Content-Type-Options/);
+  assert.doesNotMatch(nextConfig, /X-Frame-Options/);
   assert.match(nextConfig, /poweredByHeader: false/);
 });
 
