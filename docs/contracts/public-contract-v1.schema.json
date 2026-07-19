@@ -97,7 +97,8 @@
         "booking_reminder_2h",
         "refund_status_changed",
         "membership_status_changed",
-        "store_order_status_changed"
+        "store_order_status_changed",
+        "review_requested"
       ]
     },
     "ErrorCode": {

@@ -486,7 +486,24 @@ export type CustomerNotificationType =
   | "booking_reminder_2h"
   | "refund_status_changed"
   | "membership_status_changed"
-  | "store_order_status_changed";
+  | "store_order_status_changed"
+  | "review_requested";
+
+export type CustomerReviewInvitation = {
+  id: string;
+  state: "available" | "submitted" | "expired";
+  expires_at: string;
+  booking_reference: string;
+  service: {
+    name_en: string;
+    name_ar: string;
+  };
+  review: {
+    rating: number;
+    comment: string;
+    status: "pending" | "approved" | "rejected";
+  } | null;
+};
 
 export type CustomerNotification = {
   id: number;
