@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 
 const port = 31000 + (process.pid % 1000);
 const origin = `http://127.0.0.1:${port}`;
+const phone = `+97455${String(process.pid % 1_000_000).padStart(6, "0")}`;
 const serverEnv = { ...process.env };
 delete serverEnv.CUSTOMER_API_BASE;
 delete serverEnv.NEXT_PUBLIC_API_BASE;
@@ -47,20 +48,20 @@ try {
 
   const crossSite = await post(
     "auth/check-phone",
-    { phone: "+97455559999" },
+    { phone },
     undefined,
     "https://attacker.example",
   );
   assert.equal(crossSite.status, 403);
 
   const otp = await post("auth/request-otp", {
-    phone: "+97455559999",
+    phone,
     purpose: "registration",
   });
   assert.equal(otp.status, 200);
 
   const registration = await post("auth/register", {
-    phone: "+97455559999",
+    phone,
     name: "MAD-54 BFF",
     password: "oldpass123",
     code: "123456",
@@ -100,7 +101,7 @@ try {
   assert.equal(revoked.headers.get("x-session-ended"), "true");
 
   const login = await post("auth/login", {
-    phone: "+97455559999",
+    phone,
     password: "newpass123",
     device_name: "BFF integration test",
   });

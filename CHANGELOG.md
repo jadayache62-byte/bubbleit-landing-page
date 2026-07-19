@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-19 — Hosted web security policy cleanup (MAD-64)
+
+- Removed the unsupported `browsing-topics` Permissions-Policy feature that generated browser warnings.
+- Limited `upgrade-insecure-requests` to enforced CSP, avoiding a misleading no-op directive during report-only observation while preserving it for release enforcement.
+- Added executable policy-mode regression coverage and retained the bounded CSP reporting endpoint.
+
 ## 2026-07-18 — Reschedule modal matches booking-flow time selection
 
 - Replaced the account reschedule modal's date input and flat slot list with the booking wizard's day-pill strip, availability skeleton grid, and hour-pill `HourSlotPicker` quarter-hour popover.
