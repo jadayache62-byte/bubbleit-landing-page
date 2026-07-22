@@ -76,7 +76,16 @@
     },
     "VehicleType": {
       "type": "string",
-      "enum": ["sedan", "suv", "truck", "van", "caravan", "jet_ski", "jet_boat", "other"]
+      "enum": [
+        "sedan",
+        "suv",
+        "truck",
+        "van",
+        "caravan",
+        "jet_ski",
+        "jet_boat",
+        "other"
+      ]
     },
     "CustomerMembershipStatus": {
       "type": "string",
@@ -140,7 +149,12 @@
     },
     "PaymentState": {
       "type": "object",
-      "required": ["status", "captured", "reconciliation_reason", "checkout_url"],
+      "required": [
+        "status",
+        "captured",
+        "reconciliation_reason",
+        "checkout_url"
+      ],
       "properties": {
         "status": { "$ref": "#/$defs/PaymentStateStatus" },
         "captured": { "type": "boolean" },
@@ -151,7 +165,16 @@
     },
     "CustomerNotification": {
       "type": "object",
-      "required": ["id", "type", "title", "body", "locale", "is_read", "deep_link", "created_at"],
+      "required": [
+        "id",
+        "type",
+        "title",
+        "body",
+        "locale",
+        "is_read",
+        "deep_link",
+        "created_at"
+      ],
       "properties": {
         "id": { "type": "integer" },
         "type": { "$ref": "#/$defs/CustomerNotificationType" },
@@ -159,7 +182,10 @@
         "body": { "type": "string" },
         "locale": { "enum": ["en", "ar"] },
         "is_read": { "type": "boolean" },
-        "deep_link": { "type": "string", "pattern": "^/account\\?notification=[0-9]+$" },
+        "deep_link": {
+          "type": "string",
+          "pattern": "^/account\\?notification=[0-9]+$"
+        },
         "created_at": { "type": ["string", "null"] }
       },
       "additionalProperties": false
@@ -230,6 +256,99 @@
       },
       "additionalProperties": false
     },
+    "BookingFinancialLifecycle": {
+      "type": "object",
+      "required": ["fulfillment", "refund", "recognition"],
+      "properties": {
+        "fulfillment": {
+          "type": "object",
+          "required": ["status", "occurred_at", "effective_date"],
+          "properties": {
+            "status": { "enum": ["pending", "fulfilled"] },
+            "occurred_at": { "type": ["string", "null"] },
+            "effective_date": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        },
+        "refund": {
+          "type": "object",
+          "required": [
+            "status",
+            "cash_refunded_minor",
+            "customer_advance_reversed_minor",
+            "recognized_revenue_reversed_minor"
+          ],
+          "properties": {
+            "status": { "type": "string" },
+            "cash_refunded_minor": { "type": "integer", "minimum": 0 },
+            "customer_advance_reversed_minor": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "recognized_revenue_reversed_minor": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "recognition": {
+          "type": "object",
+          "required": [
+            "status",
+            "currency",
+            "cash_consideration_minor",
+            "membership_consideration_minor",
+            "recognized_minor",
+            "reconciled"
+          ],
+          "properties": {
+            "status": { "enum": ["pending", "reconciled", "incomplete"] },
+            "currency": { "const": "QAR" },
+            "cash_consideration_minor": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "membership_consideration_minor": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "recognized_minor": { "type": ["integer", "null"], "minimum": 0 },
+            "reconciled": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "StoreFinancialLifecycle": {
+      "type": "object",
+      "required": ["fulfillment", "recognition"],
+      "properties": {
+        "fulfillment": {
+          "type": "object",
+          "required": ["status", "occurred_at", "effective_date"],
+          "properties": {
+            "status": { "enum": ["pending", "fulfilled"] },
+            "occurred_at": { "type": ["string", "null"] },
+            "effective_date": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        },
+        "recognition": {
+          "type": "object",
+          "required": ["status", "currency", "recognized_minor", "reconciled"],
+          "properties": {
+            "status": { "enum": ["pending", "reconciled", "incomplete"] },
+            "currency": { "const": "QAR" },
+            "recognized_minor": { "type": ["integer", "null"], "minimum": 0 },
+            "reconciled": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "Booking": {
       "type": "object",
       "required": [
@@ -247,6 +366,7 @@
         "time_range_label",
         "payment_method",
         "payment",
+        "financial_lifecycle",
         "membership_applied",
         "membership_reserved",
         "total",
@@ -278,6 +398,7 @@
         "time_range_label": { "type": ["string", "null"] },
         "payment_method": { "$ref": "#/$defs/PaymentMethod" },
         "payment": { "$ref": "#/$defs/PaymentState" },
+        "financial_lifecycle": { "$ref": "#/$defs/BookingFinancialLifecycle" },
         "membership_applied": { "type": "boolean" },
         "membership_reserved": { "type": "boolean" },
         "total": { "type": "number", "minimum": 0 },
@@ -340,6 +461,7 @@
         "status",
         "payment_status",
         "payment",
+        "financial_lifecycle",
         "accounting_status",
         "pricing",
         "customer_name",
@@ -364,6 +486,7 @@
         "status": { "$ref": "#/$defs/StoreOrderStatus" },
         "payment_status": { "$ref": "#/$defs/StorePaymentStatus" },
         "payment": { "$ref": "#/$defs/PaymentState" },
+        "financial_lifecycle": { "$ref": "#/$defs/StoreFinancialLifecycle" },
         "accounting_status": { "type": "string" },
         "pricing": { "type": "object" },
         "customer_name": { "type": "string" },

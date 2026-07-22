@@ -429,7 +429,7 @@ function EmptyState({
 }
 
 function MembershipCard({ membership }: { membership: CustomerMembership }) {
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   const active = membership.status === "active" && membership.washes_remaining > 0;
   const reconciliationRequired = membership.payment?.status === "reconciliation_required";
   const expiry = membership.expires_at
@@ -444,6 +444,13 @@ function MembershipCard({ membership }: { membership: CustomerMembership }) {
       </div>
       <div className="mt-4 flex items-end justify-between gap-4"><p><span className="text-3xl font-extrabold text-[color:var(--navy)]">{membership.washes_remaining}</span><span className="ms-2 text-sm font-semibold text-[color:var(--muted-foreground)]">{t("washes left")}</span></p>{expiry && <p className="text-xs font-medium text-[color:var(--muted-foreground)]">{t("Expires")} {expiry}</p>}</div>
       {reconciliationRequired && <p role="alert" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t("Payment received after this membership closed. It was not reactivated, and our team is arranging the required refund.")}</p>}
+      {membership.financials && (
+        <dl className="mt-4 grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+          <div className="flex flex-col items-start justify-between gap-1 sm:flex-row sm:items-center sm:gap-4"><dt className="text-[color:var(--muted-foreground)]">{t("Released membership revenue")}</dt><dd className="font-bold" dir="ltr">{formatQar(membership.financials.released_revenue_minor / 100, lang)}</dd></div>
+          <div className="flex flex-col items-start justify-between gap-1 sm:flex-row sm:items-center sm:gap-4"><dt className="text-[color:var(--muted-foreground)]">{t("Remaining deferred balance")}</dt><dd className="font-bold" dir="ltr">{formatQar(membership.financials.remaining_deferred_minor / 100, lang)}</dd></div>
+          {!membership.financials.reconciled && <p role="status" className="mt-1 text-xs font-semibold text-amber-800">{t("Needs reconciliation")}</p>}
+        </dl>
+      )}
       <div className="mt-auto flex flex-col gap-2 pt-5 sm:flex-row">
         {active && <Link href="/book" className="primary-button flex-1 px-4">{t("Book a Wash")}</Link>}
         <Link href="/memberships" className="secondary-button flex-1 px-4">{t(active ? "View plans" : "Renew plan")}</Link>
@@ -532,6 +539,19 @@ function BookingCard({
         <p role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
           {t("Payment received after this booking closed. It was not reinstated, and our team is arranging the required refund.")}
         </p>
+      )}
+
+      {booking.financial_lifecycle && (
+        <section aria-label={t("Financial lifecycle")} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <h4 className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">{t("Financial lifecycle")}</h4>
+          <dl className="mt-3 grid gap-2 text-sm">
+            <div className="flex flex-col items-start justify-between gap-1 sm:flex-row sm:items-center sm:gap-4"><dt>{t("Service fulfillment")}</dt><dd className="font-bold">{t(booking.financial_lifecycle.fulfillment.status === "fulfilled" ? "Completed" : "Pending")}</dd></div>
+            <div className="flex flex-col items-start justify-between gap-1 sm:flex-row sm:items-center sm:gap-4"><dt>{t("Revenue recognition")}</dt><dd className={clsx("font-bold", booking.financial_lifecycle.recognition.reconciled ? "text-emerald-700" : booking.financial_lifecycle.fulfillment.status === "fulfilled" ? "text-amber-800" : "text-slate-600")}>{t(booking.financial_lifecycle.recognition.reconciled ? "Reconciled" : booking.financial_lifecycle.fulfillment.status === "fulfilled" ? "Needs reconciliation" : "Pending")}</dd></div>
+            {booking.financial_lifecycle.recognition.recognized_minor !== null && <div className="flex items-center justify-between gap-4"><dt>{t("Recognized revenue")}</dt><dd className="font-bold" dir="ltr">{formatQar(booking.financial_lifecycle.recognition.recognized_minor / 100, lang)}</dd></div>}
+            {booking.financial_lifecycle.refund.cash_refunded_minor > 0 && <div className="flex items-center justify-between gap-4"><dt>{t("Cash refunded")}</dt><dd className="font-bold" dir="ltr">{formatQar(booking.financial_lifecycle.refund.cash_refunded_minor / 100, lang)}</dd></div>}
+            {booking.financial_lifecycle.refund.recognized_revenue_reversed_minor > 0 && <div className="flex items-center justify-between gap-4"><dt>{t("Recognized revenue reversed")}</dt><dd className="font-bold" dir="ltr">{formatQar(booking.financial_lifecycle.refund.recognized_revenue_reversed_minor / 100, lang)}</dd></div>}
+          </dl>
+        </section>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
