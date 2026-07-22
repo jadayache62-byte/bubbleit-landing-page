@@ -1,5 +1,13 @@
 # Bubble It Landing Page — CLAUDE.md
 
+## Revenue recognition lifecycle (MAD-92)
+
+- Customer booking and membership surfaces display backend-owned financial lifecycle facts only. Never derive recognized/deferred revenue from current catalogue prices, status labels, or browser calculations.
+- A completed booking remains fulfilled after refund. Show recognized revenue, cash refunded, and recognized-revenue reversal as separate localized values; do not imply that a refund erased service delivery.
+- Membership released and remaining deferred QAR values come from the immutable server contract. Missing or incomplete lifecycle data must remain unavailable, never zero.
+- Keep customer presentation concise and non-technical, with English/Arabic RTL support. Do not expose management journal accounts, posting policies, internal fingerprints, or reconciliation internals.
+- Keep docs/contracts/public-contract-v1.schema.json byte-identical with backend and mobile.
+
 ## Durable booking-duration rule
 
 The customer app never calculates operational scheduling duration. It must use

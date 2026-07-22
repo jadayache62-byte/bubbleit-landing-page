@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-22 — Customer financial lifecycle clarity (MAD-92)
+
+- Added localized booking lifecycle summaries that distinguish immutable fulfillment revenue from cash refunds and recognized-revenue reversals.
+- Added membership released-revenue and remaining-deferred-value summaries sourced only from backend financial facts.
+- Updated the shared public API contract and customer types without exposing internal journal data or recalculating accounting values in the browser.
+
 ## 2026-07-19 — Direct post-service customer reviews (MAD-71)
 
 - Added a noindex, mobile-first review page opened from an owner-reauthorized opaque notification link.

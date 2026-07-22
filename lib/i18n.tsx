@@ -309,6 +309,18 @@ const AR: Record<string, string> = {
   "Used up": "مستهلك",
   "Cancelled": "ملغي",
   "Payment under review": "الدفع قيد المراجعة",
+  "Financial lifecycle": "الدورة المالية",
+  "Service fulfillment": "تنفيذ الخدمة",
+  "Completed": "مكتمل",
+  "Pending": "قيد الانتظار",
+  "Revenue recognition": "إثبات الإيراد",
+  "Reconciled": "تمت المطابقة",
+  "Needs reconciliation": "يتطلب المطابقة",
+  "Recognized revenue": "الإيراد المثبت",
+  "Cash refunded": "المبلغ النقدي المسترد",
+  "Recognized revenue reversed": "عكس الإيراد المثبت",
+  "Released membership revenue": "إيراد الاشتراك المحرر",
+  "Remaining deferred balance": "الرصيد المؤجل المتبقي",
   "Payment received after this membership closed. It was not reactivated, and our team is arranging the required refund.":
     "تم استلام الدفعة بعد إغلاق هذا الاشتراك. لم تتم إعادة تفعيله، ويعمل فريقنا على ترتيب الاسترداد المطلوب.",
   "Payment received after this booking closed. It was not reinstated, and our team is arranging the required refund.":
