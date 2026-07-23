@@ -106,6 +106,7 @@ export function Footer() {
 
         <p className="pt-6 text-sm text-white/58">
           © 2026 Bubbleit. {t("All rights reserved.")}
+          powered by <a href="https://madintelligence.ai">madintelligence.ai</a>
         </p>
       </div>
     </footer>
