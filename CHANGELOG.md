@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-23 — Purchase-specific payment returns and Store Orders
+
+- Added a customer Store Orders account section with owner-scoped order, delivery, and payment status.
+- Routed SkipCash returns to the matching booking, membership, or store-order account section and verify the authoritative payment result after the redirect.
+- Removed revenue recognition, deferred balances, accounting status, and accounting codes from customer API contracts and account screens.
+
 ## 2026-07-22 — Customer financial lifecycle clarity (MAD-92)
 
 - Added localized booking lifecycle summaries that distinguish immutable fulfillment revenue from cash refunds and recognized-revenue reversals.

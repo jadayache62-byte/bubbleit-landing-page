@@ -13,6 +13,12 @@ const CART_KEY = "bubbleit.store.cart";
 
 type Cart = Record<string, number>;
 
+const CATEGORY_LABELS: Record<StoreProductInventory["category"], string> = {
+  tools: "Tools",
+  accessories: "Accessories",
+  car_care: "Car care",
+};
+
 function imageFor(product: StoreProductInventory) {
   return (
     product.imageSrc ??
@@ -128,8 +134,7 @@ export function StoreClient() {
 
   const categories = useMemo(
     () => ["All", ...Array.from(new Set(products.map((product) =>
-      product.accounting_code === "STORE-TOOLS" ? "Tools" :
-      product.accounting_code === "STORE-ACCESSORIES" ? "Accessories" : "Car care",
+      CATEGORY_LABELS[product.category],
     )))],
     [products],
   );
@@ -137,8 +142,7 @@ export function StoreClient() {
   const visibleProducts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return products.filter((product) => {
-      const productCategory = product.accounting_code === "STORE-TOOLS" ? "Tools" :
-        product.accounting_code === "STORE-ACCESSORIES" ? "Accessories" : "Car care";
+      const productCategory = CATEGORY_LABELS[product.category];
       return (category === "All" || category === productCategory) &&
         (!normalized || `${product.name} ${product.name_ar ?? ""} ${product.description ?? ""} ${product.description_ar ?? ""}`.toLowerCase().includes(normalized));
     });

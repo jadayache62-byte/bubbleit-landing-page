@@ -22,6 +22,9 @@ test("only a paid server state is presented as payment confirmed", () => {
 
 test("retryable and reconciliation states have distinct recovery behavior", () => {
   assert.equal(bookingPaymentUiState("retryable"), "payment_retryable");
+  assert.equal(bookingPaymentUiState("failed"), "payment_retryable");
+  assert.equal(bookingPaymentUiState("cancelled"), "payment_retryable");
+  assert.equal(bookingPaymentUiState("timed_out"), "payment_retryable");
   assert.equal(canRetryBookingPayment("payment_retryable"), true);
   assert.equal(
     bookingPaymentUiState("reconciliation_required"),
