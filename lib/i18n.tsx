@@ -341,26 +341,28 @@ const AR: Record<string, string> = {
   "Welcome back!": "أهلاً بعودتك!",
   "Choose how you would like to continue.": "اختر كيف تريد المتابعة.",
   "Sign in with password": "تسجيل الدخول بكلمة المرور",
-  "Sign in with SMS code": "تسجيل الدخول برمز عبر الرسائل النصية",
-  "SMS verification code": "رمز التحقق عبر الرسائل النصية",
-  "We sent a 6-digit SMS code. Enter it to sign in.":
-    "أرسلنا رمزاً من 6 أرقام عبر الرسائل النصية. أدخله لتسجيل الدخول.",
+  "Sign in with verification code": "تسجيل الدخول برمز التحقق",
+  "We sent a 6-digit verification code to your phone. Enter it to sign in.":
+    "أرسلنا رمز تحقق من 6 أرقام إلى هاتفك. أدخله لتسجيل الدخول.",
+  "You can request a new code in {seconds} seconds.":
+    "يمكنك طلب رمز جديد خلال {seconds} ثانية.",
+  "You can request a new code now.": "يمكنك طلب رمز جديد الآن.",
+  "Request a new code": "طلب رمز جديد",
   "Create or claim an account": "إنشاء حساب أو استلام حساب",
   "Reset my password": "إعادة تعيين كلمة المرور",
   "Enter your account password.": "أدخل كلمة مرور حسابك.",
-  "Create or claim your account after SMS verification.":
-    "أنشئ حسابك أو استلمه بعد التحقق عبر الرسائل النصية.",
+  "Create or claim your account after phone verification.":
+    "أنشئ حسابك أو استلمه بعد التحقق من الهاتف.",
   "Password": "كلمة المرور",
   "Forgot password?": "نسيت كلمة المرور؟",
   "New number — let's set up your account.": "رقم جديد — لننشئ حسابك.",
   "Add a password for your account": "أضف كلمة مرور لحسابك",
-  "Verify by SMS": "تحقق عبر الرسائل النصية",
   "Password must be at least 6 characters.": "كلمة المرور 6 أحرف على الأقل.",
-  "We sent a 6-digit code by SMS — enter it to finish.":
-    "أرسلنا رمزاً من 6 أرقام عبر الرسائل النصية — أدخله للإكمال.",
+  "We sent a 6-digit verification code to your phone. Enter it to finish.":
+    "أرسلنا رمز تحقق من 6 أرقام إلى هاتفك. أدخله للإكمال.",
   "Create account": "إنشاء الحساب",
-  "We sent a 6-digit SMS code. Enter it and choose a new password.":
-    "أرسلنا رمزاً من 6 أرقام عبر الرسائل النصية. أدخله واختر كلمة مرور جديدة.",
+  "We sent a 6-digit verification code to your phone. Enter it and choose a new password.":
+    "أرسلنا رمز تحقق من 6 أرقام إلى هاتفك. أدخله واختر كلمة مرور جديدة.",
   "New password": "كلمة مرور جديدة",
   "Sign in to confirm your booking.": "سجّل الدخول لتأكيد حجزك.",
   "Redirecting to secure payment…": "جاري التحويل إلى الدفع الآمن…",

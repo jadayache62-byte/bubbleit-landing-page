@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-07-23 — OTP resend countdown
+
+- Added a localized 30-second resend countdown to registration, direct OTP sign-in, and password recovery.
+- Kept the resend action disabled during the cooldown and explicitly tells the customer when a new code can be requested.
+- Replaced obsolete provider-specific SMS/Twilio copy with a transport-neutral verification-code contract that remains accurate for WhatsApp or Telnyx.
+- Added browser coverage for the disabled countdown and enabled post-timeout state without contacting an OTP provider.
+
 ## 2026-07-23 — Purchase-specific payment returns and Store Orders
 
 - Added a customer Store Orders account section with owner-scoped order, delivery, and payment status.
