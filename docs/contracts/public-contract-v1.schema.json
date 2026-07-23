@@ -166,6 +166,27 @@
       },
       "additionalProperties": false
     },
+    "RefundState": {
+      "type": "object",
+      "required": ["id", "status", "status_label"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "status": {
+          "enum": [
+            "submitted",
+            "under_review",
+            "approved",
+            "processing",
+            "retryable",
+            "quarantined",
+            "rejected",
+            "processed"
+          ]
+        },
+        "status_label": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "CustomerNotification": {
       "type": "object",
       "required": [
@@ -307,6 +328,12 @@
         "time_range_label": { "type": ["string", "null"] },
         "payment_method": { "$ref": "#/$defs/PaymentMethod" },
         "payment": { "$ref": "#/$defs/PaymentState" },
+        "refund": {
+          "oneOf": [
+            { "$ref": "#/$defs/RefundState" },
+            { "type": "null" }
+          ]
+        },
         "membership_applied": { "type": "boolean" },
         "membership_reserved": { "type": "boolean" },
         "total": { "type": "number", "minimum": 0 },
@@ -398,6 +425,12 @@
         "payment_status_label": { "type": "string" },
         "payment_method": { "type": "string" },
         "payment": { "$ref": "#/$defs/PaymentState" },
+        "refund": {
+          "oneOf": [
+            { "$ref": "#/$defs/RefundState" },
+            { "type": "null" }
+          ]
+        },
         "pricing": { "type": "object" },
         "delivery_area": { "type": "string" },
         "delivery_details": { "type": ["string", "null"] },

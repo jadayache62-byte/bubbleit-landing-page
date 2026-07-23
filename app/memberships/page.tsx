@@ -149,7 +149,11 @@ export default function MembershipsPage() {
       const linkedAttempt = { ...attempt, membershipId: result.id };
       saveMembershipAttempt(linkedAttempt);
       const payment = await initializeMembershipPayment(result.id, linkedAttempt.paymentKey);
-      window.location.assign(payment.checkout_url);
+      if (payment.checkout_url) {
+        window.location.assign(payment.checkout_url);
+      } else {
+        refreshMine();
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("Something went wrong. Please try again."));
     } finally {
@@ -168,7 +172,11 @@ export default function MembershipsPage() {
         : { ...saved, membershipId: membership.id, paymentKey: randomAttemptKey("membership:payment") };
       saveMembershipAttempt(attempt);
       const payment = await initializeMembershipPayment(membership.id, attempt.paymentKey);
-      window.location.assign(payment.checkout_url);
+      if (payment.checkout_url) {
+        window.location.assign(payment.checkout_url);
+      } else {
+        refreshMine();
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("Something went wrong. Please try again."));
       setBusy(false);

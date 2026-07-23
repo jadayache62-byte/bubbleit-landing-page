@@ -20,15 +20,35 @@ test("account owns authenticated store order history", () => {
 
 test("payment return verifies authoritative state before showing an outcome", () => {
   assert.match(account, /if \(!parameters\.has\("payment"\)\) return/);
-  assert.match(account, /await getBooking\(bookingId\)/);
-  assert.match(account, /await getStoreOrder\(orderId\)/);
-  assert.match(account, /await listMemberships\(\)/);
+  assert.match(account, /await reconcileBookingPayment\(bookingId\)/);
+  assert.match(account, /await reconcileStoreOrderPayment\(orderId\)/);
+  assert.match(account, /await reconcileMembershipPayment\(membershipId\)/);
   assert.match(account, /attempt < 8/);
   assert.match(account, /Payment successful\. Your purchase is confirmed\./);
   assert.match(account, /Payment failed\. Your purchase is saved and you can try again\./);
   assert.match(mock, /checkout_url: `\/account\?tab=orders&payment=review&order=\$\{order\.id\}`/);
   assert.match(mock, /`\/book\/checkout\?booking=\$\{id\}`/);
   assert.match(demoCheckout, /\/account\?tab=bookings&payment=success&booking=\$\{bookingId\}/);
+});
+
+test("payment retry reconciles the original provider attempt before redirecting again", () => {
+  assert.match(api, /export function reconcileBookingPayment\(bookingId: number\)/);
+  assert.match(api, /export function reconcileStoreOrderPayment\(orderId: number\)/);
+  assert.match(account, /const payment = await initializeBookingPayment/);
+  assert.match(account, /const checkoutUrl = usableCheckoutUrl\(payment\.checkout_url\)/);
+  assert.match(account, /const payment = await payStoreOrder/);
+  assert.match(account, /const refreshed = await reconcileBookingPayment\(booking\.id\)/);
+  assert.match(account, /const refreshed = await reconcileStoreOrderPayment\(order\.id\)/);
+});
+
+test("account supports customer store cancellation and exposes refund progress", () => {
+  assert.match(api, /export function cancelStoreOrder\(orderId: number/);
+  assert.match(account, /async function handleCancelStoreOrder/);
+  assert.match(account, /t\("Cancel order"\)/);
+  assert.match(account, /order\.refund\.status_label/);
+  assert.match(account, /booking\.refund\.status_label/);
+  assert.match(mock, /storeCancelMatch/);
+  assert.match(mock, /Your refund request was submitted/);
 });
 
 test("mock customer order responses strip ownership internals", () => {
