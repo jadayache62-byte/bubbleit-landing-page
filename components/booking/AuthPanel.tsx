@@ -4,7 +4,7 @@
 // whether an account or password exists. The customer chooses password sign-in,
 // registration/account claim, or OTP-backed recovery.
 
-import { useState } from "react";
+import { useEffect, useState, type MouseEventHandler } from "react";
 import clsx from "clsx";
 import {
   ApiError,
@@ -19,6 +19,8 @@ import type { Customer } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
 
 type Stage = "phone" | "method" | "password" | "otp_login" | "register" | "register_code" | "forgot";
+
+const OTP_RESEND_DELAY_SECONDS = 30;
 
 function normalizeQatarPhone(value: string) {
   let digits = value.replace(/\D/g, "");
@@ -51,7 +53,7 @@ export function AuthPanel({
   onAuthed: (customer: Customer) => void;
   onClose?: () => void;
 }) {
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   const [stage, setStage] = useState<Stage>("phone");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -61,6 +63,33 @@ export function AuthPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
+  const [resendSeconds, setResendSeconds] = useState(0);
+
+  useEffect(() => {
+    if (resendAvailableAt === null) return;
+
+    const updateCountdown = () => {
+      const remaining = Math.max(0, Math.ceil((resendAvailableAt - Date.now()) / 1000));
+      setResendSeconds(remaining);
+      if (remaining === 0) setResendAvailableAt(null);
+    };
+
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 250);
+
+    return () => window.clearInterval(timer);
+  }, [resendAvailableAt]);
+
+  function beginResendCooldown() {
+    setResendSeconds(OTP_RESEND_DELAY_SECONDS);
+    setResendAvailableAt(Date.now() + OTP_RESEND_DELAY_SECONDS * 1000);
+  }
+
+  function resetResendCooldown() {
+    setResendAvailableAt(null);
+    setResendSeconds(0);
+  }
 
   function fail(e: unknown) {
     setError(e instanceof ApiError ? e.message : t("Something went wrong. Please try again."));
@@ -99,6 +128,7 @@ export function AuthPanel({
     setError(null);
     try {
       await requestOtp(normalizeQatarPhone(phone), "registration");
+      beginResendCooldown();
       setStage("register_code");
     } catch (e) {
       fail(e);
@@ -130,6 +160,7 @@ export function AuthPanel({
     setError(null);
     try {
       await requestOtp(normalizeQatarPhone(phone), "authentication");
+      beginResendCooldown();
       setCode("");
       setStage("forgot");
     } catch (e) {
@@ -144,6 +175,7 @@ export function AuthPanel({
     setError(null);
     try {
       await requestOtp(normalizeQatarPhone(phone), "authentication");
+      beginResendCooldown();
       setCode("");
       setStage("otp_login");
     } catch (e) {
@@ -187,6 +219,37 @@ export function AuthPanel({
     }
   }
 
+  function resendControl(onResend: MouseEventHandler<HTMLButtonElement>) {
+    const waiting = resendSeconds > 0;
+    const formattedSeconds = new Intl.NumberFormat(lang === "ar" ? "ar-QA" : "en-QA").format(
+      resendSeconds,
+    );
+
+    return (
+      <div className="rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3">
+        <p
+          {...(!waiting ? { role: "status" as const } : {})}
+          className="text-xs font-medium text-[color:var(--muted-foreground)]"
+        >
+          {waiting
+            ? t("You can request a new code in {seconds} seconds.").replace(
+                "{seconds}",
+                formattedSeconds,
+              )
+            : t("You can request a new code now.")}
+        </p>
+        <button
+          type="button"
+          className="mt-2 min-h-11 cursor-pointer rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-[color:var(--blue)] transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={busy || waiting}
+          onClick={onResend}
+        >
+          {busy ? t("Sending…") : t("Request a new code")}
+        </button>
+      </div>
+    );
+  }
+
   const phoneChip = (
     <div className="flex items-center gap-2">
       <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700" dir="ltr">
@@ -201,6 +264,7 @@ export function AuthPanel({
           setPassword("");
           setCode("");
           setError(null);
+          resetResendCooldown();
         }}
       >
         {t("Change phone number")}
@@ -276,7 +340,7 @@ export function AuthPanel({
               disabled={busy}
               onClick={startOtpLogin}
             >
-              {busy ? t("Sending…") : t("Sign in with SMS code")}
+              {busy ? t("Sending…") : t("Sign in with verification code")}
             </button>
             <button
               type="button"
@@ -298,7 +362,7 @@ export function AuthPanel({
               {t("Sign in with password")}
             </button>
             <button type="button" className="secondary-button" disabled={busy} onClick={startOtpLogin}>
-              {busy ? t("Sending…") : t("Sign in with SMS code")}
+              {busy ? t("Sending…") : t("Sign in with verification code")}
             </button>
             <button type="button" className="secondary-button" onClick={() => setStage("register")}>
               {t("Create or claim an account")}
@@ -318,7 +382,7 @@ export function AuthPanel({
           <>
             {phoneChip}
             <p className="text-sm font-semibold text-[color:var(--blue)]">
-              {t("Create or claim your account after SMS verification.")}
+              {t("Create or claim your account after phone verification.")}
             </p>
             <input
               className="wizard-input"
@@ -339,7 +403,7 @@ export function AuthPanel({
               disabled={busy || !name.trim() || password.length < 6}
               onClick={sendRegisterCode}
             >
-              {busy ? t("Sending…") : t("Verify by SMS")}
+              {busy ? t("Sending…") : t("Verify your phone")}
             </button>
             {password.length > 0 && password.length < 6 && (
               <p className="text-xs text-[color:var(--muted-foreground)]">
@@ -353,7 +417,7 @@ export function AuthPanel({
           <>
             {phoneChip}
             <p className="text-sm text-[color:var(--muted-foreground)]">
-              {t("We sent a 6-digit code by SMS — enter it to finish.")}
+              {t("We sent a 6-digit verification code to your phone. Enter it to finish.")}
             </p>
             <input
               className="wizard-input tracking-[0.4em]"
@@ -373,13 +437,7 @@ export function AuthPanel({
             >
               {busy ? t("Verifying…") : t("Create account")}
             </button>
-            <button
-              type="button"
-              className="cursor-pointer self-start border-none bg-transparent p-0 text-xs font-semibold text-[color:var(--blue)] hover:underline"
-              onClick={sendRegisterCode}
-            >
-              {t("Resend code")}
-            </button>
+            {resendControl(sendRegisterCode)}
           </>
         )}
 
@@ -387,11 +445,11 @@ export function AuthPanel({
           <>
             {phoneChip}
             <p className="text-sm text-[color:var(--muted-foreground)]">
-              {t("We sent a 6-digit SMS code. Enter it to sign in.")}
+              {t("We sent a 6-digit verification code to your phone. Enter it to sign in.")}
             </p>
             <input
               className="wizard-input tracking-[0.4em]"
-              aria-label={t("SMS verification code")}
+              aria-label={t("Verification code")}
               placeholder="••••••"
               inputMode="numeric"
               autoComplete="one-time-code"
@@ -410,14 +468,7 @@ export function AuthPanel({
             >
               {busy ? t("Verifying…") : t("Sign in")}
             </button>
-            <button
-              type="button"
-              className="cursor-pointer self-start border-none bg-transparent p-0 text-xs font-semibold text-[color:var(--blue)] hover:underline"
-              disabled={busy}
-              onClick={startOtpLogin}
-            >
-              {t("Resend code")}
-            </button>
+            {resendControl(startOtpLogin)}
           </>
         )}
 
@@ -425,7 +476,7 @@ export function AuthPanel({
           <>
             {phoneChip}
             <p className="text-sm text-[color:var(--muted-foreground)]">
-              {t("We sent a 6-digit SMS code. Enter it and choose a new password.")}
+              {t("We sent a 6-digit verification code to your phone. Enter it and choose a new password.")}
             </p>
             <input
               className="wizard-input tracking-[0.4em]"
@@ -452,6 +503,7 @@ export function AuthPanel({
             >
               {busy ? t("Verifying…") : t("Sign in")}
             </button>
+            {resendControl(startForgot)}
           </>
         )}
 
