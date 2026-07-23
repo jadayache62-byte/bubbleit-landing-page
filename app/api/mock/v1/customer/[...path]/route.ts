@@ -110,7 +110,9 @@ function mockPayment(subject: "BKG" | "MEM" | "STO", id: number) {
     attempt_id: sequence,
     merchant_reference: merchantReference,
     payment_reference: `sim_${subject.toLowerCase()}_${id}`,
-    checkout_url: `/book/checkout?payment=${encodeURIComponent(merchantReference)}`,
+    checkout_url: subject === "BKG"
+      ? `/book/checkout?booking=${id}`
+      : `/account?tab=${subject === "MEM" ? "memberships" : "orders"}&payment=review&${subject === "MEM" ? "membership" : "order"}=${id}`,
     status: "ready" as const,
   };
   paymentAttempts.set(key, payment);
@@ -384,6 +386,28 @@ async function handle(req: NextRequest, segments: string[]) {
     return envelope(paginated(store.storeProducts));
   }
 
+  if (method === "GET" && path === "store/orders") {
+    const linkedCustomer = authCustomer(req);
+    if (!linkedCustomer) return fail(401, "Unauthenticated.");
+    return envelope(paginated(
+      store.storeOrders
+        .filter((order) => order.customer_id === linkedCustomer.id)
+        .map(({ customer_id: _customerId, ...order }) => order),
+    ));
+  }
+
+  const storeOrderMatch = path.match(/^store\/orders\/(\d+)$/);
+  if (method === "GET" && storeOrderMatch) {
+    const linkedCustomer = authCustomer(req);
+    if (!linkedCustomer) return fail(401, "Unauthenticated.");
+    const order = store.storeOrders.find(
+      (item) => item.id === Number(storeOrderMatch[1]) && item.customer_id === linkedCustomer.id,
+    );
+    if (!order) return fail(404, "Store order not found.");
+    const { customer_id: _customerId, ...customerOrder } = order;
+    return envelope(customerOrder);
+  }
+
   if (method === "POST" && path === "store/orders") {
     const linkedCustomer = authCustomer(req);
     if (!linkedCustomer) return fail(401, "Unauthenticated.");
@@ -430,7 +454,6 @@ async function handle(req: NextRequest, segments: string[]) {
         quantity,
         unit_price: product.price,
         line_total: product.price * quantity,
-        accounting_code: product.accounting_code,
       });
     }
 
@@ -455,15 +478,13 @@ async function handle(req: NextRequest, segments: string[]) {
     const subtotal = pricing.subtotal_minor / 100;
     const order: StoreOrder = {
       id,
-      customer_id: linkedCustomer.id,
       reference: `SO-${String(id).padStart(5, "0")}`,
       status: "pending_payment",
+      status_label: "Pending payment",
       payment_status: "unpaid",
+      payment_status_label: "Unpaid",
       payment_method: "online",
-      accounting_status: "pending_sync" as const,
       pricing,
-      customer_name: customerName,
-      customer_phone: customerPhone,
       delivery_area: deliveryArea,
       delivery_details: deliveryDetails,
       building_number: buildingNumber,
@@ -474,12 +495,14 @@ async function handle(req: NextRequest, segments: string[]) {
       service_area: { version: SERVICE_AREA_VERSION, eligible: true },
       subtotal,
       delivery_fee: pricing.delivery_fee_minor / 100,
+      discount_total: 0,
       total: pricing.total_minor / 100,
+      notes: String(body.notes ?? "").trim() || null,
       lines: orderLines,
       expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       created_at: new Date().toISOString(),
-    };
-    store.storeOrders.push(order);
+    } satisfies StoreOrder;
+    store.storeOrders.push({ ...order, customer_id: linkedCustomer.id } as StoreOrder & { customer_id: number });
 
     return envelope(order, { status: 201, message: "Store order received." });
   }
@@ -489,7 +512,9 @@ async function handle(req: NextRequest, segments: string[]) {
     const linkedCustomer = authCustomer(req);
     if (!linkedCustomer) return fail(401, "Unauthenticated.");
 
-    const order = store.storeOrders.find((item) => item.id === Number(storePayMatch[1]));
+    const order = store.storeOrders.find((item) => item.id === Number(storePayMatch[1])) as
+      | (StoreOrder & { customer_id: number })
+      | undefined;
     if (!order || order.customer_id !== linkedCustomer.id) {
       return fail(404, "Store order not found.");
     }
@@ -498,8 +523,14 @@ async function handle(req: NextRequest, segments: string[]) {
       return fail(422, "This store order cannot be paid.");
     }
 
-    order.payment_status = "pending";
-    return envelope(mockPayment("STO", order.id));
+    order.payment_status = "paid";
+    order.payment_status_label = "Paid";
+    order.status = "confirmed";
+    order.status_label = "Confirmed";
+    return envelope({
+      ...mockPayment("STO", order.id),
+      checkout_url: `/account?tab=orders&payment=review&order=${order.id}`,
+    });
   }
 
   // ── Availability ──
@@ -879,6 +910,12 @@ async function handle(req: NextRequest, segments: string[]) {
     );
     if (!membership) return fail(404, "Membership not found.");
     if (membership.status !== "pending_payment") return fail(422, "This membership is not awaiting payment.");
+    const activatedAt = new Date();
+    membership.status = "active";
+    membership.activated_at = activatedAt.toISOString();
+    membership.expires_at = new Date(
+      activatedAt.getTime() + membership.plan.validity_days * 24 * 60 * 60 * 1000,
+    ).toISOString();
     return envelope(mockPayment("MEM", membership.id));
   }
 

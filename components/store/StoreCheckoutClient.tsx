@@ -78,7 +78,8 @@ function readPendingCheckout(): PendingCheckout | null {
     if (!raw) return null;
 
     const pending = JSON.parse(raw) as Partial<PendingCheckout>;
-    const customerId = pending.customerId ?? pending.order?.customer_id;
+    const legacyOrder = pending.order as (Partial<StoreOrder> & { customer_id?: number }) | undefined;
+    const customerId = pending.customerId ?? legacyOrder?.customer_id;
     if (
       !pending ||
       typeof pending !== "object" ||
@@ -256,7 +257,7 @@ export function StoreCheckoutClient() {
       setBuildingNumber(pending.order.building_number ?? "");
       setZoneNumber(pending.order.zone_number ?? "");
       setStreetNumber(pending.order.street_number ?? "");
-      setAddressDetails(pending.order.delivery_details);
+      setAddressDetails(pending.order.delivery_details ?? "");
       setStep("review");
       if (
         typeof pending.order.latitude === "number" &&
@@ -418,14 +419,11 @@ export function StoreCheckoutClient() {
     );
   }
 
-  function savePendingCheckout(order: StoreOrder, attempt: CheckoutAttempt) {
-    if (typeof order.customer_id !== "number") {
-      throw new Error("The store order response is missing its customer owner.");
-    }
+  function savePendingCheckout(order: StoreOrder, attempt: CheckoutAttempt, customerId: number) {
     const next = {
       order,
       cart,
-      customerId: order.customer_id,
+      customerId,
       orderKey: attempt.orderKey,
       paymentKey: attempt.paymentKey,
     };
@@ -553,7 +551,7 @@ export function StoreCheckoutClient() {
       ) {
         throw new Error("The created order does not match the price you confirmed.");
       }
-      const checkout = savePendingCheckout(order, attempt);
+      const checkout = savePendingCheckout(order, attempt, customer.id);
 
       if (isCompletedOrder(order)) {
         completeOrder(order);

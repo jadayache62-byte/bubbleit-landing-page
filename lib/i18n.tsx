@@ -454,6 +454,7 @@ const AR: Record<string, string> = {
   "Membership — no payment required": "الاشتراك — لا يلزم دفع",
   "Most popular": "الأكثر طلباً",
   "My memberships": "اشتراكاتي",
+  "My store orders": "طلبات المتجر",
   "My vehicles": "مركباتي",
   "New booking": "حجز جديد",
   "New location": "موقع جديد",
@@ -463,6 +464,7 @@ const AR: Record<string, string> = {
     "التالي: اختر سيارة محفوظة أو أدخل رقم اللوحة.",
   "No extra time": "لا وقت إضافي",
   "No memberships yet": "لا توجد اشتراكات بعد",
+  "No store orders yet": "لا توجد طلبات متجر بعد",
   "No products selected": "لم يتم اختيار منتجات",
   "No saved locations yet": "لا توجد مواقع محفوظة بعد",
   "No upcoming wash": "لا يوجد موعد غسيل قادم",
@@ -471,6 +473,22 @@ const AR: Record<string, string> = {
   "Optional add-ons": "إضافات اختيارية",
   "Out of stock": "نفد المخزون",
   "Overview": "نظرة عامة",
+  "Orders": "الطلبات",
+  "Partially refunded": "مسترد جزئياً",
+  "Payment cancelled": "تم إلغاء الدفع",
+  "Payment failed": "فشل الدفع",
+  "Payment pending": "الدفع قيد الانتظار",
+  "Payment successful. Your purchase is confirmed.": "تم الدفع بنجاح وتأكيد طلبك.",
+  "Payment failed. Your purchase is saved and you can try again.": "فشل الدفع. طلبك محفوظ ويمكنك المحاولة مرة أخرى.",
+  "Payment was cancelled. Your purchase has not been charged.": "تم إلغاء الدفع ولم يتم خصم المبلغ من طلبك.",
+  "Payment timed out. Check the status below before trying again.": "انتهت مهلة الدفع. تحقق من الحالة أدناه قبل المحاولة مرة أخرى.",
+  "Payment is under review. We will update this purchase once it is confirmed.": "الدفع قيد المراجعة. سنحدّث الطلب بعد تأكيده.",
+  "Payment is processing. This page will update when confirmation arrives.": "الدفع قيد المعالجة. ستُحدّث هذه الصفحة عند وصول التأكيد.",
+  "This payment was partially refunded.": "تم استرداد جزء من هذه الدفعة.",
+  "This payment was refunded.": "تم استرداد هذه الدفعة.",
+  "We could not verify the payment yet. Check the purchase status below before trying again.": "تعذّر التحقق من الدفع حتى الآن. راجع حالة الطلب أدناه قبل المحاولة مرة أخرى.",
+  "Payment timed out": "انتهت مهلة الدفع",
+  "Refunded": "مسترد",
   "Payment is still unavailable. Your booking remains saved.":
     "لا يزال الدفع غير متاح. حجزك محفوظ.",
   "Pick one and continue without entering the Blue plate again.":
@@ -488,6 +506,8 @@ const AR: Record<string, string> = {
     "راجع مدة الخدمة المعتمدة قبل التأكيد.",
   "Review upcoming and previous wash appointments.":
     "راجع مواعيد الغسيل القادمة والسابقة.",
+  "Track product purchases, delivery, and payment status.":
+    "تابع مشتريات المنتجات وحالة التوصيل والدفع.",
   "Review your selection": "راجع اختياراتك",
   "Save": "حفظ",
   "Save changes": "حفظ التغييرات",
@@ -509,6 +529,8 @@ const AR: Record<string, string> = {
   "Service timing changed. Please review the updated time before confirming.":
     "تغيّرت مدة الخدمة. راجع الوقت المحدّث قبل التأكيد.",
   "Shop products": "تسوّق المنتجات",
+  "Shop again": "تسوّق مرة أخرى",
+  "Store order": "طلب متجر",
   "Sign in to manage locations": "سجّل الدخول لإدارة المواقع",
   "Street": "الشارع",
   "Street No.": "رقم الشارع",
@@ -541,6 +563,10 @@ const AR: Record<string, string> = {
     "انتهت جلستك. سجّل الدخول مجدداً للمتابعة.",
   "Your vehicle is saved automatically when you book.":
     "تُحفظ مركبتك تلقائياً عند الحجز.",
+  "Products you purchase from the Bubbleit store will appear here.":
+    "ستظهر هنا المنتجات التي تشتريها من متجر ببلت.",
+  "Browse the store": "تصفح المتجر",
+  "Delivery": "التوصيل",
   "Zone": "المنطقة",
   "Zone No.": "رقم المنطقة",
   "active membership plans": "اشتراكات فعّالة",

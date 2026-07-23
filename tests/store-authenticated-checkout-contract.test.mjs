@@ -39,8 +39,8 @@ test("saved pending checkout is bound to its server owner", () => {
   assert.match(checkout, /pending\.customerId !== current\.id/);
   assert.match(checkout, /const acceptAuthenticatedCustomer = useCallback/);
   assert.match(checkout, /clearPendingCheckoutStorage\(\)/);
-  assert.match(checkout, /customerId: order\.customer_id/);
-  assert.match(types, /customer_id: number;/);
+  assert.match(checkout, /savePendingCheckout\(order, attempt, customer\.id\)/);
+  assert.doesNotMatch(types, /export type StoreOrder = \{[\s\S]*customer_id:/);
   assert.match(types, /expires_at: string;/);
 });
 

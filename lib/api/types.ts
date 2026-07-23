@@ -146,6 +146,9 @@ export type PaymentState = {
     | "not_required"
     | "ready"
     | "retryable"
+    | "failed"
+    | "cancelled"
+    | "timed_out"
     | "pending"
     | "paid"
     | "partially_refunded"
@@ -154,46 +157,6 @@ export type PaymentState = {
   captured: boolean;
   reconciliation_reason: string | null;
   checkout_url: string | null;
-};
-
-export type FinancialLifecycle = {
-  fulfillment: {
-    status: "pending" | "fulfilled";
-    occurred_at: string | null;
-    effective_date: string | null;
-  };
-  refund: {
-    status: string;
-    cash_refunded_minor: number;
-    customer_advance_reversed_minor: number;
-    recognized_revenue_reversed_minor: number;
-  };
-  recognition: {
-    status: "pending" | "reconciled" | "incomplete";
-    currency: "QAR";
-    cash_consideration_minor: number | null;
-    membership_consideration_minor: number | null;
-    recognized_minor: number | null;
-    reconciled: boolean;
-  };
-};
-
-export type MembershipFinancials = {
-  currency: "QAR";
-  original_purchase_minor: number;
-  promised_washes: number;
-  allocation_version: string;
-  remainder_policy: string;
-  released_washes: number;
-  released_revenue_minor: number;
-  remaining_deferred_minor: number;
-  reconciled: boolean;
-  releases: {
-    booking_id: number;
-    sequence: number;
-    amount_minor: number;
-    effective_date: string;
-  }[];
 };
 
 export type MembershipPlan = {
@@ -221,7 +184,6 @@ export type CustomerMembership = {
   expires_at: string | null;
   plan: MembershipPlan;
   payment?: PaymentState;
-  financials?: MembershipFinancials | null;
 };
 
 export type BookingStatus =
@@ -281,7 +243,6 @@ export type Booking = {
   // Server-authoritative payment state. Checkout URLs are returned only by the
   // separate idempotent payment-initialization command.
   payment?: PaymentState;
-  financial_lifecycle?: FinancialLifecycle;
 };
 
 export type VerifyOtpResult = {
@@ -423,7 +384,7 @@ export type StoreProductInventory = {
   sold_quantity: number;
   reserved_quantity: number;
   available_quantity?: number;
-  accounting_code: string | null;
+  category: "car_care" | "tools" | "accessories";
   is_available?: boolean;
 };
 
@@ -438,7 +399,6 @@ export type StoreOrderLine = {
   unit_price_minor?: number;
   line_total: number;
   line_total_minor?: number;
-  accounting_code: string | null;
 };
 
 export type StorePricingLine = {
@@ -462,8 +422,8 @@ export type StorePricingConfirmation = {
 
 export type StoreOrder = {
   id: number;
-  customer_id: number;
   reference: string;
+  status_label: string;
   status:
     | "pending_payment"
     | "paid"
@@ -474,14 +434,12 @@ export type StoreOrder = {
     | "cancelled"
     | "refunded";
   payment_status?: "unpaid" | "pending" | "paid" | "failed" | "refunded";
+  payment_status_label?: string;
   payment_method?: string;
   payment?: PaymentState;
-  accounting_status: "pending_sync" | "synced" | "sync_failed" | "not_required" | "failed";
   pricing: StorePricingConfirmation;
-  customer_name: string;
-  customer_phone: string;
   delivery_area: string;
-  delivery_details: string;
+  delivery_details: string | null;
   building_number?: string | null;
   zone_number?: string | null;
   street_number?: string | null;
@@ -490,7 +448,9 @@ export type StoreOrder = {
   service_area: ServiceAreaSnapshot;
   subtotal: number;
   delivery_fee: number;
+  discount_total: number;
   total: number;
+  notes: string | null;
   lines: StoreOrderLine[];
   expires_at: string;
   created_at: string;

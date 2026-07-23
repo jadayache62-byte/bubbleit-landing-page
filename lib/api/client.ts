@@ -196,6 +196,14 @@ export function createStoreOrder(payload: CreateStoreOrderPayload, idempotencyKe
   });
 }
 
+export function listStoreOrders() {
+  return request<Paginated<StoreOrder>>("/store/orders").then((result) => result.data);
+}
+
+export function getStoreOrder(orderId: number) {
+  return request<StoreOrder>(`/store/orders/${orderId}`);
+}
+
 export function payStoreOrder(orderId: number, idempotencyKey: string) {
   return request<StoreOrderPayment>(`/store/orders/${orderId}/pay`, {
     method: "POST",

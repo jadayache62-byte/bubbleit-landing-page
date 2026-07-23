@@ -14,10 +14,13 @@ import {
   ApiError,
   cancelBooking,
   deleteVehicle,
+  getBooking,
   getBookingRescheduleOptions,
+  getStoreOrder,
   listAddresses,
   listBookings,
   listMemberships,
+  listStoreOrders,
   listVehicles,
   logout,
   me,
@@ -32,6 +35,8 @@ import type {
   Address,
   Customer,
   CustomerMembership,
+  PaymentState,
+  StoreOrder,
   Vehicle,
   VehicleType,
 } from "@/lib/api/types";
@@ -52,7 +57,52 @@ const STATUS_STYLES: Record<BookingStatus, string> = {
 };
 
 const CANCELLABLE: BookingStatus[] = ["pending_payment", "paid", "assigned"];
-const ACCOUNT_TABS = ["overview", "bookings", "memberships", "vehicles", "notifications"] as const;
+const ACCOUNT_TABS = ["overview", "bookings", "orders", "memberships", "vehicles", "notifications"] as const;
+
+type PaymentFeedback = {
+  tone: "success" | "warning" | "danger" | "info";
+  message: string;
+};
+
+const TERMINAL_PAYMENT_STATES = new Set<PaymentState["status"]>([
+  "paid",
+  "partially_refunded",
+  "refunded",
+  "reconciliation_required",
+  "failed",
+  "retryable",
+  "cancelled",
+  "timed_out",
+]);
+
+function paymentFeedback(status: PaymentState["status"], t: (key: string) => string): PaymentFeedback {
+  if (status === "paid") {
+    return { tone: "success", message: t("Payment successful. Your purchase is confirmed.") };
+  }
+  if (status === "failed" || status === "retryable") {
+    return { tone: "danger", message: t("Payment failed. Your purchase is saved and you can try again.") };
+  }
+  if (status === "cancelled") {
+    return { tone: "warning", message: t("Payment was cancelled. Your purchase has not been charged.") };
+  }
+  if (status === "timed_out") {
+    return { tone: "warning", message: t("Payment timed out. Check the status below before trying again.") };
+  }
+  if (status === "reconciliation_required") {
+    return { tone: "warning", message: t("Payment is under review. We will update this purchase once it is confirmed.") };
+  }
+  if (status === "partially_refunded") {
+    return { tone: "info", message: t("This payment was partially refunded.") };
+  }
+  if (status === "refunded") {
+    return { tone: "info", message: t("This payment was refunded.") };
+  }
+  return { tone: "info", message: t("Payment is processing. This page will update when confirmation arrives.") };
+}
+
+function waitForPaymentUpdate(milliseconds: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
 
 const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
   sedan: "Salon / Sedan",
@@ -73,8 +123,10 @@ export default function AccountPage() {
   const [vehicles, setVehicles] = useState<Vehicle[] | null>(null);
   const [addresses, setAddresses] = useState<Address[] | null>(null);
   const [memberships, setMemberships] = useState<CustomerMembership[] | null>(null);
+  const [orders, setOrders] = useState<StoreOrder[] | null>(null);
   const [tab, setTab] = useState<(typeof ACCOUNT_TABS)[number]>("overview");
   const [error, setError] = useState<string | null>(null);
+  const [paymentNotice, setPaymentNotice] = useState<PaymentFeedback | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const rescheduleDialogRef = useRef<HTMLElement>(null);
   const rescheduleCloseRef = useRef<HTMLButtonElement>(null);
@@ -136,6 +188,7 @@ export default function AccountPage() {
     listVehicles().then(setVehicles).catch(() => setVehicles([]));
     listAddresses().then(setAddresses).catch(() => setAddresses([]));
     listMemberships().then(setMemberships).catch(() => setMemberships([]));
+    listStoreOrders().then(setOrders).catch(() => setOrders([]));
   }, []);
 
   useEffect(() => {
@@ -158,6 +211,8 @@ export default function AccountPage() {
       setVehicles(null);
       setAddresses(null);
       setMemberships(null);
+      setOrders(null);
+      setPaymentNotice(null);
       setSessionEnded(true);
     }
 
@@ -179,6 +234,78 @@ export default function AccountPage() {
     if (ACCOUNT_TABS.includes(requestedTab as (typeof ACCOUNT_TABS)[number])) {
       queueMicrotask(() => setTab(requestedTab as (typeof ACCOUNT_TABS)[number]));
     }
+  }, [customer, t]);
+
+  useEffect(() => {
+    if (!customer) return;
+    const parameters = new URLSearchParams(window.location.search);
+    if (!parameters.has("payment")) return;
+
+    const bookingId = Number.parseInt(parameters.get("booking") ?? "", 10);
+    const orderId = Number.parseInt(parameters.get("order") ?? "", 10);
+    const membershipId = Number.parseInt(parameters.get("membership") ?? "", 10);
+    const hasBooking = Number.isSafeInteger(bookingId) && bookingId > 0;
+    const hasOrder = Number.isSafeInteger(orderId) && orderId > 0;
+    const hasMembership = Number.isSafeInteger(membershipId) && membershipId > 0;
+    if (!hasBooking && !hasOrder && !hasMembership) return;
+
+    let active = true;
+    queueMicrotask(() => {
+      if (active) setPaymentNotice(paymentFeedback("pending", t));
+    });
+
+    async function checkPayment() {
+      try {
+        for (let attempt = 0; active && attempt < 8; attempt += 1) {
+          let state: PaymentState["status"] = "pending";
+
+          if (hasBooking) {
+            const booking = await getBooking(bookingId);
+            if (!active) return;
+            setBookings((current) => current?.map((item) => item.id === booking.id ? booking : item) ?? [booking]);
+            state = booking.payment?.captured || booking.status === "paid"
+              ? "paid"
+              : (booking.payment?.status ?? "pending");
+          } else if (hasOrder) {
+            const order = await getStoreOrder(orderId);
+            if (!active) return;
+            setOrders((current) => current?.map((item) => item.id === order.id ? order : item) ?? [order]);
+            state = order.payment?.captured || order.payment_status === "paid"
+              ? "paid"
+              : (order.payment?.status ?? (order.payment_status === "failed" ? "failed" : "pending"));
+          } else {
+            const currentMemberships = await listMemberships();
+            if (!active) return;
+            setMemberships(currentMemberships);
+            const membership = currentMemberships.find((item) => item.id === membershipId);
+            state = membership?.status === "active"
+              ? "paid"
+              : (membership?.payment?.captured ? "paid" : (membership?.payment?.status ?? "pending"));
+          }
+
+          setPaymentNotice(paymentFeedback(state, t));
+          if (TERMINAL_PAYMENT_STATES.has(state)) {
+            parameters.delete("payment");
+            window.history.replaceState(null, "", `${window.location.pathname}?${parameters.toString()}`);
+            return;
+          }
+          if (attempt < 7) await waitForPaymentUpdate(1500);
+        }
+      } catch (caught) {
+        if (!active) return;
+        setPaymentNotice({
+          tone: "danger",
+          message: caught instanceof ApiError
+            ? caught.message
+            : t("We could not verify the payment yet. Check the purchase status below before trying again."),
+        });
+      }
+    }
+
+    void checkPayment();
+    return () => {
+      active = false;
+    };
   }, [customer, t]);
 
   async function handleCancel(id: number) {
@@ -257,6 +384,8 @@ export default function AccountPage() {
     setVehicles(null);
     setAddresses(null);
     setMemberships(null);
+    setOrders(null);
+    setPaymentNotice(null);
   }
 
   function handleTabKeyDown(
@@ -337,10 +466,25 @@ export default function AccountPage() {
               <Link href="/account/locations" className="commerce-card flex min-h-24 flex-col justify-between p-3 transition hover:border-[color:var(--blue)] sm:p-4"><svg viewBox="0 0 24 24" className="h-5 w-5 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="M12 21s6-5.33 6-11a6 6 0 1 0-12 0c0 5.67 6 11 6 11Z" stroke="currentColor" strokeWidth="1.8"/><circle cx="12" cy="10" r="2" fill="currentColor"/></svg><span className="mt-3 text-xs font-bold text-[color:var(--navy)] sm:text-sm">{t("Manage locations")}</span></Link>
             </section>
 
+            {paymentNotice && (
+              <p
+                role={paymentNotice.tone === "danger" ? "alert" : "status"}
+                aria-live="polite"
+                className={clsx(
+                  "mt-5 rounded-2xl border px-4 py-3 text-sm font-semibold",
+                  paymentNotice.tone === "success" && "border-emerald-200 bg-emerald-50 text-emerald-800",
+                  paymentNotice.tone === "warning" && "border-amber-200 bg-amber-50 text-amber-900",
+                  paymentNotice.tone === "danger" && "border-red-200 bg-red-50 text-red-700",
+                  paymentNotice.tone === "info" && "border-sky-200 bg-sky-50 text-sky-900",
+                )}
+              >
+                {paymentNotice.message}
+              </p>
+            )}
             {error && <p role="alert" className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
 
-            <div className="mt-7 grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-white p-1 sm:grid-cols-5" role="tablist" aria-label={t("Account sections")}>
-              {([["overview", t("Overview")], ["bookings", t("Bookings")], ["memberships", t("Memberships")], ["vehicles", t("Vehicles")], ["notifications", t("Notifications")]] as const).map(([value, label]) => <button key={value} id={`account-tab-${value}`} type="button" role="tab" tabIndex={tab === value ? 0 : -1} aria-selected={tab === value} aria-controls={`account-panel-${value}`} onKeyDown={(event) => handleTabKeyDown(event, value)} onClick={() => setTab(value)} className={clsx("min-h-11 rounded-xl px-3 text-sm font-semibold transition", tab === value ? "bg-[color:var(--navy)] text-white" : "text-[color:var(--muted-foreground)] hover:bg-slate-50 hover:text-[color:var(--navy)]")}>{label}</button>)}
+            <div className="mt-7 grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-white p-1 sm:grid-cols-3 lg:grid-cols-6" role="tablist" aria-label={t("Account sections")}>
+              {([["overview", t("Overview")], ["bookings", t("Bookings")], ["orders", t("Orders")], ["memberships", t("Memberships")], ["vehicles", t("Vehicles")], ["notifications", t("Notifications")]] as const).map(([value, label]) => <button key={value} id={`account-tab-${value}`} type="button" role="tab" tabIndex={tab === value ? 0 : -1} aria-selected={tab === value} aria-controls={`account-panel-${value}`} onKeyDown={(event) => handleTabKeyDown(event, value)} onClick={() => setTab(value)} className={clsx("min-h-11 rounded-xl px-3 text-sm font-semibold transition", tab === value ? "bg-[color:var(--navy)] text-white" : "text-[color:var(--muted-foreground)] hover:bg-slate-50 hover:text-[color:var(--navy)]")}>{label}</button>)}
             </div>
 
             <div key={tab} id={`account-panel-${tab}`} role="tabpanel" aria-labelledby={`account-tab-${tab}`} tabIndex={0} className="checkout-step mt-6 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-4">
@@ -350,6 +494,8 @@ export default function AccountPage() {
               </div>}
 
               {tab === "bookings" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My bookings")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Review upcoming and previous wash appointments.")}</p></div><Link href="/book" className="primary-button shrink-0 px-4">{t("New booking")}</Link></div>{bookings === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : bookings.length === 0 ? <EmptyState title={t("No bookings yet")} copy={t("Your first sparkling-clean car is a few taps away.")} action={t("Book your first wash")} href="/book" /> : <div className="grid gap-4 md:grid-cols-2">{bookings.map((booking) => <BookingCard key={booking.id} booking={booking} onCancel={() => handleCancel(booking.id)} onReschedule={() => loadRescheduleOptions(booking, qatarServiceDate(booking.scheduled_at))} />)}</div>}</section>}
+
+              {tab === "orders" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My store orders")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Track product purchases, delivery, and payment status.")}</p></div><Link href="/store" className="primary-button shrink-0 px-4">{t("Shop products")}</Link></div>{orders === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : orders.length === 0 ? <EmptyState title={t("No store orders yet")} copy={t("Products you purchase from the Bubbleit store will appear here.")} action={t("Browse the store")} href="/store" /> : <div className="grid gap-4 md:grid-cols-2">{orders.map((order) => <StoreOrderCard key={order.id} order={order} />)}</div>}</section>}
 
               {tab === "memberships" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My memberships")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("See remaining washes, validity, and book with a plan.")}</p></div><Link href="/memberships" className="primary-button shrink-0 px-4">{t("Browse plans")}</Link></div>{memberships === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-44 animate-pulse bg-slate-100" />)}</div> : memberships.length === 0 ? <EmptyState title={t("No memberships yet")} copy={t("Save more when you wash regularly.")} action={t("See memberships")} href="/memberships" /> : <div className="grid gap-4 md:grid-cols-2">{memberships.map((membership) => <MembershipCard key={membership.id} membership={membership} />)}</div>}</section>}
 
@@ -428,8 +574,78 @@ function EmptyState({
   );
 }
 
-function MembershipCard({ membership }: { membership: CustomerMembership }) {
+function StoreOrderCard({ order }: { order: StoreOrder }) {
   const { lang, t } = useI18n();
+  const paymentStatus = order.payment?.captured ? "paid" : (order.payment?.status ?? order.payment_status ?? "pending");
+  const paymentLabel = paymentStatus === "paid"
+    ? t("Paid")
+    : paymentStatus === "failed" || paymentStatus === "retryable"
+      ? t("Payment failed")
+      : paymentStatus === "cancelled"
+        ? t("Payment cancelled")
+        : paymentStatus === "timed_out"
+          ? t("Payment timed out")
+          : paymentStatus === "refunded"
+            ? t("Refunded")
+            : paymentStatus === "partially_refunded"
+              ? t("Partially refunded")
+              : paymentStatus === "reconciliation_required"
+                ? t("Payment under review")
+                : t(order.payment_status_label ?? "Payment pending");
+  const paid = paymentStatus === "paid";
+  const failed = ["failed", "retryable", "cancelled", "timed_out"].includes(paymentStatus);
+
+  return (
+    <article id={`store-order-${order.id}`} className="commerce-card flex flex-col gap-4 p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">{t("Store order")}</p>
+          <h3 className="mt-1 font-bold text-[color:var(--navy)]">{order.reference}</h3>
+        </div>
+        <span className={clsx(
+          "rounded-full px-3 py-1 text-xs font-bold",
+          ["delivered", "confirmed", "paid"].includes(order.status)
+            ? "bg-emerald-100 text-emerald-700"
+            : order.status === "cancelled"
+              ? "bg-red-100 text-red-700"
+              : "bg-sky-100 text-sky-700",
+        )}>
+          {t(order.status_label)}
+        </span>
+      </div>
+
+      <ul className="grid gap-2 text-sm">
+        {order.lines.map((line) => (
+          <li key={`${line.product_id}-${line.sku}`} className="flex items-start justify-between gap-4">
+            <span className="text-[color:var(--navy)]">{line.name}</span>
+            <span className="shrink-0 font-semibold text-[color:var(--muted-foreground)]">× {line.quantity}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="grid gap-2 rounded-2xl bg-slate-50 p-4 text-sm">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-[color:var(--muted-foreground)]">{t("Delivery")}</span>
+          <span className="text-end font-semibold text-[color:var(--navy)]">{order.delivery_area || "—"}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-[color:var(--muted-foreground)]">{t("Payment")}</span>
+          <span className={clsx("font-bold", paid ? "text-emerald-700" : failed ? "text-red-700" : "text-amber-800")}>
+            {paymentLabel}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-auto flex items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
+        <span className="font-bold" dir="ltr">{formatQar(order.total, lang)}</span>
+        <Link href="/store" className="secondary-button min-h-9 px-4 py-2 text-xs">{t("Shop again")}</Link>
+      </div>
+    </article>
+  );
+}
+
+function MembershipCard({ membership }: { membership: CustomerMembership }) {
+  const { t } = useI18n();
   const active = membership.status === "active" && membership.washes_remaining > 0;
   const reconciliationRequired = membership.payment?.status === "reconciliation_required";
   const expiry = membership.expires_at
@@ -444,13 +660,6 @@ function MembershipCard({ membership }: { membership: CustomerMembership }) {
       </div>
       <div className="mt-4 flex items-end justify-between gap-4"><p><span className="text-3xl font-extrabold text-[color:var(--navy)]">{membership.washes_remaining}</span><span className="ms-2 text-sm font-semibold text-[color:var(--muted-foreground)]">{t("washes left")}</span></p>{expiry && <p className="text-xs font-medium text-[color:var(--muted-foreground)]">{t("Expires")} {expiry}</p>}</div>
       {reconciliationRequired && <p role="alert" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t("Payment received after this membership closed. It was not reactivated, and our team is arranging the required refund.")}</p>}
-      {membership.financials && (
-        <dl className="mt-4 grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
-          <div className="flex flex-col items-start justify-between gap-1 sm:flex-row sm:items-center sm:gap-4"><dt className="text-[color:var(--muted-foreground)]">{t("Released membership revenue")}</dt><dd className="font-bold" dir="ltr">{formatQar(membership.financials.released_revenue_minor / 100, lang)}</dd></div>
-          <div className="flex flex-col items-start justify-between gap-1 sm:flex-row sm:items-center sm:gap-4"><dt className="text-[color:var(--muted-foreground)]">{t("Remaining deferred balance")}</dt><dd className="font-bold" dir="ltr">{formatQar(membership.financials.remaining_deferred_minor / 100, lang)}</dd></div>
-          {!membership.financials.reconciled && <p role="status" className="mt-1 text-xs font-semibold text-amber-800">{t("Needs reconciliation")}</p>}
-        </dl>
-      )}
       <div className="mt-auto flex flex-col gap-2 pt-5 sm:flex-row">
         {active && <Link href="/book" className="primary-button flex-1 px-4">{t("Book a Wash")}</Link>}
         <Link href="/memberships" className="secondary-button flex-1 px-4">{t(active ? "View plans" : "Renew plan")}</Link>
@@ -539,19 +748,6 @@ function BookingCard({
         <p role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
           {t("Payment received after this booking closed. It was not reinstated, and our team is arranging the required refund.")}
         </p>
-      )}
-
-      {booking.financial_lifecycle && (
-        <section aria-label={t("Financial lifecycle")} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <h4 className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">{t("Financial lifecycle")}</h4>
-          <dl className="mt-3 grid gap-2 text-sm">
-            <div className="flex flex-col items-start justify-between gap-1 sm:flex-row sm:items-center sm:gap-4"><dt>{t("Service fulfillment")}</dt><dd className="font-bold">{t(booking.financial_lifecycle.fulfillment.status === "fulfilled" ? "Completed" : "Pending")}</dd></div>
-            <div className="flex flex-col items-start justify-between gap-1 sm:flex-row sm:items-center sm:gap-4"><dt>{t("Revenue recognition")}</dt><dd className={clsx("font-bold", booking.financial_lifecycle.recognition.reconciled ? "text-emerald-700" : booking.financial_lifecycle.fulfillment.status === "fulfilled" ? "text-amber-800" : "text-slate-600")}>{t(booking.financial_lifecycle.recognition.reconciled ? "Reconciled" : booking.financial_lifecycle.fulfillment.status === "fulfilled" ? "Needs reconciliation" : "Pending")}</dd></div>
-            {booking.financial_lifecycle.recognition.recognized_minor !== null && <div className="flex items-center justify-between gap-4"><dt>{t("Recognized revenue")}</dt><dd className="font-bold" dir="ltr">{formatQar(booking.financial_lifecycle.recognition.recognized_minor / 100, lang)}</dd></div>}
-            {booking.financial_lifecycle.refund.cash_refunded_minor > 0 && <div className="flex items-center justify-between gap-4"><dt>{t("Cash refunded")}</dt><dd className="font-bold" dir="ltr">{formatQar(booking.financial_lifecycle.refund.cash_refunded_minor / 100, lang)}</dd></div>}
-            {booking.financial_lifecycle.refund.recognized_revenue_reversed_minor > 0 && <div className="flex items-center justify-between gap-4"><dt>{t("Recognized revenue reversed")}</dt><dd className="font-bold" dir="ltr">{formatQar(booking.financial_lifecycle.refund.recognized_revenue_reversed_minor / 100, lang)}</dd></div>}
-          </dl>
-        </section>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">

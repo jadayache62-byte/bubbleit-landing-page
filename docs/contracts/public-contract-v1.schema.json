@@ -67,6 +67,9 @@
         "not_required",
         "ready",
         "retryable",
+        "failed",
+        "cancelled",
+        "timed_out",
         "pending",
         "paid",
         "partially_refunded",
@@ -235,7 +238,7 @@
         "sold_quantity",
         "reserved_quantity",
         "available_quantity",
-        "accounting_code",
+        "category",
         "is_available"
       ],
       "properties": {
@@ -251,101 +254,8 @@
         "sold_quantity": { "type": "number", "minimum": 0 },
         "reserved_quantity": { "type": "number", "minimum": 0 },
         "available_quantity": { "type": "number", "minimum": 0 },
-        "accounting_code": { "type": ["string", "null"] },
+        "category": { "enum": ["car_care", "tools", "accessories"] },
         "is_available": { "type": "boolean" }
-      },
-      "additionalProperties": false
-    },
-    "BookingFinancialLifecycle": {
-      "type": "object",
-      "required": ["fulfillment", "refund", "recognition"],
-      "properties": {
-        "fulfillment": {
-          "type": "object",
-          "required": ["status", "occurred_at", "effective_date"],
-          "properties": {
-            "status": { "enum": ["pending", "fulfilled"] },
-            "occurred_at": { "type": ["string", "null"] },
-            "effective_date": { "type": ["string", "null"] }
-          },
-          "additionalProperties": false
-        },
-        "refund": {
-          "type": "object",
-          "required": [
-            "status",
-            "cash_refunded_minor",
-            "customer_advance_reversed_minor",
-            "recognized_revenue_reversed_minor"
-          ],
-          "properties": {
-            "status": { "type": "string" },
-            "cash_refunded_minor": { "type": "integer", "minimum": 0 },
-            "customer_advance_reversed_minor": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "recognized_revenue_reversed_minor": {
-              "type": "integer",
-              "minimum": 0
-            }
-          },
-          "additionalProperties": false
-        },
-        "recognition": {
-          "type": "object",
-          "required": [
-            "status",
-            "currency",
-            "cash_consideration_minor",
-            "membership_consideration_minor",
-            "recognized_minor",
-            "reconciled"
-          ],
-          "properties": {
-            "status": { "enum": ["pending", "reconciled", "incomplete"] },
-            "currency": { "const": "QAR" },
-            "cash_consideration_minor": {
-              "type": ["integer", "null"],
-              "minimum": 0
-            },
-            "membership_consideration_minor": {
-              "type": ["integer", "null"],
-              "minimum": 0
-            },
-            "recognized_minor": { "type": ["integer", "null"], "minimum": 0 },
-            "reconciled": { "type": "boolean" }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    "StoreFinancialLifecycle": {
-      "type": "object",
-      "required": ["fulfillment", "recognition"],
-      "properties": {
-        "fulfillment": {
-          "type": "object",
-          "required": ["status", "occurred_at", "effective_date"],
-          "properties": {
-            "status": { "enum": ["pending", "fulfilled"] },
-            "occurred_at": { "type": ["string", "null"] },
-            "effective_date": { "type": ["string", "null"] }
-          },
-          "additionalProperties": false
-        },
-        "recognition": {
-          "type": "object",
-          "required": ["status", "currency", "recognized_minor", "reconciled"],
-          "properties": {
-            "status": { "enum": ["pending", "reconciled", "incomplete"] },
-            "currency": { "const": "QAR" },
-            "recognized_minor": { "type": ["integer", "null"], "minimum": 0 },
-            "reconciled": { "type": "boolean" }
-          },
-          "additionalProperties": false
-        }
       },
       "additionalProperties": false
     },
@@ -366,7 +276,6 @@
         "time_range_label",
         "payment_method",
         "payment",
-        "financial_lifecycle",
         "membership_applied",
         "membership_reserved",
         "total",
@@ -398,7 +307,6 @@
         "time_range_label": { "type": ["string", "null"] },
         "payment_method": { "$ref": "#/$defs/PaymentMethod" },
         "payment": { "$ref": "#/$defs/PaymentState" },
-        "financial_lifecycle": { "$ref": "#/$defs/BookingFinancialLifecycle" },
         "membership_applied": { "type": "boolean" },
         "membership_reserved": { "type": "boolean" },
         "total": { "type": "number", "minimum": 0 },
@@ -456,18 +364,19 @@
       "type": "object",
       "required": [
         "id",
-        "customer_id",
         "reference",
         "status",
+        "status_label",
         "payment_status",
+        "payment_status_label",
+        "payment_method",
         "payment",
-        "financial_lifecycle",
-        "accounting_status",
         "pricing",
-        "customer_name",
-        "customer_phone",
         "delivery_area",
         "delivery_details",
+        "building_number",
+        "zone_number",
+        "street_number",
         "latitude",
         "longitude",
         "service_area",
@@ -475,24 +384,26 @@
         "delivery_fee",
         "discount_total",
         "total",
+        "notes",
         "lines",
         "expires_at",
         "created_at"
       ],
       "properties": {
         "id": { "type": "integer" },
-        "customer_id": { "type": "integer" },
         "reference": { "type": "string" },
         "status": { "$ref": "#/$defs/StoreOrderStatus" },
+        "status_label": { "type": "string" },
         "payment_status": { "$ref": "#/$defs/StorePaymentStatus" },
+        "payment_status_label": { "type": "string" },
+        "payment_method": { "type": "string" },
         "payment": { "$ref": "#/$defs/PaymentState" },
-        "financial_lifecycle": { "$ref": "#/$defs/StoreFinancialLifecycle" },
-        "accounting_status": { "type": "string" },
         "pricing": { "type": "object" },
-        "customer_name": { "type": "string" },
-        "customer_phone": { "type": "string" },
         "delivery_area": { "type": "string" },
-        "delivery_details": { "type": "string" },
+        "delivery_details": { "type": ["string", "null"] },
+        "building_number": { "type": ["string", "null"] },
+        "zone_number": { "type": ["string", "null"] },
+        "street_number": { "type": ["string", "null"] },
         "latitude": { "type": ["number", "null"] },
         "longitude": { "type": ["number", "null"] },
         "service_area": { "type": "object" },
@@ -500,6 +411,7 @@
         "delivery_fee": { "type": "number", "minimum": 0 },
         "discount_total": { "type": "number", "minimum": 0 },
         "total": { "type": "number", "minimum": 0 },
+        "notes": { "type": ["string", "null"] },
         "lines": { "type": "array" },
         "expires_at": { "type": ["string", "null"] },
         "created_at": { "type": ["string", "null"] }

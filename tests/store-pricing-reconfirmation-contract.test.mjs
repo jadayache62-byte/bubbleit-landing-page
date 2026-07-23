@@ -34,7 +34,8 @@ test("changed pricing stops before payment and requires another confirmation", (
 test("development simulator checks pricing before reserving inventory", () => {
   assert.match(mock, /STORE_PRICING_CHANGED/);
   assert.match(mock, /storePricingMatches\(body\.pricing_confirmation, pricing\)/);
-  assert.match(mock, /pricing,\n\s+customer_name:/);
+  assert.match(mock, /pricing,\n\s+delivery_area:/);
+  assert.doesNotMatch(mock, /const order: StoreOrder = \{[\s\S]*customer_name:/);
 
   const pricingCheck = mock.indexOf("if (!storePricingMatches");
   const reservation = mock.indexOf("product.reserved_quantity += line.quantity", pricingCheck);

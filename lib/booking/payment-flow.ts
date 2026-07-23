@@ -3,6 +3,9 @@ export type BookingPaymentStatus =
   | "not_required"
   | "ready"
   | "retryable"
+  | "failed"
+  | "cancelled"
+  | "timed_out"
   | "pending"
   | "paid"
   | "reconciliation_required"
@@ -26,6 +29,9 @@ export function bookingPaymentUiState(
     case "paid":
       return "paid_confirmed";
     case "retryable":
+    case "failed":
+    case "cancelled":
+    case "timed_out":
       return "payment_retryable";
     case "reconciliation_required":
       return "payment_reconciliation";

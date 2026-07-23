@@ -1,11 +1,11 @@
 # Bubble It Landing Page — CLAUDE.md
 
-## Revenue recognition lifecycle (MAD-92)
+## Customer financial privacy and payment returns
 
-- Customer booking and membership surfaces display backend-owned financial lifecycle facts only. Never derive recognized/deferred revenue from current catalogue prices, status labels, or browser calculations.
-- A completed booking remains fulfilled after refund. Show recognized revenue, cash refunded, and recognized-revenue reversal as separate localized values; do not imply that a refund erased service delivery.
-- Membership released and remaining deferred QAR values come from the immutable server contract. Missing or incomplete lifecycle data must remain unavailable, never zero.
-- Keep customer presentation concise and non-technical, with English/Arabic RTL support. Do not expose management journal accounts, posting policies, internal fingerprints, or reconciliation internals.
+- Customer responses and screens show only customer-relevant payment, refund, fulfillment, and delivery outcomes. Never expose revenue recognition, deferred revenue, accounting status/codes, journal data, posting policies, internal fingerprints, or reconciliation internals.
+- SkipCash checkout requests use a purchase-specific `ReturnUrl` back to the matching account section and purchase ID. The provider dashboard URL is a fallback only.
+- A browser return is not proof of payment. The account page must fetch and briefly poll the server-authoritative payment state, then show a localized success, failure, cancellation, timeout, processing, refund, or review result.
+- The authenticated account owns Bookings, Memberships, and Store Orders. Store order list/detail responses must remain owner-scoped and use the customer-safe resource contract.
 - Keep docs/contracts/public-contract-v1.schema.json byte-identical with backend and mobile.
 
 ## Durable booking-duration rule

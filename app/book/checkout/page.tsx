@@ -37,7 +37,7 @@ function CheckoutInner() {
     setState("paying");
     try {
       await completeMockBookingPayment(bookingId);
-      router.push("/account?paid=1");
+      router.push(`/account?tab=bookings&payment=success&booking=${bookingId}`);
     } catch {
       setState("error");
     }

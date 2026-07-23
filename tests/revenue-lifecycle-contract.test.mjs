@@ -4,20 +4,33 @@ import test from "node:test";
 
 const account = readFileSync(new URL("../app/account/page.tsx", import.meta.url), "utf8");
 const types = readFileSync(new URL("../lib/api/types.ts", import.meta.url), "utf8");
-const translations = readFileSync(new URL("../lib/i18n.tsx", import.meta.url), "utf8");
+const schema = JSON.parse(readFileSync(new URL("../docs/contracts/public-contract-v1.schema.json", import.meta.url), "utf8"));
 
-test("customer account keeps fulfillment and refund accounting truths separate", () => {
-  assert.match(types, /financial_lifecycle\?: FinancialLifecycle/);
-  assert.match(account, /financial_lifecycle\.recognition\.recognized_minor/);
-  assert.match(account, /financial_lifecycle\.refund\.cash_refunded_minor/);
-  assert.match(account, /financial_lifecycle\.refund\.recognized_revenue_reversed_minor/);
+test("customer account does not render internal financial lifecycle information", () => {
+  assert.doesNotMatch(account, /financial_lifecycle/);
+  assert.doesNotMatch(account, /membership\.financials/);
+  assert.doesNotMatch(account, /Revenue recognition/);
+  assert.doesNotMatch(account, /deferred balance/i);
+  assert.doesNotMatch(account, /accounting_status/);
+  assert.doesNotMatch(account, /accounting_code/);
 });
 
-test("membership released and deferred values are backend-owned and bilingual", () => {
-  assert.match(types, /released_revenue_minor: number/);
-  assert.match(types, /remaining_deferred_minor: number/);
-  assert.match(account, /membership\.financials\.released_revenue_minor/);
-  assert.match(account, /membership\.financials\.remaining_deferred_minor/);
-  assert.match(account, /t\("Released membership revenue"\)/);
-  assert.match(translations, /"Released membership revenue": "إيراد الاشتراك المحرر"/);
+test("customer types and public schemas exclude accounting internals", () => {
+  assert.doesNotMatch(types, /FinancialLifecycle/);
+  assert.doesNotMatch(types, /MembershipFinancials/);
+
+  const booking = schema.$defs.Booking;
+  const storeProduct = schema.$defs.StoreProduct;
+  const storeOrder = schema.$defs.StoreOrder;
+  for (const field of ["financial_lifecycle", "financials", "accounting_status", "accounting_code"]) {
+    assert.equal(booking.properties[field], undefined);
+    assert.equal(storeOrder.properties[field], undefined);
+    assert.equal(booking.required.includes(field), false);
+    assert.equal(storeOrder.required.includes(field), false);
+  }
+  assert.equal(schema.$defs.BookingFinancialLifecycle, undefined);
+  assert.equal(schema.$defs.StoreFinancialLifecycle, undefined);
+  assert.equal(storeProduct.properties.accounting_code, undefined);
+  assert.equal(storeProduct.required.includes("accounting_code"), false);
+  assert.deepEqual(storeProduct.properties.category.enum, ["car_care", "tools", "accessories"]);
 });

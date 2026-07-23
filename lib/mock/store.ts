@@ -49,7 +49,7 @@ export type MockDB = {
   otps: Map<string, string>; // phone + purpose -> code
   bookings: (Booking & { customer_id: number })[];
   storeProducts: StoreProductInventory[];
-  storeOrders: StoreOrder[];
+  storeOrders: (StoreOrder & { customer_id: number })[];
   promoCodes: MockPromoCode[];
   redemptions: MockPromoRedemption[];
   nextId: number;
@@ -158,7 +158,11 @@ function seed(): MockDB {
       stock_quantity: product.initialStock,
       sold_quantity: 0,
       reserved_quantity: 0,
-      accounting_code: product.accountingCode,
+      category: product.accountingCode === "STORE-TOOLS"
+        ? "tools"
+        : product.accountingCode === "STORE-ACCESSORIES"
+          ? "accessories"
+          : "car_care",
     })),
     storeOrders: [],
     promoCodes: [
