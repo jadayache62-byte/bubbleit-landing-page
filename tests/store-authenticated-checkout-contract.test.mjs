@@ -11,6 +11,10 @@ const mock = readFileSync(
   new URL("../app/api/mock/v1/customer/[...path]/route.ts", import.meta.url),
   "utf8",
 );
+const checkoutState = readFileSync(
+  new URL("../lib/store/checkout-state.ts", import.meta.url),
+  "utf8",
+);
 
 test("store checkout offers authenticated account checkout only", () => {
   assert.match(checkout, /Store checkout requires a signed-in customer account/);
@@ -29,9 +33,23 @@ test("login can happen mid-cart without clearing browser cart state", () => {
     checkout.indexOf("function clearPendingCheckoutStorage"),
     checkout.indexOf("function randomAttemptKey"),
   );
-  assert.match(abandon, /removeItem\(PENDING_CHECKOUT_KEY\)/);
-  assert.match(abandon, /removeItem\(CHECKOUT_ATTEMPT_KEY\)/);
-  assert.doesNotMatch(abandon, /removeItem\(CART_KEY\)/);
+  assert.match(abandon, /removeItem\(STORE_PENDING_CHECKOUT_KEY\)/);
+  assert.match(abandon, /removeItem\(STORE_CHECKOUT_ATTEMPT_KEY\)/);
+  assert.doesNotMatch(abandon, /removeItem\(STORE_CART_KEY\)/);
+});
+
+test("leaving hosted payment keeps the cart until the matching order is confirmed", () => {
+  const redirect = checkout.slice(
+    checkout.indexOf("window.location.href = checkoutUrl"),
+    checkout.indexOf("window.location.href = checkoutUrl") + 250,
+  );
+  assert.doesNotMatch(redirect, /clearCompletedStoreCheckout|removeItem/);
+  assert.match(checkout, /reconcileStoreOrderPayment\(pendingOrderId\)/);
+  assert.match(checkout, /terminalAttempt[\s\S]*randomAttemptKey\(`store-order:\$\{order\.id\}:payment`\)/);
+  assert.match(checkout, /writePendingCheckout\(refreshed\)/);
+  assert.match(checkoutState, /pendingOrderId\(\) !== orderId/);
+  assert.match(checkoutState, /clearCompletedStoreCheckout[\s\S]*removeItem\(STORE_CART_KEY\)/);
+  assert.match(checkoutState, /releasePendingStoreCheckout[\s\S]*Keep the products in the cart/);
 });
 
 test("saved pending checkout is bound to its server owner", () => {

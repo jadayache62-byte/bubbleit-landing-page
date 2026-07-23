@@ -523,13 +523,79 @@ async function handle(req: NextRequest, segments: string[]) {
       return fail(422, "This store order cannot be paid.");
     }
 
+    if (order.payment_status === "paid") {
+      return envelope({
+        ...mockPayment("STO", order.id),
+        checkout_url: null,
+        status: "paid",
+      });
+    }
+
     order.payment_status = "paid";
     order.payment_status_label = "Paid";
     order.status = "confirmed";
     order.status_label = "Confirmed";
+    for (const line of order.lines) {
+      const product = store.storeProducts.find((item) => item.id === line.product_id);
+      if (!product) continue;
+      product.reserved_quantity = Math.max(0, product.reserved_quantity - line.quantity);
+      product.stock_quantity -= line.quantity;
+      product.sold_quantity += line.quantity;
+    }
     return envelope({
       ...mockPayment("STO", order.id),
       checkout_url: `/account?tab=orders&payment=review&order=${order.id}`,
+    });
+  }
+
+  const storePaymentStatusMatch = path.match(/^store\/orders\/(\d+)\/payment-status$/);
+  if (method === "POST" && storePaymentStatusMatch) {
+    const linkedCustomer = authCustomer(req);
+    if (!linkedCustomer) return fail(401, "Unauthenticated.");
+    const order = store.storeOrders.find(
+      (item) => item.id === Number(storePaymentStatusMatch[1]) && item.customer_id === linkedCustomer.id,
+    );
+    if (!order) return fail(404, "Store order not found.");
+    const { customer_id: _customerId, ...customerOrder } = order;
+    return envelope(customerOrder);
+  }
+
+  const storeCancelMatch = path.match(/^store\/orders\/(\d+)\/cancel$/);
+  if (method === "POST" && storeCancelMatch) {
+    const linkedCustomer = authCustomer(req);
+    if (!linkedCustomer) return fail(401, "Unauthenticated.");
+    const order = store.storeOrders.find(
+      (item) => item.id === Number(storeCancelMatch[1]) && item.customer_id === linkedCustomer.id,
+    );
+    if (!order) return fail(404, "Store order not found.");
+    if (!["pending_payment", "paid", "confirmed"].includes(order.status)) {
+      return fail(422, "This store order can no longer be cancelled.");
+    }
+
+    const captured = order.payment_status === "paid";
+    if (!captured) {
+      for (const line of order.lines) {
+        const product = store.storeProducts.find((item) => item.id === line.product_id);
+        if (product) {
+          product.reserved_quantity = Math.max(0, product.reserved_quantity - line.quantity);
+        }
+      }
+      order.payment_status = "failed";
+      order.payment_status_label = "Not paid";
+    } else {
+      order.refund = {
+        id: store.nextId++,
+        status: "submitted",
+        status_label: "Submitted",
+      };
+    }
+    order.status = "cancelled";
+    order.status_label = "Cancelled";
+    const { customer_id: _customerId, ...customerOrder } = order;
+    return envelope(customerOrder, {
+      message: captured
+        ? "Order cancelled. Your refund request was submitted."
+        : "Order cancelled.",
     });
   }
 
@@ -917,6 +983,16 @@ async function handle(req: NextRequest, segments: string[]) {
       activatedAt.getTime() + membership.plan.validity_days * 24 * 60 * 60 * 1000,
     ).toISOString();
     return envelope(mockPayment("MEM", membership.id));
+  }
+
+  const membershipPaymentStatusMatch = path.match(/^memberships\/(\d+)\/payment-status$/);
+  if (method === "POST" && membershipPaymentStatusMatch) {
+    const membership = store.memberships.find(
+      (item) => item.id === Number(membershipPaymentStatusMatch[1]) && item.customer_id === customer.id,
+    );
+    if (!membership) return fail(404, "Membership not found.");
+    const { customer_id: _customerId, ...customerMembership } = membership;
+    return envelope(customerMembership);
   }
 
   // ── Bookings ──
@@ -1369,7 +1445,7 @@ async function handle(req: NextRequest, segments: string[]) {
     }, { status: 201, message: "Booking created." });
   }
 
-  const bookingMatch = path.match(/^bookings\/(\d+)(?:\/(cancel|pay|mock-complete-payment|reschedule-options|reschedule))?$/);
+  const bookingMatch = path.match(/^bookings\/(\d+)(?:\/(cancel|pay|payment-status|mock-complete-payment|reschedule-options|reschedule))?$/);
   if (bookingMatch) {
     const booking = store.bookings.find(
       (b) => b.id === Number(bookingMatch[1]) && b.customer_id === customer.id,
@@ -1460,17 +1536,43 @@ async function handle(req: NextRequest, segments: string[]) {
       if (!cancellable.includes(booking.status)) {
         return fail(422, "This booking can no longer be cancelled.");
       }
+      const captured = booking.status !== "pending_payment"
+        || booking.payment?.captured === true
+        || booking.payment?.status === "paid";
       booking.status = "cancelled_by_customer";
       booking.status_label = STATUS_LABELS.cancelled_by_customer;
+      if (captured) {
+        booking.refund = {
+          id: store.nextId++,
+          status: "submitted",
+          status_label: "Submitted",
+        };
+      }
       for (const line of booking.products ?? []) {
         const product = store.storeProducts.find((item) => item.id === line.product_id);
         if (product) product.reserved_quantity = Math.max(0, product.reserved_quantity - line.quantity);
       }
       const { customer_id: _c, ...pub } = booking;
-      return envelope(pub, { message: "Booking cancelled." });
+      return envelope(pub, {
+        message: captured
+          ? "Booking cancelled. Your refund request was submitted."
+          : "Booking cancelled.",
+      });
+    }
+
+    if (method === "POST" && action === "payment-status") {
+      const { customer_id: _customerId, ...customerBooking } = booking;
+      return envelope(customerBooking);
     }
 
     if (method === "POST" && action === "pay") {
+      if (booking.status === "paid" || booking.payment?.captured === true) {
+        return envelope({
+          ...mockPayment("BKG", booking.id),
+          checkout_url: null,
+          status: "paid",
+        });
+      }
       if (booking.status !== "pending_payment" || booking.payment_method !== "online") {
         return fail(422, "This booking is not awaiting online payment.");
       }

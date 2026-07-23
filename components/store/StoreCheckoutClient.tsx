@@ -11,6 +11,7 @@ import {
   listStoreProducts,
   me,
   payStoreOrder,
+  reconcileStoreOrderPayment,
   validateServiceArea,
 } from "@/lib/api/client";
 import type {
@@ -22,6 +23,13 @@ import type {
 } from "@/lib/api/types";
 import { localized, useI18n } from "@/lib/i18n";
 import { formatStorePrice } from "@/lib/store/products";
+import {
+  clearCompletedStoreCheckout,
+  releasePendingStoreCheckout,
+  STORE_CART_KEY,
+  STORE_CHECKOUT_ATTEMPT_KEY,
+  STORE_PENDING_CHECKOUT_KEY,
+} from "@/lib/store/checkout-state";
 
 function MapLoading() {
   const { t } = useI18n();
@@ -37,10 +45,6 @@ const LocationMap = dynamic(() => import("@/components/booking/LocationMap"), {
   ssr: false,
   loading: () => <MapLoading />,
 });
-
-const CART_KEY = "bubbleit.store.cart";
-const PENDING_CHECKOUT_KEY = "bubbleit.store.pending-checkout";
-const CHECKOUT_ATTEMPT_KEY = "bubbleit.store.checkout-attempt";
 
 type Cart = Record<string, number>;
 type PendingCheckout = {
@@ -64,7 +68,7 @@ const COMPLETED_ORDER_STATUSES = new Set<StoreOrder["status"]>([
 function readCart(): Cart {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(CART_KEY);
+    const raw = window.localStorage.getItem(STORE_CART_KEY);
     return raw ? (JSON.parse(raw) as Cart) : {};
   } catch {
     return {};
@@ -74,7 +78,7 @@ function readCart(): Cart {
 function readPendingCheckout(): PendingCheckout | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(PENDING_CHECKOUT_KEY);
+    const raw = window.localStorage.getItem(STORE_PENDING_CHECKOUT_KEY);
     if (!raw) return null;
 
     const pending = JSON.parse(raw) as Partial<PendingCheckout>;
@@ -110,7 +114,7 @@ function readPendingCheckout(): PendingCheckout | null {
 
 function writePendingCheckout(pending: PendingCheckout) {
   try {
-    window.localStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pending));
+    window.localStorage.setItem(STORE_PENDING_CHECKOUT_KEY, JSON.stringify(pending));
   } catch {
     // The in-memory checkout state still prevents a duplicate order this visit.
   }
@@ -118,8 +122,8 @@ function writePendingCheckout(pending: PendingCheckout) {
 
 function clearPendingCheckoutStorage() {
   try {
-    window.localStorage.removeItem(PENDING_CHECKOUT_KEY);
-    window.localStorage.removeItem(CHECKOUT_ATTEMPT_KEY);
+    window.localStorage.removeItem(STORE_PENDING_CHECKOUT_KEY);
+    window.localStorage.removeItem(STORE_CHECKOUT_ATTEMPT_KEY);
   } catch {
     // The cart itself remains available for a new authenticated checkout.
   }
@@ -135,7 +139,7 @@ function randomAttemptKey(prefix: string) {
 function checkoutAttempt(payload: CreateStoreOrderPayload): CheckoutAttempt {
   const fingerprint = JSON.stringify(payload);
   try {
-    const saved = JSON.parse(window.localStorage.getItem(CHECKOUT_ATTEMPT_KEY) ?? "null") as Partial<CheckoutAttempt> | null;
+    const saved = JSON.parse(window.localStorage.getItem(STORE_CHECKOUT_ATTEMPT_KEY) ?? "null") as Partial<CheckoutAttempt> | null;
     if (saved?.fingerprint === fingerprint && saved.orderKey && saved.paymentKey) {
       return saved as CheckoutAttempt;
     }
@@ -148,7 +152,7 @@ function checkoutAttempt(payload: CreateStoreOrderPayload): CheckoutAttempt {
     paymentKey: randomAttemptKey("store-order:payment"),
   };
   try {
-    window.localStorage.setItem(CHECKOUT_ATTEMPT_KEY, JSON.stringify(attempt));
+    window.localStorage.setItem(STORE_CHECKOUT_ATTEMPT_KEY, JSON.stringify(attempt));
   } catch {
     // The current submit still carries stable keys in memory.
   }
@@ -315,6 +319,61 @@ export function StoreCheckoutClient() {
     };
   }, [acceptAuthenticatedCustomer]);
 
+  const pendingOrderId = pendingCheckout?.order.id ?? null;
+  useEffect(() => {
+    if (!customer || pendingOrderId === null) return;
+    let cancelled = false;
+
+    reconcileStoreOrderPayment(pendingOrderId)
+      .then((order) => {
+        if (cancelled) return;
+        if (isCompletedOrder(order)) {
+          clearCompletedStoreCheckout(order.id);
+          setCart({});
+          pendingCheckoutRef.current = null;
+          setPendingCheckout(null);
+          setCompletedOrder(order);
+          setPaymentNotice(null);
+          setSubmitted(true);
+          return;
+        }
+        if (order.status === "cancelled" || order.status === "refunded") {
+          releasePendingStoreCheckout(order.id);
+          pendingCheckoutRef.current = null;
+          setPendingCheckout(null);
+          setPaymentNotice(t("The unpaid order reservation ended. Your products are still in the cart so you can check out again."));
+          return;
+        }
+
+        const current = pendingCheckoutRef.current;
+        if (current?.order.id === order.id) {
+          const terminalAttempt = ["failed", "retryable", "cancelled", "timed_out"].includes(
+            order.payment?.status ?? (order.payment_status === "failed" ? "failed" : "pending"),
+          );
+          const refreshed = {
+            ...current,
+            order,
+            paymentKey: terminalAttempt
+              ? randomAttemptKey(`store-order:${order.id}:payment`)
+              : current.paymentKey,
+          };
+          pendingCheckoutRef.current = refreshed;
+          setPendingCheckout(refreshed);
+          writePendingCheckout(refreshed);
+          if (terminalAttempt) {
+            setPaymentNotice(t("Payment failed. Your purchase is saved and you can try again."));
+          }
+        }
+      })
+      .catch(() => {
+        // Keep the local recovery record. The customer can retry explicitly.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [customer, pendingOrderId, t]);
+
   useEffect(() => {
     if (!submitted) return;
 
@@ -435,9 +494,9 @@ export function StoreCheckoutClient() {
 
   function clearCheckoutCart() {
     try {
-      window.localStorage.removeItem(CART_KEY);
-      window.localStorage.removeItem(PENDING_CHECKOUT_KEY);
-      window.localStorage.removeItem(CHECKOUT_ATTEMPT_KEY);
+      window.localStorage.removeItem(STORE_CART_KEY);
+      window.localStorage.removeItem(STORE_PENDING_CHECKOUT_KEY);
+      window.localStorage.removeItem(STORE_CHECKOUT_ATTEMPT_KEY);
     } catch {
       // Navigation can still continue when browser storage is unavailable.
     }
@@ -465,10 +524,16 @@ export function StoreCheckoutClient() {
 
     try {
       const payment = await payStoreOrder(checkout.order.id, checkout.paymentKey);
+      if (payment.status === "paid") {
+        const order = await reconcileStoreOrderPayment(checkout.order.id);
+        if (isCompletedOrder(order)) {
+          completeOrder(order);
+          return;
+        }
+      }
       if (payment.checkout_url) {
         setSubmitPhase("redirecting");
         window.location.href = payment.checkout_url;
-        clearCheckoutCart();
         return;
       }
 

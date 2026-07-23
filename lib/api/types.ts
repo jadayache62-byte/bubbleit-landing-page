@@ -159,6 +159,20 @@ export type PaymentState = {
   checkout_url: string | null;
 };
 
+export type RefundState = {
+  id: number;
+  status:
+    | "submitted"
+    | "under_review"
+    | "approved"
+    | "processing"
+    | "retryable"
+    | "quarantined"
+    | "rejected"
+    | "processed";
+  status_label: string;
+};
+
 export type MembershipPlan = {
   id: number;
   name: string;
@@ -243,6 +257,7 @@ export type Booking = {
   // Server-authoritative payment state. Checkout URLs are returned only by the
   // separate idempotent payment-initialization command.
   payment?: PaymentState;
+  refund?: RefundState | null;
 };
 
 export type VerifyOtpResult = {
@@ -437,6 +452,7 @@ export type StoreOrder = {
   payment_status_label?: string;
   payment_method?: string;
   payment?: PaymentState;
+  refund?: RefundState | null;
   pricing: StorePricingConfirmation;
   delivery_area: string;
   delivery_details: string | null;
@@ -474,9 +490,9 @@ export type StoreOrderPayment = {
   purchase_id: number;
   attempt_id: number;
   merchant_reference: string;
-  checkout_url: string;
+  checkout_url: string | null;
   payment_reference: string;
-  status: "ready" | "retryable" | "pending";
+  status: "ready" | "retryable" | "pending" | "paid";
 };
 
 export type CustomerNotificationType =

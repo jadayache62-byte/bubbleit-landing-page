@@ -211,6 +211,19 @@ export function payStoreOrder(orderId: number, idempotencyKey: string) {
   });
 }
 
+export function reconcileStoreOrderPayment(orderId: number) {
+  return request<StoreOrder>(`/store/orders/${orderId}/payment-status`, {
+    method: "POST",
+  });
+}
+
+export function cancelStoreOrder(orderId: number, reason?: string) {
+  return request<StoreOrder>(`/store/orders/${orderId}/cancel`, {
+    method: "POST",
+    body: reason ? { reason } : {},
+  });
+}
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 export function checkPhone(phone: string) {
@@ -408,6 +421,12 @@ export function initializeMembershipPayment(membershipId: number, idempotencyKey
   });
 }
 
+export function reconcileMembershipPayment(membershipId: number) {
+  return request<CustomerMembership>(`/memberships/${membershipId}/payment-status`, {
+    method: "POST",
+  });
+}
+
 // ── Bookings ─────────────────────────────────────────────────────────────────
 
 // Validates a promo code against the current cart. Requires auth so the
@@ -429,9 +448,15 @@ export function createBooking(payload: CreateBookingPayload, idempotencyKey?: st
 }
 
 export function initializeBookingPayment(bookingId: number, idempotencyKey: string) {
-  return request<{ checkout_url: string | null; status: "ready" }>(`/bookings/${bookingId}/pay`, {
+  return request<{ checkout_url: string | null; status: "ready" | "pending" | "retryable" | "paid" }>(`/bookings/${bookingId}/pay`, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
+  });
+}
+
+export function reconcileBookingPayment(bookingId: number) {
+  return request<Booking>(`/bookings/${bookingId}/payment-status`, {
+    method: "POST",
   });
 }
 

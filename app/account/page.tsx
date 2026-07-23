@@ -13,10 +13,10 @@ import { formatQar } from "@/lib/money";
 import {
   ApiError,
   cancelBooking,
+  cancelStoreOrder,
   deleteVehicle,
-  getBooking,
   getBookingRescheduleOptions,
-  getStoreOrder,
+  initializeBookingPayment,
   listAddresses,
   listBookings,
   listMemberships,
@@ -24,6 +24,10 @@ import {
   listVehicles,
   logout,
   me,
+  payStoreOrder,
+  reconcileBookingPayment,
+  reconcileMembershipPayment,
+  reconcileStoreOrderPayment,
   rescheduleBooking,
   resolveCustomerNotification,
 } from "@/lib/api/client";
@@ -41,6 +45,8 @@ import type {
   VehicleType,
 } from "@/lib/api/types";
 import { formatQatarDateTime, nextQatarDays, qatarServiceDate, serializeQatarBookingDateTime } from "@/lib/datetime";
+import { usableCheckoutUrl } from "@/lib/booking/payment-flow";
+import { clearCompletedStoreCheckout, releasePendingStoreCheckout } from "@/lib/store/checkout-state";
 
 const STATUS_STYLES: Record<BookingStatus, string> = {
   pending_payment: "bg-amber-100 text-amber-700",
@@ -128,6 +134,7 @@ export default function AccountPage() {
   const [error, setError] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<PaymentFeedback | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [paymentAction, setPaymentAction] = useState<string | null>(null);
   const rescheduleDialogRef = useRef<HTMLElement>(null);
   const rescheduleCloseRef = useRef<HTMLButtonElement>(null);
   const [reschedule, setReschedule] = useState<{
@@ -205,6 +212,16 @@ export default function AccountPage() {
   }, [refresh]);
 
   useEffect(() => {
+    for (const order of orders ?? []) {
+      if (order.payment?.captured || order.payment_status === "paid") {
+        clearCompletedStoreCheckout(order.id);
+      } else if (order.status === "cancelled" || order.status === "refunded") {
+        releasePendingStoreCheckout(order.id);
+      }
+    }
+  }, [orders]);
+
+  useEffect(() => {
     function handleSessionEnded() {
       setCustomer(null);
       setBookings(null);
@@ -260,24 +277,24 @@ export default function AccountPage() {
           let state: PaymentState["status"] = "pending";
 
           if (hasBooking) {
-            const booking = await getBooking(bookingId);
+            const booking = await reconcileBookingPayment(bookingId);
             if (!active) return;
             setBookings((current) => current?.map((item) => item.id === booking.id ? booking : item) ?? [booking]);
             state = booking.payment?.captured || booking.status === "paid"
               ? "paid"
               : (booking.payment?.status ?? "pending");
           } else if (hasOrder) {
-            const order = await getStoreOrder(orderId);
+            const order = await reconcileStoreOrderPayment(orderId);
             if (!active) return;
             setOrders((current) => current?.map((item) => item.id === order.id ? order : item) ?? [order]);
             state = order.payment?.captured || order.payment_status === "paid"
               ? "paid"
               : (order.payment?.status ?? (order.payment_status === "failed" ? "failed" : "pending"));
+            if (state === "paid") clearCompletedStoreCheckout(order.id);
           } else {
-            const currentMemberships = await listMemberships();
+            const membership = await reconcileMembershipPayment(membershipId);
             if (!active) return;
-            setMemberships(currentMemberships);
-            const membership = currentMemberships.find((item) => item.id === membershipId);
+            setMemberships((current) => current?.map((item) => item.id === membership.id ? membership : item) ?? [membership]);
             state = membership?.status === "active"
               ? "paid"
               : (membership?.payment?.captured ? "paid" : (membership?.payment?.status ?? "pending"));
@@ -316,6 +333,74 @@ export default function AccountPage() {
       refresh();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not cancel the booking.");
+    }
+  }
+
+  async function handleCompleteBookingPayment(booking: Booking) {
+    const action = `booking:${booking.id}`;
+    if (paymentAction) return;
+    setPaymentAction(action);
+    setError(null);
+    try {
+      const payment = await initializeBookingPayment(booking.id, `account-booking:${booking.id}:${window.crypto.randomUUID()}`);
+      const checkoutUrl = usableCheckoutUrl(payment.checkout_url);
+      if (checkoutUrl) {
+        window.location.assign(checkoutUrl);
+        return;
+      }
+      const refreshed = await reconcileBookingPayment(booking.id);
+      setBookings((current) => current?.map((item) => item.id === refreshed.id ? refreshed : item) ?? [refreshed]);
+      setPaymentNotice(paymentFeedback(refreshed.payment?.status ?? (refreshed.status === "paid" ? "paid" : "pending"), t));
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : t("Payment is still unavailable. Your booking remains saved."));
+    } finally {
+      setPaymentAction(null);
+    }
+  }
+
+  async function handleCompleteStorePayment(order: StoreOrder) {
+    const action = `order:${order.id}`;
+    if (paymentAction) return;
+    setPaymentAction(action);
+    setError(null);
+    try {
+      const payment = await payStoreOrder(order.id, `account-store:${order.id}:${window.crypto.randomUUID()}`);
+      const checkoutUrl = usableCheckoutUrl(payment.checkout_url);
+      if (checkoutUrl) {
+        window.location.assign(checkoutUrl);
+        return;
+      }
+      const refreshed = await reconcileStoreOrderPayment(order.id);
+      setOrders((current) => current?.map((item) => item.id === refreshed.id ? refreshed : item) ?? [refreshed]);
+      const status = refreshed.payment?.status ?? (refreshed.payment_status === "paid" ? "paid" : "pending");
+      if (status === "paid") clearCompletedStoreCheckout(refreshed.id);
+      setPaymentNotice(paymentFeedback(status, t));
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : t("Payment could not start. Your order is saved; please retry payment."));
+    } finally {
+      setPaymentAction(null);
+    }
+  }
+
+  async function handleCancelStoreOrder(order: StoreOrder) {
+    const action = `cancel-order:${order.id}`;
+    if (paymentAction || !window.confirm(t("Cancel this store order?"))) return;
+    setPaymentAction(action);
+    setError(null);
+    try {
+      const cancelled = await cancelStoreOrder(order.id);
+      setOrders((current) => current?.map((item) => item.id === cancelled.id ? cancelled : item) ?? [cancelled]);
+      releasePendingStoreCheckout(cancelled.id);
+      setPaymentNotice({
+        tone: cancelled.refund ? "info" : "warning",
+        message: cancelled.refund
+          ? t("Order cancelled. Your full refund request was sent to our team.")
+          : t("Order cancelled. You were not charged."),
+      });
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : t("Could not cancel the store order."));
+    } finally {
+      setPaymentAction(null);
     }
   }
 
@@ -489,13 +574,13 @@ export default function AccountPage() {
 
             <div key={tab} id={`account-panel-${tab}`} role="tabpanel" aria-labelledby={`account-tab-${tab}`} tabIndex={0} className="checkout-step mt-6 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-4">
               {tab === "overview" && <div className="grid gap-5 lg:grid-cols-2">
-                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} onCancel={() => handleCancel(activeBookings[0].id)} onReschedule={() => loadRescheduleOptions(activeBookings[0], qatarServiceDate(activeBookings[0].scheduled_at))} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
+                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} busy={paymentAction === `booking:${activeBookings[0].id}`} onPay={() => handleCompleteBookingPayment(activeBookings[0])} onCancel={() => handleCancel(activeBookings[0].id)} onReschedule={() => loadRescheduleOptions(activeBookings[0], qatarServiceDate(activeBookings[0].scheduled_at))} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
                 <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Savings")}</p><h2 className="mt-1 text-xl font-bold">{t("Membership")}</h2></div><button type="button" aria-label={t("View all memberships")} onClick={() => setTab("memberships")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{memberships === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeMemberships.length > 0 ? <MembershipCard membership={activeMemberships[0]} /> : <EmptyState title={t("Wash more, pay less")} copy={t("Prepaid wash bundles make every booking faster.")} action={t("See memberships")} href="/memberships" />}</section>
               </div>}
 
-              {tab === "bookings" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My bookings")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Review upcoming and previous wash appointments.")}</p></div><Link href="/book" className="primary-button shrink-0 px-4">{t("New booking")}</Link></div>{bookings === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : bookings.length === 0 ? <EmptyState title={t("No bookings yet")} copy={t("Your first sparkling-clean car is a few taps away.")} action={t("Book your first wash")} href="/book" /> : <div className="grid gap-4 md:grid-cols-2">{bookings.map((booking) => <BookingCard key={booking.id} booking={booking} onCancel={() => handleCancel(booking.id)} onReschedule={() => loadRescheduleOptions(booking, qatarServiceDate(booking.scheduled_at))} />)}</div>}</section>}
+              {tab === "bookings" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My bookings")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Review upcoming and previous wash appointments.")}</p></div><Link href="/book" className="primary-button shrink-0 px-4">{t("New booking")}</Link></div>{bookings === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : bookings.length === 0 ? <EmptyState title={t("No bookings yet")} copy={t("Your first sparkling-clean car is a few taps away.")} action={t("Book your first wash")} href="/book" /> : <div className="grid gap-4 md:grid-cols-2">{bookings.map((booking) => <BookingCard key={booking.id} booking={booking} busy={paymentAction === `booking:${booking.id}`} onPay={() => handleCompleteBookingPayment(booking)} onCancel={() => handleCancel(booking.id)} onReschedule={() => loadRescheduleOptions(booking, qatarServiceDate(booking.scheduled_at))} />)}</div>}</section>}
 
-              {tab === "orders" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My store orders")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Track product purchases, delivery, and payment status.")}</p></div><Link href="/store" className="primary-button shrink-0 px-4">{t("Shop products")}</Link></div>{orders === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : orders.length === 0 ? <EmptyState title={t("No store orders yet")} copy={t("Products you purchase from the Bubbleit store will appear here.")} action={t("Browse the store")} href="/store" /> : <div className="grid gap-4 md:grid-cols-2">{orders.map((order) => <StoreOrderCard key={order.id} order={order} />)}</div>}</section>}
+              {tab === "orders" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My store orders")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Track product purchases, delivery, and payment status.")}</p></div><Link href="/store" className="primary-button shrink-0 px-4">{t("Shop products")}</Link></div>{orders === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : orders.length === 0 ? <EmptyState title={t("No store orders yet")} copy={t("Products you purchase from the Bubbleit store will appear here.")} action={t("Browse the store")} href="/store" /> : <div className="grid gap-4 md:grid-cols-2">{orders.map((order) => <StoreOrderCard key={order.id} order={order} busy={paymentAction === `order:${order.id}` || paymentAction === `cancel-order:${order.id}`} onPay={() => handleCompleteStorePayment(order)} onCancel={() => handleCancelStoreOrder(order)} />)}</div>}</section>}
 
               {tab === "memberships" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My memberships")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("See remaining washes, validity, and book with a plan.")}</p></div><Link href="/memberships" className="primary-button shrink-0 px-4">{t("Browse plans")}</Link></div>{memberships === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-44 animate-pulse bg-slate-100" />)}</div> : memberships.length === 0 ? <EmptyState title={t("No memberships yet")} copy={t("Save more when you wash regularly.")} action={t("See memberships")} href="/memberships" /> : <div className="grid gap-4 md:grid-cols-2">{memberships.map((membership) => <MembershipCard key={membership.id} membership={membership} />)}</div>}</section>}
 
@@ -574,7 +659,17 @@ function EmptyState({
   );
 }
 
-function StoreOrderCard({ order }: { order: StoreOrder }) {
+function StoreOrderCard({
+  order,
+  busy,
+  onPay,
+  onCancel,
+}: {
+  order: StoreOrder;
+  busy: boolean;
+  onPay: () => void;
+  onCancel: () => void;
+}) {
   const { lang, t } = useI18n();
   const paymentStatus = order.payment?.captured ? "paid" : (order.payment?.status ?? order.payment_status ?? "pending");
   const paymentLabel = paymentStatus === "paid"
@@ -594,6 +689,9 @@ function StoreOrderCard({ order }: { order: StoreOrder }) {
                 : t(order.payment_status_label ?? "Payment pending");
   const paid = paymentStatus === "paid";
   const failed = ["failed", "retryable", "cancelled", "timed_out"].includes(paymentStatus);
+  const reconciliationRequired = paymentStatus === "reconciliation_required";
+  const canPay = order.status === "pending_payment" && !paid && !reconciliationRequired;
+  const canCancel = ["pending_payment", "paid", "confirmed"].includes(order.status) && !reconciliationRequired;
 
   return (
     <article id={`store-order-${order.id}`} className="commerce-card flex flex-col gap-4 p-5 sm:p-6">
@@ -635,10 +733,19 @@ function StoreOrderCard({ order }: { order: StoreOrder }) {
           </span>
         </div>
       </div>
+      {order.refund && (
+        <p className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold text-sky-900">
+          {t("Refund")}: {t(order.refund.status_label)}
+        </p>
+      )}
 
-      <div className="mt-auto flex items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
         <span className="font-bold" dir="ltr">{formatQar(order.total, lang)}</span>
-        <Link href="/store" className="secondary-button min-h-9 px-4 py-2 text-xs">{t("Shop again")}</Link>
+        <div className="flex flex-wrap gap-2">
+          {canPay && <button type="button" className="primary-button min-h-9 px-4 py-2 text-xs" disabled={busy} onClick={onPay}>{busy ? t("Checking payment…") : t("Complete payment")}</button>}
+          {canCancel && <button type="button" className="secondary-button min-h-9 px-4 py-2 text-xs text-red-600 hover:border-red-400 hover:text-red-600" disabled={busy} onClick={onCancel}>{t("Cancel order")}</button>}
+          <Link href="/store" className="secondary-button min-h-9 px-4 py-2 text-xs">{t("Shop again")}</Link>
+        </div>
       </div>
     </article>
   );
@@ -670,10 +777,14 @@ function MembershipCard({ membership }: { membership: CustomerMembership }) {
 
 function BookingCard({
   booking,
+  busy,
+  onPay,
   onCancel,
   onReschedule,
 }: {
   booking: Booking;
+  busy: boolean;
+  onPay: () => void;
   onCancel: () => void;
   onReschedule: () => void;
 }) {
@@ -686,6 +797,9 @@ function BookingCard({
     minute: "2-digit",
   });
   const reconciliationRequired = booking.payment?.status === "reconciliation_required";
+  const paymentRequired = booking.status === "pending_payment"
+    && !booking.payment?.captured
+    && !reconciliationRequired;
   const hasBluePlate = Boolean(
     booking.building_number || booking.zone_number || booking.street_number,
   );
@@ -749,10 +863,20 @@ function BookingCard({
           {t("Payment received after this booking closed. It was not reinstated, and our team is arranging the required refund.")}
         </p>
       )}
+      {booking.refund && (
+        <p className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold text-sky-900">
+          {t("Refund")}: {t(booking.refund.status_label)}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
         <span className="font-bold" dir="ltr">{formatQar(booking.total, lang)}</span>
         <div className="flex flex-wrap gap-2">
+          {paymentRequired && (
+            <button type="button" className="primary-button min-h-9 px-4 py-2 text-xs" disabled={busy} onClick={onPay}>
+              {busy ? t("Checking payment…") : t("Complete payment")}
+            </button>
+          )}
           <Link href="/book" className="secondary-button min-h-9 px-4 py-2 text-xs">
             {t("Book again")}
           </Link>

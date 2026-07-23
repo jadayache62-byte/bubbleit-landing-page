@@ -8,8 +8,7 @@ import { listStoreProducts } from "@/lib/api/client";
 import type { StoreProductInventory } from "@/lib/api/types";
 import { localized, useI18n } from "@/lib/i18n";
 import { STORE_PRODUCTS, formatStorePrice } from "@/lib/store/products";
-
-const CART_KEY = "bubbleit.store.cart";
+import { STORE_CART_KEY } from "@/lib/store/checkout-state";
 
 type Cart = Record<string, number>;
 
@@ -38,7 +37,7 @@ function availableFor(product: StoreProductInventory) {
 function readCart(): Cart {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(CART_KEY);
+    const raw = window.localStorage.getItem(STORE_CART_KEY);
     return raw ? (JSON.parse(raw) as Cart) : {};
   } catch {
     return {};
@@ -46,7 +45,7 @@ function readCart(): Cart {
 }
 
 function writeCart(cart: Cart) {
-  window.localStorage.setItem(CART_KEY, JSON.stringify(cart));
+  window.localStorage.setItem(STORE_CART_KEY, JSON.stringify(cart));
 }
 
 export function StoreClient() {
