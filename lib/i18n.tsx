@@ -53,6 +53,8 @@ const AR: Record<string, string> = {
   "Account deletion": "حذف الحساب",
   "WhatsApp": "واتساب",
   "All rights reserved.": "جميع الحقوق محفوظة.",
+  "Powered by": "بدعم من",
+  "madintelligence.ai": "madintelligence.ai",
   "Bubbleit makes mobile car wash booking simple, fast, and convenient.":
     "ببلت تجعل حجز غسيل السيارات المتنقل سهلاً وسريعاً ومريحاً.",
 

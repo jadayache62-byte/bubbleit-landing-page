@@ -8,3 +8,4 @@ npm-debug.log*
 tsconfig.tsbuildinfo
 playwright-report/
 test-results/
+.nx/
