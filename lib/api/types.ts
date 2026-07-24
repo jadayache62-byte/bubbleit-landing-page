@@ -138,7 +138,12 @@ export type Address = {
   service_area: ServiceAreaSnapshot & { stale: boolean };
 };
 
-export type PaymentMethod = "pay_on_site" | "online" | "membership";
+export type PaymentMethod = "pay_on_site" | "online" | "cash" | "membership";
+export type PaymentChannel = "cash" | "skipcash_hosted" | "skipcash_qpay" | "membership";
+export type PaymentOptions = {
+  mode: "cash" | "online";
+  methods: { channel: PaymentChannel; label: string }[];
+};
 
 export type PaymentState = {
   status:
@@ -150,11 +155,13 @@ export type PaymentState = {
     | "cancelled"
     | "timed_out"
     | "pending"
+    | "cash_due"
     | "paid"
     | "partially_refunded"
     | "refunded"
     | "reconciliation_required";
   captured: boolean;
+  channel?: PaymentChannel | null;
   reconciliation_reason: string | null;
   checkout_url: string | null;
 };
@@ -198,6 +205,7 @@ export type CustomerMembership = {
   expires_at: string | null;
   plan: MembershipPlan;
   payment?: PaymentState;
+  payment_purchase_id?: number | null;
 };
 
 export type BookingStatus =
@@ -235,6 +243,7 @@ export type Booking = {
   time_range_label?: string | null;
   membership_applied?: boolean;
   payment_method: PaymentMethod;
+  payment_purchase_id?: number | null;
   total: number;
   product_total?: number;
   products?: {
@@ -451,6 +460,7 @@ export type StoreOrder = {
   payment_status?: "unpaid" | "pending" | "paid" | "failed" | "refunded";
   payment_status_label?: string;
   payment_method?: string;
+  payment_purchase_id?: number | null;
   payment?: PaymentState;
   refund?: RefundState | null;
   pricing: StorePricingConfirmation;
@@ -468,7 +478,7 @@ export type StoreOrder = {
   total: number;
   notes: string | null;
   lines: StoreOrderLine[];
-  expires_at: string;
+  expires_at: string | null;
   created_at: string;
 };
 
@@ -488,11 +498,12 @@ export type CreateStoreOrderPayload = {
 
 export type StoreOrderPayment = {
   purchase_id: number;
-  attempt_id: number;
+  attempt_id: number | null;
   merchant_reference: string;
   checkout_url: string | null;
-  payment_reference: string;
-  status: "ready" | "retryable" | "pending" | "paid";
+  payment_reference: string | null;
+  status: "ready" | "retryable" | "pending" | "paid" | "cash_due";
+  channel: PaymentChannel;
 };
 
 export type CustomerNotificationType =

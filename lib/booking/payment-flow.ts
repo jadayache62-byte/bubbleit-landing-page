@@ -7,6 +7,7 @@ export type BookingPaymentStatus =
   | "cancelled"
   | "timed_out"
   | "pending"
+  | "cash_due"
   | "paid"
   | "reconciliation_required"
   | "partially_refunded"
@@ -16,6 +17,7 @@ export type BookingPaymentUiState =
   | "covered_confirmed"
   | "paid_confirmed"
   | "payment_pending"
+  | "cash_due"
   | "payment_retryable"
   | "payment_reconciliation"
   | "payment_closed";
@@ -28,6 +30,8 @@ export function bookingPaymentUiState(
       return "covered_confirmed";
     case "paid":
       return "paid_confirmed";
+    case "cash_due":
+      return "cash_due";
     case "retryable":
     case "failed":
     case "cancelled":

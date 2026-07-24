@@ -8,6 +8,7 @@ import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import { HourSlotPicker } from "@/components/booking/HourSlotPicker";
+import { PaymentMethodSelector } from "@/components/payments/PaymentMethodSelector";
 import { localized, useI18n } from "@/lib/i18n";
 import { formatQar } from "@/lib/money";
 
@@ -32,6 +33,7 @@ import {
   createBooking,
   createVehicle,
   getAvailability,
+  getPaymentOptions,
   listAddresses,
   listVehicles,
   getQuote,
@@ -52,6 +54,8 @@ import type {
   StoreProductInventory,
   Vehicle,
   VehicleType,
+  PaymentChannel,
+  PaymentOptions,
 } from "@/lib/api/types";
 import {
   formatQatarDateTime,
@@ -277,6 +281,8 @@ export function BookingWizard() {
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Booking | null>(null);
   const [paymentRetrying, setPaymentRetrying] = useState(false);
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
+  const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>("skipcash_hosted");
   const bookingAttemptRef = useRef<string | null>(null);
 
   const bookingAttemptKey = useCallback(() => {
@@ -303,6 +309,20 @@ export function BookingWizard() {
   }, [confirmed]);
 
   useEffect(() => {
+    getPaymentOptions()
+      .then((options) => {
+        setPaymentOptions(options);
+        if (options.mode === "online" && options.methods[0]) {
+          setPaymentChannel(options.methods[0].channel);
+        }
+      })
+      .catch(() => setPaymentOptions({
+        mode: "online",
+        methods: [
+          { channel: "skipcash_hosted", label: "Card or Apple Pay" },
+          { channel: "skipcash_qpay", label: "Direct Debit Card (QPAY)" },
+        ],
+      }));
     getServices()
       .then(setServices)
       .catch(() => setLoadError(true))
@@ -760,9 +780,24 @@ export function BookingWizard() {
           .map(([productId, quantity]) => ({ product_id: Number(productId), quantity })),
       }, `${attemptKey}:booking`);
 
+      if (booking.payment?.status === "cash_due") {
+        clearBookingAttempt();
+        setConfirmed(booking);
+        return;
+      }
+
       if (canRetryBookingPayment(bookingPaymentUiState(booking.payment?.status))) {
         try {
-          const payment = await initializeBookingPayment(booking.id, `${attemptKey}:payment`);
+          const payment = await initializeBookingPayment(
+            booking.id,
+            `${attemptKey}:payment`,
+            paymentOptions?.mode === "online" ? paymentChannel : undefined,
+          );
+          if (payment.status === "cash_due") {
+            clearBookingAttempt();
+            setConfirmed({ ...booking, payment: { ...booking.payment!, status: "cash_due", channel: "cash" } });
+            return;
+          }
           const checkoutUrl = usableCheckoutUrl(payment.checkout_url);
           if (!checkoutUrl) {
             throw new Error("Payment provider did not return a usable checkout link.");
@@ -830,7 +865,27 @@ export function BookingWizard() {
     if (!confirmed) return;
     setPaymentRetrying(true);
     try {
-      const payment = await initializeBookingPayment(confirmed.id, `${bookingAttemptKey()}:payment`);
+      const payment = await initializeBookingPayment(
+        confirmed.id,
+        `${bookingAttemptKey()}:payment`,
+        paymentOptions?.mode === "online" ? paymentChannel : undefined,
+      );
+      if (payment.status === "cash_due") {
+        setConfirmed({
+          ...confirmed,
+          payment: {
+            ...(confirmed.payment ?? {
+              captured: false,
+              reconciliation_reason: null,
+              checkout_url: null,
+            }),
+            status: "cash_due",
+            channel: "cash",
+          },
+        });
+        clearBookingAttempt();
+        return;
+      }
       const checkoutUrl = usableCheckoutUrl(payment.checkout_url);
       if (!checkoutUrl) {
         throw new Error("Payment provider did not return a usable checkout link.");
@@ -1131,7 +1186,9 @@ export function BookingWizard() {
           <StepPanel
             title={t("Pay & Confirm")}
             subtitle={t(
-              "Pay online and confirm your booking in one final step.",
+              paymentOptions?.mode === "cash"
+                ? "Confirm your booking now and pay cash when the driver arrives."
+                : "Pay online and confirm your booking in one final step.",
             )}
           >
             {!authed && (
@@ -1208,8 +1265,12 @@ export function BookingWizard() {
               </div>
             )}
 
-            {authed && !quoteLoading && quote && !applyMembership && (
-              <PayOption active onClick={() => {}} title={t("Pay online (SkipCash)")} />
+            {authed && !quoteLoading && quote && dueTotal > 0 && (
+              <PaymentMethodSelector
+                options={paymentOptions}
+                value={paymentChannel}
+                onChange={setPaymentChannel}
+              />
             )}
 
             {showPromo && (
@@ -1350,7 +1411,9 @@ export function BookingWizard() {
                   ? t("Confirming…")
                   : applyMembership && dueTotal <= 0
                     ? t("Confirm booking")
-                    : t("Confirm & Pay")}
+                    : paymentOptions?.mode === "cash"
+                      ? t("Confirm cash booking")
+                      : t("Confirm & Pay")}
               </button>
             )}
           </div>
@@ -2302,6 +2365,7 @@ function SuccessPanel({
   const paymentState = bookingPaymentUiState(booking.payment?.status);
   const paymentConfirmed =
     paymentState === "covered_confirmed" || paymentState === "paid_confirmed";
+  const paymentCashDue = paymentState === "cash_due";
   const paymentUnderReview = paymentState === "payment_reconciliation";
   const paymentClosed = paymentState === "payment_closed";
   const showPaymentRetry = canRetryBookingPayment(paymentState);
@@ -2329,6 +2393,8 @@ function SuccessPanel({
           ? t("Booking confirmed — membership covered")
           : paymentState === "paid_confirmed"
             ? t("Booking confirmed — payment received")
+            : paymentCashDue
+              ? t("Booking confirmed — cash due")
             : paymentUnderReview
               ? t("Payment under review")
               : paymentClosed
@@ -2364,6 +2430,8 @@ function SuccessPanel({
           ? t("Covered by your membership. No payment is required.")
           : paymentState === "paid_confirmed"
             ? `${t("Paid")} ${fmt(booking.total, lang)} ${t("online.")}`
+            : paymentCashDue
+              ? t("Your booking can proceed. Pay the full amount in cash to the driver when they arrive; this status updates after cash is recorded.")
             : paymentUnderReview
               ? t("A captured payment needs review. This booking is not being shown as paid or reinstated.")
               : paymentClosed

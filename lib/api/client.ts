@@ -34,6 +34,10 @@ import type {
 // token in an HttpOnly cookie, so application JavaScript can never read it.
 const BASE = "/api/customer";
 
+type PaymentCheckoutContract = {
+  checkout_url: string | null;
+};
+
 export class ApiError extends Error {
   status: number;
   errors: Record<string, string[]> | null;
@@ -204,9 +208,17 @@ export function getStoreOrder(orderId: number) {
   return request<StoreOrder>(`/store/orders/${orderId}`);
 }
 
-export function payStoreOrder(orderId: number, idempotencyKey: string) {
+export function getPaymentOptions() {
+  return request<import("./types").PaymentOptions>("/payment-options");
+}
+
+export function payStoreOrder(orderId: number, idempotencyKey: string): Promise<StoreOrderPayment & PaymentCheckoutContract>;
+export function payStoreOrder(orderId: number, idempotencyKey: string, channel: import("./types").PaymentChannel): Promise<StoreOrderPayment & PaymentCheckoutContract>;
+export function payStoreOrder(orderId: number, idempotencyKey: string, channel?: import("./types").PaymentChannel): Promise<StoreOrderPayment & PaymentCheckoutContract>;
+export function payStoreOrder(orderId: number, idempotencyKey: string, channel?: import("./types").PaymentChannel) {
   return request<StoreOrderPayment>(`/store/orders/${orderId}/pay`, {
     method: "POST",
+    body: channel ? { channel } : undefined,
     headers: { "Idempotency-Key": idempotencyKey },
   });
 }
@@ -414,15 +426,25 @@ export function buyMembership(planId: number, idempotencyKey: string) {
   });
 }
 
-export function initializeMembershipPayment(membershipId: number, idempotencyKey: string) {
+export function initializeMembershipPayment(membershipId: number, idempotencyKey: string): Promise<StoreOrderPayment & PaymentCheckoutContract>;
+export function initializeMembershipPayment(membershipId: number, idempotencyKey: string, channel: import("./types").PaymentChannel): Promise<StoreOrderPayment & PaymentCheckoutContract>;
+export function initializeMembershipPayment(membershipId: number, idempotencyKey: string, channel?: import("./types").PaymentChannel): Promise<StoreOrderPayment & PaymentCheckoutContract>;
+export function initializeMembershipPayment(membershipId: number, idempotencyKey: string, channel?: import("./types").PaymentChannel) {
   return request<StoreOrderPayment>(`/memberships/${membershipId}/pay`, {
     method: "POST",
+    body: channel ? { channel } : undefined,
     headers: { "Idempotency-Key": idempotencyKey },
   });
 }
 
 export function reconcileMembershipPayment(membershipId: number) {
   return request<CustomerMembership>(`/memberships/${membershipId}/payment-status`, {
+    method: "POST",
+  });
+}
+
+export function cancelCashMembership(membershipId: number) {
+  return request<CustomerMembership>(`/memberships/${membershipId}/cancel`, {
     method: "POST",
   });
 }
@@ -447,9 +469,10 @@ export function createBooking(payload: CreateBookingPayload, idempotencyKey?: st
   });
 }
 
-export function initializeBookingPayment(bookingId: number, idempotencyKey: string) {
-  return request<{ checkout_url: string | null; status: "ready" | "pending" | "retryable" | "paid" }>(`/bookings/${bookingId}/pay`, {
+export function initializeBookingPayment(bookingId: number, idempotencyKey: string, channel?: import("./types").PaymentChannel) {
+  return request<StoreOrderPayment>(`/bookings/${bookingId}/pay`, {
     method: "POST",
+    body: channel ? { channel } : undefined,
     headers: { "Idempotency-Key": idempotencyKey },
   });
 }

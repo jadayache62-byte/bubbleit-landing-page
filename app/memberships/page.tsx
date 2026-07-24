@@ -6,15 +6,17 @@ import Link from "next/link";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
+import { PaymentMethodSelector } from "@/components/payments/PaymentMethodSelector";
 import {
   ApiError,
   buyMembership,
   getMembershipPlans,
+  getPaymentOptions,
   initializeMembershipPayment,
   listMemberships,
   me,
 } from "@/lib/api/client";
-import type { CustomerMembership, MembershipPlan } from "@/lib/api/types";
+import type { CustomerMembership, MembershipPlan, PaymentChannel, PaymentOptions } from "@/lib/api/types";
 import { localized, useI18n } from "@/lib/i18n";
 import { formatQar } from "@/lib/money";
 
@@ -90,6 +92,8 @@ export default function MembershipsPage() {
   const [busy, setBusy] = useState(false);
   const [bought, setBought] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
+  const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>("skipcash_hosted");
 
   const refreshMine = useCallback(() => {
     listMemberships().then((memberships) => {
@@ -106,6 +110,18 @@ export default function MembershipsPage() {
   }, []);
 
   useEffect(() => {
+    getPaymentOptions()
+      .then((options) => {
+        setPaymentOptions(options);
+        if (options.mode === "online" && options.methods[0]) setPaymentChannel(options.methods[0].channel);
+      })
+      .catch(() => setPaymentOptions({
+        mode: "online",
+        methods: [
+          { channel: "skipcash_hosted", label: "Card or Apple Pay" },
+          { channel: "skipcash_qpay", label: "Direct Debit Card (QPAY)" },
+        ],
+      }));
     getMembershipPlans()
       .then(setPlans)
       .catch(() => setPlans([]))
@@ -148,11 +164,16 @@ export default function MembershipsPage() {
       const result = await buyMembership(plan.id, attempt.purchaseKey);
       const linkedAttempt = { ...attempt, membershipId: result.id };
       saveMembershipAttempt(linkedAttempt);
-      const payment = await initializeMembershipPayment(result.id, linkedAttempt.paymentKey);
+      const payment = await initializeMembershipPayment(
+        result.id,
+        linkedAttempt.paymentKey,
+        paymentOptions?.mode === "online" ? paymentChannel : undefined,
+      );
       if (payment.checkout_url) {
         window.location.assign(payment.checkout_url);
       } else {
         refreshMine();
+        if (payment.status === "cash_due") setBought(true);
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("Something went wrong. Please try again."));
@@ -171,7 +192,11 @@ export default function MembershipsPage() {
         ? saved
         : { ...saved, membershipId: membership.id, paymentKey: randomAttemptKey("membership:payment") };
       saveMembershipAttempt(attempt);
-      const payment = await initializeMembershipPayment(membership.id, attempt.paymentKey);
+      const payment = await initializeMembershipPayment(
+        membership.id,
+        attempt.paymentKey,
+        paymentOptions?.mode === "online" ? paymentChannel : undefined,
+      );
       if (payment.checkout_url) {
         window.location.assign(payment.checkout_url);
       } else {
@@ -250,7 +275,14 @@ export default function MembershipsPage() {
                       {t("Book a Wash")}
                     </Link>
                   )}
-                  {m.status === "pending_payment" && m.payment?.status !== "reconciliation_required" && (
+                  {m.payment?.status === "cash_due" && (
+                    <p className="rounded-2xl bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+                      {t("Cash due. This membership activates after an authorized team member records the full payment.")}
+                    </p>
+                  )}
+                  {m.status === "pending_payment"
+                    && m.payment?.status !== "reconciliation_required"
+                    && m.payment?.status !== "cash_due" && (
                     <button type="button" className="primary-button mt-auto" disabled={busy} onClick={() => retryMembershipPayment(m)}>
                       {t("Continue Payment")}
                     </button>
@@ -402,6 +434,7 @@ export default function MembershipsPage() {
                 </dl>
               </div>
               <div className="flex items-end justify-between border-t border-slate-200 pt-4"><div><p className="text-sm font-semibold text-[color:var(--muted-foreground)]">{t("Total")}</p><p className="mt-1 text-xs text-[color:var(--muted-foreground)]"><bdi dir="ltr">{formatQar(buyingPlan.price / buyingPlan.washes_count, lang, 0)}</bdi> / {t("wash")}</p></div><p className="text-3xl font-extrabold text-[color:var(--navy)]" dir="ltr">{formatQar(buyingPlan.price, lang)}</p></div>
+              <PaymentMethodSelector options={paymentOptions} value={paymentChannel} onChange={setPaymentChannel} />
             </div>
 
             <div className="grid grid-cols-2 gap-2 border-t border-slate-200 bg-slate-50 px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pb-5">
@@ -440,7 +473,9 @@ export default function MembershipsPage() {
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-2xl">✓</div>
             <h2 className="mt-4 text-xl font-bold">{t("Membership requested!")}</h2>
             <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-              {t("We'll activate it as soon as payment is confirmed — our team will contact you.")}
+              {paymentOptions?.mode === "cash"
+                ? t("Your membership is reserved and remains inactive until the full cash payment is recorded.")
+                : t("We'll activate it as soon as payment is confirmed — our team will contact you.")}
             </p>
             <button type="button" className="primary-button mt-6 w-full" onClick={() => setBought(false)}>
               OK

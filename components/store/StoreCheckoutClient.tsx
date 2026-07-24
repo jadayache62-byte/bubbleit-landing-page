@@ -8,6 +8,7 @@ import { AuthPanel } from "@/components/booking/AuthPanel";
 import {
   ApiError,
   createStoreOrder,
+  getPaymentOptions,
   listStoreProducts,
   me,
   payStoreOrder,
@@ -20,7 +21,10 @@ import type {
   StoreOrder,
   StorePricingConfirmation,
   StoreProductInventory,
+  PaymentChannel,
+  PaymentOptions,
 } from "@/lib/api/types";
+import { PaymentMethodSelector } from "@/components/payments/PaymentMethodSelector";
 import { localized, useI18n } from "@/lib/i18n";
 import { formatStorePrice } from "@/lib/store/products";
 import {
@@ -219,6 +223,8 @@ export function StoreCheckoutClient() {
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [step, setStep] = useState<"location" | "contact" | "review">("location");
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
+  const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>("skipcash_hosted");
 
   const acceptAuthenticatedCustomer = useCallback((current: Customer) => {
     setCustomer(current);
@@ -278,6 +284,26 @@ export function StoreCheckoutClient() {
 
   useEffect(() => {
     let cancelled = false;
+    getPaymentOptions()
+      .then((options) => {
+        if (!cancelled) {
+          setPaymentOptions(options);
+          if (options.mode === "online" && options.methods[0]) {
+            setPaymentChannel(options.methods[0].channel);
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPaymentOptions({
+            mode: "online",
+            methods: [
+              { channel: "skipcash_hosted", label: "Card or Apple Pay" },
+              { channel: "skipcash_qpay", label: "Direct Debit Card (QPAY)" },
+            ],
+          });
+        }
+      });
     listStoreProducts()
       .then((items) => {
         if (!cancelled) {
@@ -523,7 +549,16 @@ export function StoreCheckoutClient() {
     setPaymentNotice(null);
 
     try {
-      const payment = await payStoreOrder(checkout.order.id, checkout.paymentKey);
+      const payment = await payStoreOrder(
+        checkout.order.id,
+        checkout.paymentKey,
+        paymentOptions?.mode === "online" ? paymentChannel : undefined,
+      );
+      if (payment.status === "cash_due") {
+        const order = await reconcileStoreOrderPayment(checkout.order.id);
+        completeOrder(order);
+        return;
+      }
       if (payment.status === "paid") {
         const order = await reconcileStoreOrderPayment(checkout.order.id);
         if (isCompletedOrder(order)) {
@@ -702,7 +737,9 @@ export function StoreCheckoutClient() {
           </span>
           <h1 className="section-title mt-5">{t("Store order received")}</h1>
           <p className="section-copy mx-auto mt-4">
-            {t("Your Bubbleit store order has been captured. The team will contact you to confirm delivery and payment details.")}
+            {completedOrder?.payment_method === "cash"
+              ? t("Your order is confirmed for delivery. Pay the full amount in cash when the team arrives.")
+              : t("Your Bubbleit store order has been captured. The team will contact you to confirm delivery and payment details.")}
           </p>
           {completedOrder && (
             <p className="mt-4 text-sm font-bold text-[color:var(--blue)]">
@@ -851,6 +888,14 @@ export function StoreCheckoutClient() {
                 <section className="commerce-card divide-y divide-slate-100 px-5 sm:px-7">
                   <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">{t("Deliver to")}</p><p className="mt-1 text-sm font-semibold">{t("Building")} <bdi>{buildingNumber}</bdi>{zoneNumber ? ` · ${t("Zone")} ${zoneNumber}` : ""}{streetNumber ? ` · ${t("Street")} ${streetNumber}` : ""}{area ? ` · ${area}` : ""}</p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("location")}>{t("Edit")}</button></div>
                   <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">{t("Account owner")}</p><p className="mt-1 text-sm font-semibold">{customer?.name || t("Bubbleit customer")} · <span dir="ltr">{customer?.phone}</span></p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("contact")}>{t("View")}</button></div>
+                </section>
+
+                <section className="commerce-card p-5 sm:p-7">
+                  <PaymentMethodSelector
+                    options={paymentOptions}
+                    value={paymentChannel}
+                    onChange={setPaymentChannel}
+                  />
                 </section>
 
                 {pendingCheckout && <p role={paymentNotice ? "alert" : "status"} className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">{t("Order")} {pendingCheckout.order.reference} {t("is saved.")} {paymentNotice ?? t("Retry payment to continue.")}</p>}
