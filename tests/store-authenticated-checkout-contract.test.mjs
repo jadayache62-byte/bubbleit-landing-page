@@ -39,17 +39,28 @@ test("login can happen mid-cart without clearing browser cart state", () => {
 });
 
 test("leaving hosted payment keeps the cart until the matching order is confirmed", () => {
-  const redirect = checkout.slice(
-    checkout.indexOf("window.location.href = checkoutUrl"),
-    checkout.indexOf("window.location.href = checkoutUrl") + 250,
-  );
+  const redirectStart = checkout.indexOf("window.location.assign(checkoutUrl)");
+  assert.notEqual(redirectStart, -1, "store checkout must navigate through a validated checkout URL");
+  const redirect = checkout.slice(redirectStart, redirectStart + 300);
   assert.doesNotMatch(redirect, /clearCompletedStoreCheckout|removeItem/);
+  assert.match(checkout, /usableCheckoutUrl\(payment\.checkout_url\)/);
   assert.match(checkout, /reconcileStoreOrderPayment\(pendingOrderId\)/);
   assert.match(checkout, /terminalAttempt[\s\S]*randomAttemptKey\(`store-order:\$\{order\.id\}:payment`\)/);
   assert.match(checkout, /writePendingCheckout\(refreshed\)/);
   assert.match(checkoutState, /pendingOrderId\(\) !== orderId/);
   assert.match(checkoutState, /clearCompletedStoreCheckout[\s\S]*removeItem\(STORE_CART_KEY\)/);
   assert.match(checkoutState, /releasePendingStoreCheckout[\s\S]*Keep the products in the cart/);
+});
+
+test("active provider navigation never renders saved-order retry messaging", () => {
+  assert.match(checkout, /type PaymentInitializationOutcome = "completed" \| "redirecting" \| "retryable"/);
+  assert.match(checkout, /return "redirecting"/);
+  assert.match(checkout, /if \(!redirecting\) \{[\s\S]*setSubmitPhase\("idle"\)/);
+  assert.match(
+    checkout,
+    /pendingCheckout && submitPhase === "redirecting"[\s\S]*Redirecting to secure payment…[\s\S]*: pendingCheckout \?[\s\S]*Retry payment to continue\./,
+  );
+  assert.match(checkout, /event\.persisted[\s\S]*setSubmitPhase\("idle"\)/);
 });
 
 test("saved pending checkout is bound to its server owner", () => {
