@@ -5,8 +5,8 @@ const port = 31000 + (process.pid % 1000);
 const origin = `http://127.0.0.1:${port}`;
 const phone = `+97455${String(process.pid % 1_000_000).padStart(6, "0")}`;
 const serverEnv = { ...process.env };
-delete serverEnv.CUSTOMER_API_BASE;
 delete serverEnv.NEXT_PUBLIC_API_BASE;
+serverEnv.CUSTOMER_API_BASE = `${origin}/api/mock/v1/customer`;
 const server = spawn(
   process.execPath,
   ["node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1", "--port", String(port)],

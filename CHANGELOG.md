@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-07-24 — Landing release-gate hardening
+
+- Updated the pinned PostCSS override to a patched release, clearing the blocking dependency audit advisory without downgrading Next.js.
+- Isolated the HttpOnly session-boundary integration check from developer environment files so it always uses its in-process mock and never contacts a shared backend.
+
 ## 2026-07-24 — Truthful store payment redirect state (MAD-53)
 
 - Kept store checkout locked in a dedicated secure-payment redirect state until provider navigation takes over.
