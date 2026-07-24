@@ -25,6 +25,23 @@ test("store checkout offers authenticated account checkout only", () => {
   assert.doesNotMatch(checkout, /customer_name: contactName|customer_phone: contactPhone/);
 });
 
+test("signed-in customers skip the redundant account-verification step", () => {
+  assert.match(
+    checkout,
+    /const steps:[\s\S]*= customer[\s\S]*\{ id: "location", label: "Location" \},[\s\S]*\{ id: "review", label: "Review" \}/,
+  );
+  assert.match(checkout, /setStep\(\(current\) => current === "contact" \? "review" : current\)/);
+  assert.match(checkout, /function advanceCheckoutStep\(\)[\s\S]*setStep\(customer \? "review" : "contact"\)/);
+  assert.match(checkout, /step === "contact" && !customer/);
+  assert.match(checkout, /steps\.length === 2[\s\S]*Step 1 of 2[\s\S]*Step 2 of 2/);
+
+  const review = checkout.slice(
+    checkout.indexOf('{step === "review"'),
+    checkout.indexOf('{pendingCheckout && submitPhase'),
+  );
+  assert.doesNotMatch(review, /setStep\("contact"\)/);
+});
+
 test("login can happen mid-cart without clearing browser cart state", () => {
   assert.match(checkout, /onAuthed=\{acceptAuthenticatedCustomer\}/);
   assert.match(checkout, /Your cart stays here while you sign in/);

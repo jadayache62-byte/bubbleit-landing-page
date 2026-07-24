@@ -701,6 +701,8 @@ const AR: Record<string, string> = {
   "Step 1 of 3": "الخطوة 1 من 3",
   "Step 2 of 3": "الخطوة 2 من 3",
   "Step 3 of 3": "الخطوة 3 من 3",
+  "Step 1 of 2": "الخطوة 1 من 2",
+  "Step 2 of 2": "الخطوة 2 من 2",
   "Store checkout requires a signed-in customer account. Your cart stays here while you sign in or verify a new account by OTP.":
     "يتطلب إتمام طلب المتجر حساب عميل مسجلاً. ستبقى سلتك محفوظة أثناء تسجيل الدخول أو توثيق حساب جديد برمز التحقق.",
   "Store order received": "تم استلام طلب المتجر",

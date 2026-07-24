@@ -62,6 +62,7 @@ type PendingCheckout = {
 
 type CheckoutAttempt = Pick<PendingCheckout, "orderKey" | "paymentKey"> & { fingerprint: string };
 type PaymentInitializationOutcome = "completed" | "redirecting" | "retryable";
+type CheckoutStep = "location" | "contact" | "review";
 
 const COMPLETED_ORDER_STATUSES = new Set<StoreOrder["status"]>([
   "paid",
@@ -224,7 +225,7 @@ export function StoreCheckoutClient() {
   const [products, setProducts] = useState<StoreProductInventory[]>([]);
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [catalogAttempt, setCatalogAttempt] = useState(0);
-  const [step, setStep] = useState<"location" | "contact" | "review">("location");
+  const [step, setStep] = useState<CheckoutStep>("location");
   const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
   const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>("skipcash_hosted");
 
@@ -245,7 +246,13 @@ export function StoreCheckoutClient() {
       setGeo(null);
       setPaymentNotice(null);
       setStep("location");
+      return;
     }
+
+    // Authentication is a gate, not a destination. Once the customer is
+    // known, continue directly to review instead of showing a redundant
+    // signed-in-account confirmation screen.
+    setStep((current) => current === "contact" ? "review" : current);
   }, []);
 
   useEffect(() => {
@@ -785,12 +792,35 @@ export function StoreCheckoutClient() {
 
   const locationValid = geo !== null && buildingNumber.trim().length > 0;
   const contactValid = Boolean(customer?.phone);
-  const steps = [
-    { id: "location", label: "Location" },
-    { id: "contact", label: "Contact" },
-    { id: "review", label: "Review" },
-  ] as const;
-  const currentStep = steps.findIndex((item) => item.id === step);
+  const steps: ReadonlyArray<{ id: CheckoutStep; label: string }> = customer
+    ? [
+        { id: "location", label: "Location" },
+        { id: "review", label: "Review" },
+      ]
+    : [
+        { id: "location", label: "Location" },
+        { id: "contact", label: "Contact" },
+        { id: "review", label: "Review" },
+      ];
+  const currentStep = Math.max(0, steps.findIndex((item) => item.id === step));
+  let stepProgressLabel: string;
+  if (steps.length === 2) {
+    stepProgressLabel = step === "location" ? t("Step 1 of 2") : t("Step 2 of 2");
+  } else if (step === "location") {
+    stepProgressLabel = t("Step 1 of 3");
+  } else {
+    stepProgressLabel = step === "contact" ? t("Step 2 of 3") : t("Step 3 of 3");
+  }
+
+  function advanceCheckoutStep() {
+    setError(null);
+    if (step === "location") {
+      setStep(customer ? "review" : "contact");
+      return;
+    }
+
+    setStep("review");
+  }
 
   return (
     <div ref={topRef} className="mx-auto w-full max-w-3xl scroll-mt-24 px-4 py-6 pb-32 sm:px-6 sm:py-10">
@@ -809,7 +839,7 @@ export function StoreCheckoutClient() {
             <span className="text-sm font-bold text-[color:var(--navy)]">{formatStorePrice(reviewedPricing.total_minor / 100, lang)}</span>
           </div>
 
-          <nav className="mb-7 grid grid-cols-3 gap-2" aria-label={t("Checkout progress")}>
+          <nav className={customer ? "mb-7 grid grid-cols-2 gap-2" : "mb-7 grid grid-cols-3 gap-2"} aria-label={t("Checkout progress")}>
             {steps.map((item, index) => (
               <div key={item.id} className="min-w-0">
                 <div className={index <= currentStep ? "h-1 rounded-full bg-[color:var(--blue)] transition-colors duration-300" : "h-1 rounded-full bg-slate-200 transition-colors duration-300"} />
@@ -824,7 +854,7 @@ export function StoreCheckoutClient() {
             {step === "location" && (
               <section className="commerce-card overflow-hidden">
                 <div className="border-b border-slate-200 px-5 py-5 sm:px-7">
-                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">{t("Step 1 of 3")}</span>
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">{stepProgressLabel}</span>
                   <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">{t("Where should we deliver?")}</h1>
                   <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Pin the exact location, then add the building details.")}</p>
                 </div>
@@ -865,20 +895,14 @@ export function StoreCheckoutClient() {
               </section>
             )}
 
-            {step === "contact" && (
+            {step === "contact" && !customer && (
               <section className="commerce-card p-5 sm:p-7">
-                <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">{t("Step 2 of 3")}</span>
+                <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">{stepProgressLabel}</span>
                 <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">{t("Verify your account")}</h1>
                 <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Store checkout requires a signed-in customer account. Your cart stays here while you sign in or verify a new account by OTP.")}</p>
 
                 {!authChecked ? (
                   <div className="mt-6 h-28 animate-pulse rounded-2xl bg-slate-100" />
-                ) : customer ? (
-                  <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-emerald-700">{t("Using signed-in account")}</p>
-                    <p className="mt-2 text-lg font-bold">{customer.name || t("Bubbleit customer")}</p>
-                    <p className="mt-1 text-sm font-semibold" dir="ltr">{customer.phone}</p>
-                  </div>
                 ) : (
                   <div className="mt-6">
                     <AuthPanel
@@ -894,7 +918,7 @@ export function StoreCheckoutClient() {
             {step === "review" && (
               <form className="space-y-4" onSubmit={submitOrder}>
                 <section className="commerce-card p-5 sm:p-7">
-                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">{t("Step 3 of 3")}</span>
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">{stepProgressLabel}</span>
                   <h1 className="mt-2 text-2xl font-bold text-[color:var(--navy)]">{t("Review your order")}</h1>
                   <div className="mt-5 divide-y divide-slate-100">
                     {reviewedPricing.lines.map((line) => (
@@ -911,7 +935,7 @@ export function StoreCheckoutClient() {
 
                 <section className="commerce-card divide-y divide-slate-100 px-5 sm:px-7">
                   <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">{t("Deliver to")}</p><p className="mt-1 text-sm font-semibold">{t("Building")} <bdi>{buildingNumber}</bdi>{zoneNumber ? ` · ${t("Zone")} ${zoneNumber}` : ""}{streetNumber ? ` · ${t("Street")} ${streetNumber}` : ""}{area ? ` · ${area}` : ""}</p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("location")}>{t("Edit")}</button></div>
-                  <div className="flex items-start justify-between gap-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">{t("Account owner")}</p><p className="mt-1 text-sm font-semibold">{customer?.name || t("Bubbleit customer")} · <span dir="ltr">{customer?.phone}</span></p></div><button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setStep("contact")}>{t("View")}</button></div>
+                  <div className="py-4"><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">{t("Account owner")}</p><p className="mt-1 text-sm font-semibold">{customer?.name || t("Bubbleit customer")} · <span dir="ltr">{customer?.phone}</span></p></div>
                 </section>
 
                 <section className="commerce-card p-5 sm:p-7">
@@ -941,8 +965,8 @@ export function StoreCheckoutClient() {
             <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/96 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-10px_30px_rgba(38,34,98,0.1)]">
               <div className="mx-auto flex max-w-3xl gap-2">
                 {step === "contact" && <button type="button" className="secondary-button min-h-14 px-5" onClick={() => setStep("location")}>{t("Back")}</button>}
-                <button type="button" className="primary-button min-h-14 flex-1 text-base disabled:opacity-40" disabled={step === "location" ? !locationValid : !contactValid} onClick={() => { setError(null); setStep(step === "location" ? "contact" : "review"); }}>
-                  {step === "location" ? t("Continue to contact") : t("Review order")} <span className="ms-2 rtl:rotate-180" aria-hidden="true">→</span>
+                <button type="button" className="primary-button min-h-14 flex-1 text-base disabled:opacity-40" disabled={step === "location" ? !locationValid || !authChecked : !contactValid} onClick={advanceCheckoutStep}>
+                  {step === "location" && !customer ? t("Continue to contact") : t("Review order")} <span className="ms-2 rtl:rotate-180" aria-hidden="true">→</span>
                 </button>
               </div>
             </div>
