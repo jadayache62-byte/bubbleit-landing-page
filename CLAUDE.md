@@ -95,6 +95,10 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Creating a pending order reserves the checkout but does not complete it. Preserve the cart and
   pending order when hosted checkout is abandoned or payment initialization fails; clear the cart
   only after the backend confirms capture.
+- While a validated hosted checkout URL is actively navigating, keep checkout locked and show only
+  the secure-payment redirect state. Do not reset to or render saved-order/retry messaging until
+  initialization fails, no usable URL is returned, or the browser actually returns from the provider.
+  A back/forward-cache restore must release the redirect lock so payment recovery remains available.
 - Pending bookings, memberships, and store orders expose **Complete payment** from their matching
   account section. Retry must first reconcile any existing SkipCash attempt and must not create a
   duplicate purchase or checkout URL after payment is already authoritative.

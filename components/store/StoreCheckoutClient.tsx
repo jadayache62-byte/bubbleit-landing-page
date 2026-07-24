@@ -25,6 +25,7 @@ import type {
   PaymentOptions,
 } from "@/lib/api/types";
 import { PaymentMethodSelector } from "@/components/payments/PaymentMethodSelector";
+import { usableCheckoutUrl } from "@/lib/booking/payment-flow";
 import { localized, useI18n } from "@/lib/i18n";
 import { formatStorePrice } from "@/lib/store/products";
 import {
@@ -60,6 +61,7 @@ type PendingCheckout = {
 };
 
 type CheckoutAttempt = Pick<PendingCheckout, "orderKey" | "paymentKey"> & { fingerprint: string };
+type PaymentInitializationOutcome = "completed" | "redirecting" | "retryable";
 
 const COMPLETED_ORDER_STATUSES = new Set<StoreOrder["status"]>([
   "paid",
@@ -413,6 +415,19 @@ export function StoreCheckoutClient() {
     requestAnimationFrame(() => topRef.current?.scrollIntoView({ behavior: "auto", block: "start" }));
   }, [step]);
 
+  useEffect(() => {
+    const restoreAfterProviderNavigation = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+
+      checkoutInFlightRef.current = false;
+      setSubmitting(false);
+      setSubmitPhase("idle");
+    };
+
+    window.addEventListener("pageshow", restoreAfterProviderNavigation);
+    return () => window.removeEventListener("pageshow", restoreAfterProviderNavigation);
+  }, []);
+
   const items = useMemo(
     () =>
       products.map((product) => ({
@@ -538,10 +553,10 @@ export function StoreCheckoutClient() {
     setSubmitted(true);
   }
 
-  async function initializePayment(checkout: PendingCheckout) {
+  async function initializePayment(checkout: PendingCheckout): Promise<PaymentInitializationOutcome> {
     if (isCompletedOrder(checkout.order)) {
       completeOrder(checkout.order);
-      return;
+      return "completed";
     }
 
     setSubmitPhase("initializing_payment");
@@ -557,28 +572,31 @@ export function StoreCheckoutClient() {
       if (payment.status === "cash_due") {
         const order = await reconcileStoreOrderPayment(checkout.order.id);
         completeOrder(order);
-        return;
+        return "completed";
       }
       if (payment.status === "paid") {
         const order = await reconcileStoreOrderPayment(checkout.order.id);
         if (isCompletedOrder(order)) {
           completeOrder(order);
-          return;
+          return "completed";
         }
       }
-      if (payment.checkout_url) {
+      const checkoutUrl = usableCheckoutUrl(payment.checkout_url);
+      if (checkoutUrl) {
         setSubmitPhase("redirecting");
-        window.location.href = payment.checkout_url;
-        return;
+        window.location.assign(checkoutUrl);
+        return "redirecting";
       }
 
       setPaymentNotice(
         t("Payment could not start because no checkout link was returned. Please retry payment."),
       );
+      return "retryable";
     } catch (caught) {
       setPaymentNotice(
         `${t("Payment could not start. Your order is saved; please retry payment.")}${caught instanceof ApiError && caught.requestId ? ` ${t("Reference")}: ${caught.requestId}.` : ""}`,
       );
+      return "retryable";
     }
   }
 
@@ -587,12 +605,15 @@ export function StoreCheckoutClient() {
 
     checkoutInFlightRef.current = true;
     setSubmitting(true);
+    let redirecting = false;
     try {
-      await initializePayment(pendingCheckout);
+      redirecting = await initializePayment(pendingCheckout) === "redirecting";
     } finally {
-      setSubmitting(false);
-      setSubmitPhase("idle");
-      checkoutInFlightRef.current = false;
+      if (!redirecting) {
+        setSubmitting(false);
+        setSubmitPhase("idle");
+        checkoutInFlightRef.current = false;
+      }
     }
   }
 
@@ -614,6 +635,7 @@ export function StoreCheckoutClient() {
     setSubmitPhase("creating");
     setError(null);
     setPaymentNotice(null);
+    let redirecting = false;
     try {
       if (!geo) {
         setError(t("Confirm the delivery pin before checkout."));
@@ -658,7 +680,7 @@ export function StoreCheckoutClient() {
         return;
       }
 
-      await initializePayment(checkout);
+      redirecting = await initializePayment(checkout) === "redirecting";
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "STORE_PRICING_CHANGED") {
         const updatedPricing = pricingFromConflict(caught.data);
@@ -673,9 +695,11 @@ export function StoreCheckoutClient() {
         `${t("Could not place the order. Please try again.")}${caught instanceof ApiError && caught.requestId ? ` ${t("Reference")}: ${caught.requestId}.` : ""}`,
       );
     } finally {
-      setSubmitting(false);
-      setSubmitPhase("idle");
-      checkoutInFlightRef.current = false;
+      if (!redirecting) {
+        setSubmitting(false);
+        setSubmitPhase("idle");
+        checkoutInFlightRef.current = false;
+      }
     }
   }
 
@@ -685,7 +709,7 @@ export function StoreCheckoutClient() {
       : submitPhase === "initializing_payment"
         ? t("Starting payment…")
         : submitPhase === "redirecting"
-          ? t("Redirecting…")
+          ? t("Redirecting to secure payment…")
           : pendingCheckout
             ? t("Retry payment")
             : pricingReview
@@ -898,7 +922,14 @@ export function StoreCheckoutClient() {
                   />
                 </section>
 
-                {pendingCheckout && <p role={paymentNotice ? "alert" : "status"} className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">{t("Order")} {pendingCheckout.order.reference} {t("is saved.")} {paymentNotice ?? t("Retry payment to continue.")}</p>}
+                {pendingCheckout && submitPhase === "redirecting" ? (
+                  <p role="status" aria-live="polite" className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
+                    <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-blue-200 border-t-[color:var(--blue)] motion-reduce:animate-none" aria-hidden="true" />
+                    {t("Redirecting to secure payment…")}
+                  </p>
+                ) : pendingCheckout ? (
+                  <p role={paymentNotice ? "alert" : "status"} className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">{t("Order")} {pendingCheckout.order.reference} {t("is saved.")} {paymentNotice ?? t("Retry payment to continue.")}</p>
+                ) : null}
                 {error && <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
                 <button type="submit" className="primary-button min-h-14 w-full text-base disabled:opacity-50" disabled={submitting}>{submitLabel}</button>
                 <p className="text-center text-xs text-[color:var(--muted-foreground)]">{t("By placing your order, you confirm the delivery and contact details above.")}</p>

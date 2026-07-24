@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-24 — Truthful store payment redirect state (MAD-53)
+
+- Kept store checkout locked in a dedicated secure-payment redirect state until provider navigation takes over.
+- Prevented the saved-order and retry-payment warning from appearing while SkipCash navigation is still active.
+- Restored fail-closed checkout URL validation and releases the navigation lock when browser back/forward cache restores the checkout.
+
 ## 2026-07-23 — OTP resend countdown
 
 - Added a localized 30-second resend countdown to registration, direct OTP sign-in, and password recovery.
