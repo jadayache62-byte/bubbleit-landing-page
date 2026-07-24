@@ -6,6 +6,8 @@
 - SkipCash checkout requests use a purchase-specific `ReturnUrl` back to the matching account section and purchase ID. The provider dashboard URL is a fallback only.
 - A browser return is not proof of payment. The account page must fetch and briefly poll the server-authoritative payment state, then show a localized success, failure, cancellation, timeout, processing, refund, or review result.
 - The authenticated account owns Bookings, Memberships, and Store Orders. Store order list/detail responses must remain owner-scoped and use the customer-safe resource contract.
+- Customer cancellation may submit an internal refund request, but the customer UI must never imply
+  that approval or provider reimbursement is automatic. Show the backend-owned refund status.
 - Keep docs/contracts/public-contract-v1.schema.json byte-identical with backend and mobile.
 
 ## Durable booking-duration rule
@@ -90,7 +92,14 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Store checkout is a focused three-step flow: **Location → Contact → Review**. Do not collapse it back into one long page.
 - Store checkout uses the same Qatar address card as booking: map pin/current location, mandatory building number, optional zone/street, optional area and extra details.
 - Guest checkout is the default and does not require an account. Require a name and valid eight-digit Qatar phone number, normalize it to `+974`, and preserve the contact step as the future OTP insertion point.
-- A created/pending order must be retained when payment initialization fails so Retry payment does not create a duplicate order.
+- Creating a pending order reserves the checkout but does not complete it. Preserve the cart and
+  pending order when hosted checkout is abandoned or payment initialization fails; clear the cart
+  only after the backend confirms capture.
+- Pending bookings, memberships, and store orders expose **Complete payment** from their matching
+  account section. Retry must first reconcile any existing SkipCash attempt and must not create a
+  duplicate purchase or checkout URL after payment is already authoritative.
+- Customer cancellation is available only for backend-eligible store orders. A paid cancellation
+  shows the submitted refund request separately; it does not claim provider reimbursement.
 
 ## Service Area Contract
 
@@ -111,7 +120,10 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - `/privacy`, `/terms`, and `/account-deletion` are canonical public release surfaces. Their English/Arabic content comes from `lib/legal/policies.ts`, where both languages are paired under the single version `2026-07-18-v1`; never fork language-specific policy files or versions. Keep legal identity, domains, schema version, retention text, store declarations, sitemap, and footer links synchronized.
 - The account-deletion page must preserve the same-origin HttpOnly token boundary. Data export is authenticated, one-use, and downloaded immediately; deletion requires a fresh authentication OTP plus explicit irreversible confirmation, and successful deletion expires the BFF session cookie.
 - Global navigation is organized around **Services, Memberships, Store, Account**, with one dominant **Book a Wash** CTA. The closed mobile menu must remain `aria-hidden` and `inert` so its links cannot receive focus.
-- The account page owns Overview, Bookings, Memberships, Vehicles, and Notifications. It must expose booking/rebooking/cancellation, membership redemption/renewal, vehicle booking/removal, localized notification recovery, quick actions, loading states, and clear empty states.
+- The account page owns Overview, Bookings, Memberships, Store Orders, Vehicles, and Notifications.
+  It must expose booking/rebooking/cancellation and payment recovery, membership
+  redemption/renewal, store-order payment/cancellation/refund tracking, vehicle booking/removal,
+  localized notification recovery, quick actions, loading states, and clear empty states.
 - Account section controls follow the ARIA tabs pattern, including a single tab stop, `aria-selected`, linked tabpanels, Arrow Left/Right, Home, and End behavior. Avoid horizontally clipped mobile tabs.
 - Keep normal text contrast at WCAG AA, interactive targets at least 44×44px on mobile, visible `:focus-visible` outlines, contextual accessible names for repeated actions, and one page-level `<h1>` per rendered account state.
 - Respect `prefers-reduced-motion`. Use compositor-friendly opacity/transform motion for modal entrances, and avoid long scripted page-scroll animations between wizard steps.
