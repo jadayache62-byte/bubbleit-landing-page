@@ -240,7 +240,7 @@
       "type": "object",
       "required": ["path"],
       "properties": {
-        "path": { "type": "string", "pattern": "^/(account|store/checkout)\\?" }
+        "path": { "type": "string", "pattern": "^/account\\?" }
       },
       "additionalProperties": false
     },
