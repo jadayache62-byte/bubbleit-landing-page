@@ -9,3 +9,5 @@ tsconfig.tsbuildinfo
 playwright-report/
 test-results/
 .nx/
+*.log
+.playwright-cli/

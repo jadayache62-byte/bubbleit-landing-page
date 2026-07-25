@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
-    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/eslintrc": "^3.3.6",
     "@playwright/test": "^1.55.1",
     "@tailwindcss/postcss": "^4.1.13",
     "@types/leaflet": "^1.9.21",
@@ -29,7 +29,8 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "eslint": "^9.39.1",
-    "eslint-config-next": "^16.2.6",
+    "eslint-config-next": "^16.2.11",
+    "minimatch": "file:vendor/minimatch-compat",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.3"
   },
