@@ -158,6 +158,17 @@ export default function AccountPage() {
   const [rescheduleNowMs, setRescheduleNowMs] = useState(0);
 
   useEffect(() => {
+    if (!paymentNotice || paymentNotice.tone === "danger") return;
+
+    const notice = paymentNotice;
+    const timeout = window.setTimeout(() => {
+      setPaymentNotice((current) => current === notice ? null : current);
+    }, 10_000);
+
+    return () => window.clearTimeout(timeout);
+  }, [paymentNotice]);
+
+  useEffect(() => {
     if (!rescheduleOpen) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
@@ -596,21 +607,41 @@ export default function AccountPage() {
             </section>
 
             {paymentNotice && (
-              <p
+              <div
                 role={paymentNotice.tone === "danger" ? "alert" : "status"}
                 aria-live="polite"
                 className={clsx(
-                  "mt-5 rounded-2xl border px-4 py-3 text-sm font-semibold",
+                  "mt-5 flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold",
                   paymentNotice.tone === "success" && "border-emerald-200 bg-emerald-50 text-emerald-800",
                   paymentNotice.tone === "warning" && "border-amber-200 bg-amber-50 text-amber-900",
                   paymentNotice.tone === "danger" && "border-red-200 bg-red-50 text-red-700",
                   paymentNotice.tone === "info" && "border-sky-200 bg-sky-50 text-sky-900",
                 )}
               >
-                {paymentNotice.message}
-              </p>
+                <span>{paymentNotice.message}</span>
+                <button
+                  type="button"
+                  aria-label={t("Dismiss message")}
+                  className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-full text-xl leading-none hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+                  onClick={() => setPaymentNotice(null)}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
             )}
-            {error && <p role="alert" className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
+            {error && (
+              <div role="alert" className="mt-5 flex items-start justify-between gap-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                <span>{error}</span>
+                <button
+                  type="button"
+                  aria-label={t("Dismiss message")}
+                  className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-full text-xl leading-none hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700"
+                  onClick={() => setError(null)}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+            )}
 
             <div className="mt-7 grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-white p-1 sm:grid-cols-3 lg:grid-cols-6" role="tablist" aria-label={t("Account sections")}>
               {([["overview", t("Overview")], ["bookings", t("Bookings")], ["orders", t("Orders")], ["memberships", t("Memberships")], ["vehicles", t("Vehicles")], ["notifications", t("Notifications")]] as const).map(([value, label]) => <button key={value} id={`account-tab-${value}`} type="button" role="tab" tabIndex={tab === value ? 0 : -1} aria-selected={tab === value} aria-controls={`account-panel-${value}`} onKeyDown={(event) => handleTabKeyDown(event, value)} onClick={() => setTab(value)} className={clsx("min-h-11 rounded-xl px-3 text-sm font-semibold transition", tab === value ? "bg-[color:var(--navy)] text-white" : "text-[color:var(--muted-foreground)] hover:bg-slate-50 hover:text-[color:var(--navy)]")}>{label}</button>)}
