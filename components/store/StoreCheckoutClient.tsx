@@ -9,6 +9,7 @@ import {
   ApiError,
   createStoreOrder,
   getPaymentOptions,
+  listAddresses,
   listStoreProducts,
   me,
   payStoreOrder,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/api/client";
 import type {
   CreateStoreOrderPayload,
+  Address,
   Customer,
   StoreOrder,
   StorePricingConfirmation,
@@ -197,6 +199,8 @@ export function StoreCheckoutClient() {
   const topRef = useRef<HTMLDivElement | null>(null);
   const checkoutInFlightRef = useRef(false);
   const pendingCheckoutRef = useRef<PendingCheckout | null>(null);
+  const locationTouchedRef = useRef(false);
+  const savedLocationAppliedRef = useRef(false);
   // Keep the server and first browser render identical. Browser storage is
   // restored after hydration below so saved carts do not cause a mismatch.
   const [cart, setCart] = useState<Cart>({});
@@ -209,6 +213,8 @@ export function StoreCheckoutClient() {
   const [streetNumber, setStreetNumber] = useState("");
   const [addressDetails, setAddressDetails] = useState("");
   const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
+  const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [geoState, setGeoState] = useState<"idle" | "locating" | "error">(
     "idle",
   );
@@ -229,6 +235,27 @@ export function StoreCheckoutClient() {
   const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
   const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>("skipcash_hosted");
 
+  const applySavedAddress = useCallback((address: Address) => {
+    setSelectedAddressId(address.id);
+    setArea(address.area ?? "");
+    setBuildingNumber(address.building_number ?? "");
+    setZoneNumber(address.zone_number ?? "");
+    setStreetNumber(address.street_number ?? "");
+    setAddressDetails(address.details ?? "");
+    setGeo(
+      typeof address.latitude === "number" && typeof address.longitude === "number"
+        ? { lat: address.latitude, lng: address.longitude }
+        : null,
+    );
+    setGeoState("idle");
+    savedLocationAppliedRef.current = true;
+  }, []);
+
+  const markLocationManual = useCallback(() => {
+    locationTouchedRef.current = true;
+    setSelectedAddressId(null);
+  }, []);
+
   const acceptAuthenticatedCustomer = useCallback((current: Customer) => {
     setCustomer(current);
     const pending = pendingCheckoutRef.current;
@@ -244,6 +271,10 @@ export function StoreCheckoutClient() {
       setStreetNumber("");
       setAddressDetails("");
       setGeo(null);
+      setSavedAddresses([]);
+      setSelectedAddressId(null);
+      locationTouchedRef.current = false;
+      savedLocationAppliedRef.current = false;
       setPaymentNotice(null);
       setStep("location");
       return;
@@ -270,6 +301,7 @@ export function StoreCheckoutClient() {
       }
 
       pendingCheckoutRef.current = pending;
+      savedLocationAppliedRef.current = true;
       setPendingCheckout(pending);
       setCart(pending.cart);
       setArea(pending.order.delivery_area);
@@ -353,6 +385,38 @@ export function StoreCheckoutClient() {
       cancelled = true;
     };
   }, [acceptAuthenticatedCustomer]);
+
+  useEffect(() => {
+    if (!customer) return;
+
+    let cancelled = false;
+    listAddresses()
+      .then((addresses) => {
+        if (cancelled) return;
+        setSavedAddresses(addresses);
+
+        if (
+          addresses.length > 0 &&
+          !pendingCheckoutRef.current &&
+          !locationTouchedRef.current &&
+          !savedLocationAppliedRef.current
+        ) {
+          const preferred = addresses.find(
+            (address) =>
+              typeof address.latitude === "number" &&
+              typeof address.longitude === "number",
+          ) ?? addresses[0];
+          applySavedAddress(preferred);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSavedAddresses([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applySavedAddress, customer]);
 
   const pendingOrderId = pendingCheckout?.order.id ?? null;
   useEffect(() => {
@@ -498,6 +562,7 @@ export function StoreCheckoutClient() {
   function handlePinChange(value: { lat: number; lng: number }) {
     if (pendingCheckout) return;
 
+    markLocationManual();
     setGeo(value);
     setGeoState("idle");
     reverseGeocode(value.lat, value.lng);
@@ -506,6 +571,7 @@ export function StoreCheckoutClient() {
   function requestLocation() {
     if (pendingCheckout) return;
 
+    markLocationManual();
     if (!("geolocation" in navigator)) {
       setGeoState("error");
       return;
@@ -901,6 +967,63 @@ export function StoreCheckoutClient() {
                   <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Pin the exact location, then add the building details.")}</p>
                 </div>
                 <div className="space-y-4 p-4 sm:p-7">
+                  {savedAddresses.length > 0 && (
+                    <section
+                      aria-labelledby="store-saved-location-title"
+                      className="rounded-2xl border border-[color:var(--border)] bg-slate-50 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h2 id="store-saved-location-title" className="text-sm font-bold text-[color:var(--navy)]">
+                            {t("Use a saved location")}
+                          </h2>
+                          <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                            {t("Pick one and continue without entering the Blue plate again.")}
+                          </p>
+                        </div>
+                        <Link
+                          href="/account/locations"
+                          className="min-h-11 shrink-0 rounded-full px-3 py-3 text-xs font-bold text-[color:var(--blue)]"
+                        >
+                          {t("Manage")}
+                        </Link>
+                      </div>
+                      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                        {savedAddresses.map((address) => {
+                          const active = selectedAddressId === address.id;
+                          return (
+                            <button
+                              key={address.id}
+                              type="button"
+                              disabled={checkoutLocked}
+                              aria-pressed={active}
+                              onClick={() => {
+                                locationTouchedRef.current = true;
+                                applySavedAddress(address);
+                              }}
+                              className={`min-w-[14rem] rounded-2xl border p-3 text-start transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-2 disabled:opacity-60 ${
+                                active
+                                  ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                                  : "border-[color:var(--border)] bg-white text-[color:var(--foreground)] hover:border-[color:var(--blue)]"
+                              }`}
+                            >
+                              <span className="block text-sm font-extrabold">
+                                {address.label || t("Saved location")}
+                              </span>
+                              <span className={`mt-1 block text-xs font-semibold ${active ? "text-white/75" : "text-[color:var(--muted-foreground)]"}`}>
+                                {t("Building")} {address.building_number || "—"}
+                                {address.zone_number ? ` · ${t("Zone")} ${address.zone_number}` : ""}
+                                {address.street_number ? ` · ${t("Street")} ${address.street_number}` : ""}
+                              </span>
+                              <span className={`mt-1 block truncate text-xs ${active ? "text-white/70" : "text-[color:var(--muted-foreground)]"}`}>
+                                {address.area}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
                   <div className="overflow-hidden rounded-2xl">
                     <LocationMap value={geo} onChange={handlePinChange} />
                   </div>
@@ -914,24 +1037,24 @@ export function StoreCheckoutClient() {
                     <p className="mb-3 text-sm font-bold text-[color:var(--navy)]">{t("Blue plate")}</p>
                     <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-center text-white">
                       <span className="block text-sm font-bold">{t("Building No.")} <span aria-hidden="true">*</span></span>
-                      <input className="mt-1 w-full bg-transparent text-center text-4xl font-bold outline-none placeholder:text-white/45 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={buildingNumber} disabled={checkoutLocked} onChange={(event) => setBuildingNumber(event.target.value.replace(/\D/g, "").slice(0, 6))} required />
+                      <input className="mt-1 w-full bg-transparent text-center text-4xl font-bold outline-none placeholder:text-white/45 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={buildingNumber} disabled={checkoutLocked} onChange={(event) => { markLocationManual(); setBuildingNumber(event.target.value.replace(/\D/g, "").slice(0, 6)); }} required />
                     </label>
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-white">
                         <span className="block text-sm font-bold">{t("Zone No.")}</span>
-                        <input className="mt-1 w-full bg-transparent text-3xl font-bold outline-none placeholder:text-white/35 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={zoneNumber} disabled={checkoutLocked} onChange={(event) => setZoneNumber(event.target.value.replace(/\D/g, "").slice(0, 3))} />
+                        <input className="mt-1 w-full bg-transparent text-3xl font-bold outline-none placeholder:text-white/35 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={zoneNumber} disabled={checkoutLocked} onChange={(event) => { markLocationManual(); setZoneNumber(event.target.value.replace(/\D/g, "").slice(0, 3)); }} />
                       </label>
                       <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-white">
                         <span className="block text-sm font-bold">{t("Street No.")}</span>
-                        <input className="mt-1 w-full bg-transparent text-3xl font-bold outline-none placeholder:text-white/35 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={streetNumber} disabled={checkoutLocked} onChange={(event) => setStreetNumber(event.target.value.replace(/\D/g, "").slice(0, 4))} />
+                        <input className="mt-1 w-full bg-transparent text-3xl font-bold outline-none placeholder:text-white/35 disabled:opacity-60" inputMode="numeric" pattern="[0-9]*" placeholder="000" value={streetNumber} disabled={checkoutLocked} onChange={(event) => { markLocationManual(); setStreetNumber(event.target.value.replace(/\D/g, "").slice(0, 4)); }} />
                       </label>
                     </div>
                   </div>
                   <label className="block text-sm font-semibold text-[color:var(--navy)]">{t("Area / neighborhood")}
-                    <input className="wizard-input mt-2 min-h-12" placeholder={t("e.g. West Bay, The Pearl")} value={area} disabled={checkoutLocked} onChange={(event) => setArea(event.target.value)} />
+                    <input className="wizard-input mt-2 min-h-12" placeholder={t("e.g. West Bay, The Pearl")} value={area} disabled={checkoutLocked} onChange={(event) => { markLocationManual(); setArea(event.target.value); }} />
                   </label>
                   <label className="block text-sm font-semibold text-[color:var(--navy)]">{t("Extra details")}
-                    <textarea className="wizard-input mt-2 min-h-20 resize-none" placeholder={t("Flat, floor, gate, parking level")} value={addressDetails} disabled={checkoutLocked} onChange={(event) => setAddressDetails(event.target.value)} />
+                    <textarea className="wizard-input mt-2 min-h-20 resize-none" placeholder={t("Flat, floor, gate, parking level")} value={addressDetails} disabled={checkoutLocked} onChange={(event) => { markLocationManual(); setAddressDetails(event.target.value); }} />
                   </label>
                 </div>
               </section>
