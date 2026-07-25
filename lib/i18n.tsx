@@ -654,6 +654,8 @@ const AR: Record<string, string> = {
   "item": "منتج",
   "items": "منتجات",
   "Order summary": "ملخص الطلب",
+  "Refresh account": "تحديث الحساب",
+  "Refreshing account…": "جارٍ تحديث الحساب…",
   "products": "منتجات",
   "Account owner": "صاحب الحساب",
   "Back to cart": "العودة إلى السلة",
