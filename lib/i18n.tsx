@@ -657,6 +657,8 @@ const AR: Record<string, string> = {
   "Refresh account": "تحديث الحساب",
   "Refreshing account…": "جارٍ تحديث الحساب…",
   "Dismiss message": "إغلاق الرسالة",
+  "Instagram": "إنستغرام",
+  "TikTok": "تيك توك",
   "products": "منتجات",
   "Account owner": "صاحب الحساب",
   "Back to cart": "العودة إلى السلة",

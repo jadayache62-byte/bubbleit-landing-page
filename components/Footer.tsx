@@ -56,22 +56,31 @@ export function Footer() {
               >
                 {t("WhatsApp")}
               </a>
-              <div className="mt-3 flex flex-col gap-2 text-base">
+              <div className="mt-4 flex items-center gap-3">
                 <a
                   href="https://instagram.com/bubbleitqa"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-white/82 transition hover:text-[color:var(--cyan)]"
+                  aria-label={`${t("Instagram")} @bubbleitqa`}
+                  className="grid min-h-11 min-w-11 place-items-center rounded-full border border-white/20 text-white transition hover:border-[color:var(--cyan)] hover:bg-white/10 hover:text-[color:var(--cyan)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--cyan)]"
                 >
-                  Instagram @bubbleitqa
+                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" aria-hidden="true">
+                    <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.8" />
+                    <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
+                    <circle cx="17.4" cy="6.7" r="1.1" fill="currentColor" />
+                  </svg>
                 </a>
                 <a
                   href="https://tiktok.com/@bubbleitqa"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-white/82 transition hover:text-[color:var(--cyan)]"
+                  aria-label={`${t("TikTok")} @bubbleitqa`}
+                  className="grid min-h-11 min-w-11 place-items-center rounded-full border border-white/20 text-white transition hover:border-[color:var(--cyan)] hover:bg-white/10 hover:text-[color:var(--cyan)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--cyan)]"
                 >
-                  TikTok @bubbleitqa
+                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" aria-hidden="true">
+                    <path d="M14.5 3v11.1a4.6 4.6 0 1 1-4.6-4.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M14.5 3c.7 3.1 2.5 4.8 5.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
                 </a>
               </div>
             </div>
