@@ -653,6 +653,7 @@ const AR: Record<string, string> = {
   "in cart": "في السلة",
   "item": "منتج",
   "items": "منتجات",
+  "Order summary": "ملخص الطلب",
   "products": "منتجات",
   "Account owner": "صاحب الحساب",
   "Back to cart": "العودة إلى السلة",

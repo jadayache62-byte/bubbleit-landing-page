@@ -851,6 +851,48 @@ export function StoreCheckoutClient() {
           </nav>
 
           <div key={step} className="checkout-step">
+            {step !== "review" && (
+              <section
+                className="commerce-card mb-4 p-5 sm:p-7"
+                aria-labelledby="checkout-order-summary-title"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <h2
+                    id="checkout-order-summary-title"
+                    className="text-lg font-bold text-[color:var(--navy)]"
+                  >
+                    {t("Order summary")}
+                  </h2>
+                  <span className="shrink-0 text-lg font-extrabold text-[color:var(--navy)]">
+                    {formatStorePrice(reviewedPricing.total_minor / 100, lang)}
+                  </span>
+                </div>
+                <div className="mt-3 divide-y divide-slate-100">
+                  {reviewedPricing.lines.map((line) => {
+                    const product = products.find((candidate) => candidate.id === line.product_id);
+                    const lineName = product
+                      ? localized(lang, product.name, product.name_ar)
+                      : line.name ?? t("Store product");
+                    const lineTotal = line.line_total_minor ?? line.unit_price_minor * line.quantity;
+
+                    return (
+                      <div
+                        key={String(line.product_id)}
+                        className="flex items-center justify-between gap-4 py-2 text-sm"
+                      >
+                        <p className="min-w-0 truncate font-semibold">
+                          {lineName} <span className="text-[color:var(--muted-foreground)]">× {line.quantity}</span>
+                        </p>
+                        <span className="shrink-0 font-bold">
+                          {formatStorePrice(lineTotal / 100, lang)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
             {step === "location" && (
               <section className="commerce-card overflow-hidden">
                 <div className="border-b border-slate-200 px-5 py-5 sm:px-7">
