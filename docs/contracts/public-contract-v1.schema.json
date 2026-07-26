@@ -96,7 +96,7 @@
     },
     "PaymentMethod": {
       "type": "string",
-      "enum": ["pay_on_site", "online", "membership"]
+      "enum": ["pay_on_site", "online", "membership", "membership_with_products"]
     },
     "CustomerNotificationType": {
       "type": "string",
