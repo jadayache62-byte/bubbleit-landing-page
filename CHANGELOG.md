@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-07-26 — Favicon uses the real brand mark
+
+- Replaced the unused placeholder `public/favicon.svg` (an abstract shape that was never actually wired into `<head>`) with `app/icon.png` and `app/apple-icon.png`, cropped from the real logo's car+bubble icon mark. Next.js's file-based icon convention now auto-generates the correct `<link rel="icon">` and `<link rel="apple-touch-icon">` tags.
+
 ## 2026-07-26 — Branded 404 page
 
 - Added `app/not-found.tsx` with the site's own header, footer, and bilingual copy. Unmatched routes previously fell through to Next.js's bare unstyled default 404; the branded page still returns a correct HTTP 404 status.
