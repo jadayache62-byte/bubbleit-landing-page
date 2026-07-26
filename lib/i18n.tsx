@@ -768,6 +768,10 @@ const AR: Record<string, string> = {
   "LIVE BOOKING": "حجز مباشر",
   "Time": "الوقت",
   "Track": "التتبع",
+  "Page not found": "الصفحة غير موجودة",
+  "We couldn't find the page you were looking for. It may have been moved or the link may be incorrect.":
+    "لم نتمكن من العثور على الصفحة التي تبحث عنها. ربما تم نقلها أو أن الرابط غير صحيح.",
+  "Go to homepage": "الذهاب إلى الصفحة الرئيسية",
 };
 
 type I18n = {

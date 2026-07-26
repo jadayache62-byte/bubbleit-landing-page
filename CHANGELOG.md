@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-07-26 — Branded 404 page
+
+- Added `app/not-found.tsx` with the site's own header, footer, and bilingual copy. Unmatched routes previously fell through to Next.js's bare unstyled default 404; the branded page still returns a correct HTTP 404 status.
+
+## 2026-07-25 — Accessibility validation closed out (MAD-61)
+
+- Confirmed the full automated release gate green: axe-core WCAG A/AA scans across `/`, `/store`, `/book`, `/memberships`, `/privacy`, `/terms`, `/account-deletion`, plus 320px reflow and reduced-motion checks on core pages.
+- A manual VoiceOver/TalkBack walkthrough is not a product requirement; the automated suite above is now the full MAD-61 release gate.
+
+## 2026-07-25 — Footer social logos (MAD-101)
+
+- Replaced footer Instagram/TikTok alt-text placeholders with visual logos while preserving localized non-visual link labels.
+
+## 2026-07-25 — Saved location defaults store checkout (MAD-105)
+
+- Store checkout now prefills the customer's saved location the same way the booking flow does, applying the full Blue Plate and coordinate snapshot.
+- Manual location changes correctly detach the saved-address selection instead of silently reapplying it.
+
+## 2026-07-25 — Account status message auto-dismiss (MAD-100)
+
+- Non-danger account-page status messages now auto-dismiss after ten seconds.
+- All status/error banners expose an accessible manual dismiss control.
+
+## 2026-07-25 — Explicit refresh controls (MAD-99)
+
+- Added an accessible, busy-aware manual refresh control that reloads every authoritative customer collection rather than only resetting local UI state.
+
+## 2026-07-25 — Checkout hierarchy and notification routing fixes (MAD-18, MAD-58)
+
+- Reordered store checkout so the order summary appears before delivery details, and hid the compact pre-review summary on the final review step.
+- Corrected the store-order notification contract to route to order history instead of active checkout.
+
 ## 2026-07-24 — Landing release-gate hardening
 
 - Updated the pinned PostCSS override to a patched release, clearing the blocking dependency audit advisory without downgrading Next.js.
@@ -87,7 +119,7 @@
 - Fixed invalid QR placeholder ARIA, membership-list semantics, and automated contrast failures on home and membership controls.
 
 ### Remaining
-- Release-like VoiceOver and TalkBack walkthrough evidence remains required before MAD-61 is marked Done.
+- ~~Release-like VoiceOver and TalkBack walkthrough evidence remains required before MAD-61 is marked Done.~~ Superseded 2026-07-25: not a product requirement; see the MAD-61 close-out entry above.
 
 ## [2026-07-17] — Arabic localization and RTL customer journeys (MAD-59)
 
