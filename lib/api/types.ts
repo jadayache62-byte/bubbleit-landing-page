@@ -87,6 +87,7 @@ export type Service = {
   price: number; // salon price
   price_suv: number;
   duration_minutes: number;
+  duration_suv: number;
   duration_label: string;
   category: string;
   add_ons: AddOn[];

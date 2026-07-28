@@ -66,19 +66,19 @@ export function formatDuration(min: number): string {
 
 const svc = (
   id: number, name: string, name_ar: string, description: string, description_ar: string,
-  price: number, price_suv: number, category: string, duration: number,
+  price: number, price_suv: number, category: string, duration: number, durationSuv = duration,
 ): Service => ({
   id, name, name_ar, description, description_ar, price, price_suv, category,
-  duration_minutes: duration, duration_label: formatDuration(duration), add_ons: [],
+  duration_minutes: duration, duration_suv: durationSuv, duration_label: formatDuration(duration), add_ons: [],
 });
 
 export const SERVICES: Service[] = [
-  svc(1, "Standard Bubble", "ستاندرد بابل", "Exterior wash & interior cleaning.", "غسيل خارجي و تنظيف داخلي.", 60, 70, "wash", 30),
-  svc(2, "Steam Bubble", "ستيم بابل", "Exterior wash & interior cleaning with steam.", "غسيل خارجي و تنظيف داخلي بالبخار.", 120, 140, "wash", 45),
-  svc(3, "Deep Bubble", "ديب بابل", "Exterior wash, engine wash, under-chassis & interior steam cleaning.", "غسيل خارجي و غسيل المكينة و تحت الهيكل.", 180, 200, "wash", 60),
-  svc(4, "Interior Detailing", "بولش داخلي", "Full interior polish and deep detailing.", "بولش داخلي.", 450, 550, "detailing", 180),
-  svc(5, "Exterior Detailing", "بولش خارجي", "Full exterior polish and paint care.", "بولش خارجي.", 550, 650, "detailing", 180),
-  svc(6, "Bubbleit Detailing", "ببلت ديتيلنق", "The complete package — interior & exterior polish.", "بولش داخلي و خارجي.", 850, 1000, "detailing", 240),
+  svc(1, "Standard Bubble", "ستاندرد بابل", "Exterior wash & interior cleaning.", "غسيل خارجي و تنظيف داخلي.", 60, 70, "wash", 30, 45),
+  svc(2, "Steam Bubble", "ستيم بابل", "Exterior wash & interior cleaning with steam.", "غسيل خارجي و تنظيف داخلي بالبخار.", 120, 140, "wash", 45, 60),
+  svc(3, "Deep Bubble", "ديب بابل", "Exterior wash, engine wash, under-chassis & interior steam cleaning.", "غسيل خارجي و غسيل المكينة و تحت الهيكل.", 180, 200, "wash", 60, 75),
+  svc(4, "Interior Detailing", "بولش داخلي", "Full interior polish and deep detailing.", "بولش داخلي.", 450, 550, "detailing", 180, 210),
+  svc(5, "Exterior Detailing", "بولش خارجي", "Full exterior polish and paint care.", "بولش خارجي.", 550, 650, "detailing", 180, 210),
+  svc(6, "Bubbleit Detailing", "ببلت ديتيلنق", "The complete package — interior & exterior polish.", "بولش داخلي و خارجي.", 850, 1000, "detailing", 240, 270),
   ...[["6", 480], ["8", 640], ["10", 800], ["12", 960], ["14", 1200]].map(([m, p], i) =>
     svc(10 + i, `Caravan Wash In & Out — ${m}m`, `غسيل الكرفان داخل و برع — ${m} متر`, "Full interior & exterior caravan wash.", "غسيل الكرفان داخل و برع.", p as number, p as number, "caravan", 180)),
   ...[["6", 300], ["8", 400], ["10", 500], ["12", 600], ["14", 700]].map(([m, p], i) =>

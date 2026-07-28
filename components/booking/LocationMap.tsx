@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import type { Map as LeafletMap, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { AppToast } from "@/components/AppToast";
 import { useI18n } from "@/lib/i18n";
 
 export type LatLng = { lat: number; lng: number };
@@ -175,9 +176,11 @@ export default function LocationMap({ value, onChange, className }: Props) {
             />
           </label>
           {coordinateError && (
-            <p className="text-sm font-semibold text-red-700 sm:col-span-2" role="alert">
-              {t("Enter valid latitude and longitude values.")}
-            </p>
+            <AppToast
+              message={t("Enter valid latitude and longitude values.")}
+              dismissLabel={t("Dismiss message")}
+              onDismiss={() => setCoordinateError(false)}
+            />
           )}
           <button type="submit" className="secondary-button sm:col-span-2">
             {t("Apply coordinates")}

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import Link from "next/link";
+import { AppToast } from "@/components/AppToast";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
@@ -342,11 +343,7 @@ export default function MembershipsPage() {
           </p>
         )}
 
-        {error && (
-          <p role="alert" className="mx-auto mb-6 max-w-lg rounded-2xl bg-red-50 px-4 py-3 text-center text-sm font-medium text-red-700">
-            {error}
-          </p>
-        )}
+        {error && <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={() => setError(null)} />}
 
         {/* Plans */}
         <div role="list" className="card-grid md:grid-cols-2 xl:grid-cols-4" aria-busy={plansLoading} aria-label={plansLoading ? t("Loading membership plans…") : t("Membership plans")}>

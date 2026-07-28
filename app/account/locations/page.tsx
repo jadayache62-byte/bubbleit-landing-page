@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import clsx from "clsx";
+import { AppToast } from "@/components/AppToast";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
@@ -272,7 +273,7 @@ export default function AccountLocationsPage() {
                   <p className="text-xs text-[color:var(--muted-foreground)]">{t("Tap the map or drag the pin if the current location is not exact.")}</p>
                 </div>
 
-                {error && <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
+                {error && <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={() => setError(null)} />}
                 {notice && <p role="status" className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{notice}</p>}
 
                 <button type="button" className="primary-button w-full disabled:opacity-40" disabled={saving || !form.area.trim() || !form.building_number.trim()} onClick={saveLocation}>

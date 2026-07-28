@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AppToast } from "@/components/AppToast";
 import {
   ApiError,
   getCustomerNotificationPreferences,
@@ -117,7 +118,7 @@ export function CustomerNotifications() {
         </p>
       </div>
 
-      {error && <p role="alert" className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+      {error && <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={() => setError(null)} />}
 
       <div className="mt-5 space-y-3" aria-live="polite">
         {items === null ? (

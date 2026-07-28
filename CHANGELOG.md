@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-07-28 — Customer booking UX and consistent top snackbars
+
+- Added duplicate-safe cancellation progress and immediate booking-card updates so customers always see when an online cancellation is processing and complete.
+- Added booking-number-first sorting, search, and lifecycle filters to customer booking history.
+- Corrected service-card timing to use the selected sedan or SUV duration instead of always displaying the sedan duration.
+- Standardized customer action errors as accessible, dismissible top snackbars across booking, authentication, memberships, store checkout, saved locations, notifications, reviews, and account deletion.
+- Initialized the customer website as an Nx workspace while preserving its existing Next.js targets.
+
 ## 2026-07-26 — Favicon uses the real brand mark
 
 - Replaced the unused placeholder `public/favicon.svg` (an abstract shape that was never actually wired into `<head>`) with `app/icon.png` and `app/apple-icon.png`, cropped from the real logo's car+bubble icon mark. Next.js's file-based icon convention now auto-generates the correct `<link rel="icon">` and `<link rel="apple-touch-icon">` tags.

@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import Link from "next/link";
+import { AppToast } from "@/components/AppToast";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
@@ -66,6 +67,8 @@ const STATUS_STYLES: Record<BookingStatus, string> = {
 const CANCELLABLE: BookingStatus[] = ["pending_payment", "paid", "assigned"];
 const ACCOUNT_TABS = ["overview", "bookings", "orders", "memberships", "vehicles", "notifications"] as const;
 
+type BookingFilter = "all" | "upcoming" | "in_progress" | "completed" | "cancelled";
+
 type PaymentFeedback = {
   tone: "success" | "warning" | "danger" | "info";
   message: string;
@@ -115,6 +118,25 @@ function waitForPaymentUpdate(milliseconds: number) {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
+function compareBookingReferencesDescending(a: Booking, b: Booking) {
+  return b.reference.localeCompare(a.reference, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function bookingMatchesFilter(booking: Booking, filter: BookingFilter) {
+  if (filter === "all") return true;
+  if (filter === "completed") return booking.status === "completed";
+  if (filter === "cancelled") {
+    return ["cancelled_by_customer", "cancelled_by_admin", "no_show"].includes(booking.status);
+  }
+  if (filter === "in_progress") {
+    return ["driver_accepted", "phone_confirmed", "in_progress"].includes(booking.status);
+  }
+  return !["completed", "cancelled_by_customer", "cancelled_by_admin", "no_show"].includes(booking.status);
+}
+
 const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
   sedan: "Salon / Sedan",
   suv: "SUV / 4-Wheel",
@@ -136,6 +158,8 @@ export default function AccountPage() {
   const [memberships, setMemberships] = useState<CustomerMembership[] | null>(null);
   const [orders, setOrders] = useState<StoreOrder[] | null>(null);
   const [tab, setTab] = useState<(typeof ACCOUNT_TABS)[number]>("overview");
+  const [bookingFilter, setBookingFilter] = useState<BookingFilter>("all");
+  const [bookingSearch, setBookingSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<PaymentFeedback | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
@@ -151,7 +175,6 @@ export default function AccountPage() {
     slot: string | null;
     key: string;
     busy: boolean;
-    error: string | null;
   } | null>(null);
   const rescheduleOpen = Boolean(reschedule);
   // Reference "now" captured when reschedule slots load, used to hide today's past slots.
@@ -350,13 +373,18 @@ export default function AccountPage() {
   }, [customer, t]);
 
   async function handleCancel(id: number) {
-    if (!window.confirm(t("Cancel this booking?"))) return;
+    const action = `cancel-booking:${id}`;
+    if (paymentAction || !window.confirm(t("Cancel this booking?"))) return;
+    setPaymentAction(action);
     setError(null);
     try {
-      await cancelBooking(id);
-      refresh();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not cancel the booking.");
+      const cancelled = await cancelBooking(id);
+      setBookings((current) => current?.map((item) => item.id === cancelled.id ? cancelled : item) ?? [cancelled]);
+      setPaymentNotice({ tone: "warning", message: t("Booking cancelled. You were not charged.") });
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : t("Could not cancel the booking."));
+    } finally {
+      setPaymentAction(null);
     }
   }
 
@@ -448,11 +476,11 @@ export default function AccountPage() {
     const days = nextQatarDays(7);
     const date = days.some((day) => day.date === requestedDate) ? requestedDate : days[0].date;
     setError(null);
-    setReschedule({ booking, date, days, options: null, slot: null, key, busy: true, error: null });
+    setReschedule({ booking, date, days, options: null, slot: null, key, busy: true });
     try {
       const options = await getBookingRescheduleOptions(booking.id, date);
       setRescheduleNowMs(Date.now());
-      setReschedule({ booking, date, days, options, slot: null, key, busy: false, error: null });
+      setReschedule({ booking, date, days, options, slot: null, key, busy: false });
     } catch (caught) {
       setReschedule({
         booking,
@@ -462,8 +490,8 @@ export default function AccountPage() {
         slot: null,
         key,
         busy: false,
-        error: caught instanceof ApiError ? caught.message : t("Could not load reschedule options."),
       });
+      setError(caught instanceof ApiError ? caught.message : t("Could not load reschedule options."));
     }
   }
 
@@ -485,8 +513,8 @@ export default function AccountPage() {
       setReschedule({
         ...reschedule,
         busy: false,
-        error: caught instanceof ApiError ? caught.message : t("Could not reschedule the booking."),
       });
+      setError(caught instanceof ApiError ? caught.message : t("Could not reschedule the booking."));
     }
   }
 
@@ -533,11 +561,50 @@ export default function AccountPage() {
   const activeBookings = (bookings ?? [])
     .filter((booking) => !["completed", "cancelled_by_customer", "cancelled_by_admin", "no_show"].includes(booking.status))
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+  const sortedBookings = useMemo(
+    () => [...(bookings ?? [])].sort(compareBookingReferencesDescending),
+    [bookings],
+  );
+  const visibleBookings = useMemo(() => {
+    const query = bookingSearch.trim().toLocaleLowerCase();
+    return sortedBookings.filter((booking) => {
+      if (!bookingMatchesFilter(booking, bookingFilter)) return false;
+      if (!query) return true;
+      const searchable = [
+        booking.reference,
+        booking.status_label,
+        ...booking.cars.flatMap((car) => [
+          car.service.name,
+          car.vehicle.plate_number,
+          car.vehicle.make,
+          car.vehicle.model,
+        ]),
+      ].filter(Boolean).join(" ").toLocaleLowerCase();
+      return searchable.includes(query);
+    });
+  }, [bookingFilter, bookingSearch, sortedBookings]);
   const activeMemberships = (memberships ?? []).filter((membership) => membership.status === "active" && membership.washes_remaining > 0);
 
   return (
     <>
       <Navbar />
+      {error ? (
+        <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={() => setError(null)} />
+      ) : paymentNotice ? (
+        <AppToast
+          message={paymentNotice.message}
+          tone={paymentNotice.tone}
+          dismissLabel={t("Dismiss message")}
+          onDismiss={() => setPaymentNotice(null)}
+        />
+      ) : sessionEnded ? (
+        <AppToast
+          message={t("Your session has ended. Sign in again to continue.")}
+          tone="warning"
+          dismissLabel={t("Dismiss message")}
+          onDismiss={() => setSessionEnded(false)}
+        />
+      ) : null}
       <main id="main-content" className="section-shell min-h-[60dvh] py-7 sm:py-14">
         {!checked ? (
           <div className="mx-auto max-w-3xl space-y-4" role="status" aria-live="polite" aria-label={t("Loading account…")}>
@@ -546,11 +613,6 @@ export default function AccountPage() {
           </div>
         ) : !customer ? (
           <div className="mx-auto max-w-md">
-            {sessionEnded && (
-              <p role="alert" className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-                {t("Your session has ended. Sign in again to continue.")}
-              </p>
-            )}
             <AuthPanel
               title={t("Welcome back")}
               onAuthed={(c) => {
@@ -606,54 +668,94 @@ export default function AccountPage() {
               <Link href="/account/locations" className="commerce-card flex min-h-24 flex-col justify-between p-3 transition hover:border-[color:var(--blue)] sm:p-4"><svg viewBox="0 0 24 24" className="h-5 w-5 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="M12 21s6-5.33 6-11a6 6 0 1 0-12 0c0 5.67 6 11 6 11Z" stroke="currentColor" strokeWidth="1.8"/><circle cx="12" cy="10" r="2" fill="currentColor"/></svg><span className="mt-3 text-xs font-bold text-[color:var(--navy)] sm:text-sm">{t("Manage locations")}</span></Link>
             </section>
 
-            {paymentNotice && (
-              <div
-                role={paymentNotice.tone === "danger" ? "alert" : "status"}
-                aria-live="polite"
-                className={clsx(
-                  "mt-5 flex items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold",
-                  paymentNotice.tone === "success" && "border-emerald-200 bg-emerald-50 text-emerald-800",
-                  paymentNotice.tone === "warning" && "border-amber-200 bg-amber-50 text-amber-900",
-                  paymentNotice.tone === "danger" && "border-red-200 bg-red-50 text-red-700",
-                  paymentNotice.tone === "info" && "border-sky-200 bg-sky-50 text-sky-900",
-                )}
-              >
-                <span>{paymentNotice.message}</span>
-                <button
-                  type="button"
-                  aria-label={t("Dismiss message")}
-                  className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-full text-xl leading-none hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
-                  onClick={() => setPaymentNotice(null)}
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-              </div>
-            )}
-            {error && (
-              <div role="alert" className="mt-5 flex items-start justify-between gap-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                <span>{error}</span>
-                <button
-                  type="button"
-                  aria-label={t("Dismiss message")}
-                  className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-full text-xl leading-none hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700"
-                  onClick={() => setError(null)}
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-              </div>
-            )}
-
             <div className="mt-7 grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-white p-1 sm:grid-cols-3 lg:grid-cols-6" role="tablist" aria-label={t("Account sections")}>
               {([["overview", t("Overview")], ["bookings", t("Bookings")], ["orders", t("Orders")], ["memberships", t("Memberships")], ["vehicles", t("Vehicles")], ["notifications", t("Notifications")]] as const).map(([value, label]) => <button key={value} id={`account-tab-${value}`} type="button" role="tab" tabIndex={tab === value ? 0 : -1} aria-selected={tab === value} aria-controls={`account-panel-${value}`} onKeyDown={(event) => handleTabKeyDown(event, value)} onClick={() => setTab(value)} className={clsx("min-h-11 rounded-xl px-3 text-sm font-semibold transition", tab === value ? "bg-[color:var(--navy)] text-white" : "text-[color:var(--muted-foreground)] hover:bg-slate-50 hover:text-[color:var(--navy)]")}>{label}</button>)}
             </div>
 
             <div key={tab} id={`account-panel-${tab}`} role="tabpanel" aria-labelledby={`account-tab-${tab}`} tabIndex={0} className="checkout-step mt-6 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-4">
               {tab === "overview" && <div className="grid gap-5 lg:grid-cols-2">
-                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} busy={paymentAction === `booking:${activeBookings[0].id}`} onPay={() => handleCompleteBookingPayment(activeBookings[0])} onCancel={() => handleCancel(activeBookings[0].id)} onReschedule={() => loadRescheduleOptions(activeBookings[0], qatarServiceDate(activeBookings[0].scheduled_at))} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
+                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} busy={paymentAction !== null} paying={paymentAction === `booking:${activeBookings[0].id}`} cancelling={paymentAction === `cancel-booking:${activeBookings[0].id}`} onPay={() => handleCompleteBookingPayment(activeBookings[0])} onCancel={() => handleCancel(activeBookings[0].id)} onReschedule={() => loadRescheduleOptions(activeBookings[0], qatarServiceDate(activeBookings[0].scheduled_at))} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
                 <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Savings")}</p><h2 className="mt-1 text-xl font-bold">{t("Membership")}</h2></div><button type="button" aria-label={t("View all memberships")} onClick={() => setTab("memberships")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{memberships === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeMemberships.length > 0 ? <MembershipCard membership={activeMemberships[0]} busy={paymentAction === `cancel-membership:${activeMemberships[0].id}`} onCancel={() => handleCancelCashMembership(activeMemberships[0])} /> : <EmptyState title={t("Wash more, pay less")} copy={t("Prepaid wash bundles make every booking faster.")} action={t("See memberships")} href="/memberships" />}</section>
               </div>}
 
-              {tab === "bookings" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My bookings")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Review upcoming and previous wash appointments.")}</p></div><Link href="/book" className="primary-button shrink-0 px-4">{t("New booking")}</Link></div>{bookings === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : bookings.length === 0 ? <EmptyState title={t("No bookings yet")} copy={t("Your first sparkling-clean car is a few taps away.")} action={t("Book your first wash")} href="/book" /> : <div className="grid gap-4 md:grid-cols-2">{bookings.map((booking) => <BookingCard key={booking.id} booking={booking} busy={paymentAction === `booking:${booking.id}`} onPay={() => handleCompleteBookingPayment(booking)} onCancel={() => handleCancel(booking.id)} onReschedule={() => loadRescheduleOptions(booking, qatarServiceDate(booking.scheduled_at))} />)}</div>}</section>}
+              {tab === "bookings" && (
+                <section>
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-2xl font-bold">{t("My bookings")}</h2>
+                      <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Review upcoming and previous wash appointments.")}</p>
+                    </div>
+                    <Link href="/book" className="primary-button shrink-0 px-4">{t("New booking")}</Link>
+                  </div>
+                  {bookings !== null && bookings.length > 0 && (
+                    <div className="commerce-card mb-4 grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_13rem_auto] sm:items-end">
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-bold text-[color:var(--navy)]">{t("Search bookings")}</span>
+                        <input
+                          type="search"
+                          value={bookingSearch}
+                          onChange={(event) => setBookingSearch(event.target.value)}
+                          placeholder={t("Booking number, service, or vehicle")}
+                          className="wizard-input min-h-12"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-bold text-[color:var(--navy)]">{t("Filter by status")}</span>
+                        <select
+                          value={bookingFilter}
+                          onChange={(event) => setBookingFilter(event.target.value as BookingFilter)}
+                          className="wizard-input min-h-12"
+                        >
+                          <option value="all">{t("All bookings")}</option>
+                          <option value="upcoming">{t("Upcoming")}</option>
+                          <option value="in_progress">{t("In progress")}</option>
+                          <option value="completed">{t("Completed")}</option>
+                          <option value="cancelled">{t("Cancelled")}</option>
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="secondary-button min-h-12 px-4"
+                        disabled={bookingFilter === "all" && bookingSearch === ""}
+                        onClick={() => {
+                          setBookingFilter("all");
+                          setBookingSearch("");
+                        }}
+                      >
+                        {t("Clear filters")}
+                      </button>
+                      <p className="text-xs font-medium text-[color:var(--muted-foreground)] sm:col-span-3" role="status" aria-live="polite">
+                        {t("Showing")} {visibleBookings.length} {t("of")} {sortedBookings.length} {t("bookings")}
+                      </p>
+                    </div>
+                  )}
+                  {bookings === null ? (
+                    <div className="grid gap-4 md:grid-cols-2">{[0, 1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div>
+                  ) : bookings.length === 0 ? (
+                    <EmptyState title={t("No bookings yet")} copy={t("Your first sparkling-clean car is a few taps away.")} action={t("Book your first wash")} href="/book" />
+                  ) : visibleBookings.length === 0 ? (
+                    <div className="commerce-card p-6 text-center">
+                      <h3 className="font-bold text-[color:var(--navy)]">{t("No bookings match your filters.")}</h3>
+                      <button type="button" className="secondary-button mt-4" onClick={() => { setBookingFilter("all"); setBookingSearch(""); }}>{t("Clear filters")}</button>
+                    </div>
+                  ) : (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {visibleBookings.map((booking) => (
+                        <BookingCard
+                          key={booking.id}
+                          booking={booking}
+                          busy={paymentAction !== null}
+                          paying={paymentAction === `booking:${booking.id}`}
+                          cancelling={paymentAction === `cancel-booking:${booking.id}`}
+                          onPay={() => handleCompleteBookingPayment(booking)}
+                          onCancel={() => handleCancel(booking.id)}
+                          onReschedule={() => loadRescheduleOptions(booking, qatarServiceDate(booking.scheduled_at))}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
 
               {tab === "orders" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My store orders")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Track product purchases, delivery, and payment status.")}</p></div><Link href="/store" className="primary-button shrink-0 px-4">{t("Shop products")}</Link></div>{orders === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : orders.length === 0 ? <EmptyState title={t("No store orders yet")} copy={t("Products you purchase from the Bubbleit store will appear here.")} action={t("Browse the store")} href="/store" /> : <div className="grid gap-4 md:grid-cols-2">{orders.map((order) => <StoreOrderCard key={order.id} order={order} busy={paymentAction === `order:${order.id}` || paymentAction === `cancel-order:${order.id}`} onPay={() => handleCompleteStorePayment(order)} onCancel={() => handleCancelStoreOrder(order)} />)}</div>}</section>}
 
@@ -703,7 +805,6 @@ export default function AccountPage() {
                 onSelect={(start) => setReschedule((current) => (current ? { ...current, slot: start } : current))}
               />
             ) : null}
-            {reschedule.error && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{reschedule.error}</p>}
             <p className="mt-4 text-xs text-[color:var(--muted-foreground)]">{t("Your payment, membership wash, products, and total stay attached to this booking.")}</p>
             <button type="button" className="primary-button mt-5 w-full" disabled={!reschedule.slot || reschedule.busy} onClick={commitReschedule}>{reschedule.busy ? t("Rescheduling…") : t("Confirm new time")}</button>
           </section>
@@ -867,12 +968,16 @@ function MembershipCard({
 function BookingCard({
   booking,
   busy,
+  paying,
+  cancelling,
   onPay,
   onCancel,
   onReschedule,
 }: {
   booking: Booking;
   busy: boolean;
+  paying: boolean;
+  cancelling: boolean;
   onPay: () => void;
   onCancel: () => void;
   onReschedule: () => void;
@@ -970,22 +1075,28 @@ function BookingCard({
         <div className="flex flex-wrap gap-2">
           {paymentRequired && (
             <button type="button" className="primary-button min-h-9 px-4 py-2 text-xs" disabled={busy} onClick={onPay}>
-              {busy ? t("Checking payment…") : t("Complete payment")}
+              {paying ? t("Checking payment…") : t("Complete payment")}
             </button>
           )}
           <Link href="/book" className="secondary-button min-h-9 px-4 py-2 text-xs">
             {t("Book again")}
           </Link>
           {!reconciliationRequired && CANCELLABLE.includes(booking.status) && (
-            <button type="button" className="secondary-button min-h-9 px-4 py-2 text-xs" onClick={onReschedule}>{t("Reschedule")}</button>
+            <button type="button" disabled={busy} className="secondary-button min-h-9 px-4 py-2 text-xs" onClick={onReschedule}>{t("Reschedule")}</button>
           )}
           {!reconciliationRequired && CANCELLABLE.includes(booking.status) && (
             <button
               type="button"
+              disabled={busy}
               className="secondary-button min-h-9 px-4 py-2 text-xs text-red-600 hover:border-red-400 hover:text-red-600"
               onClick={onCancel}
             >
-              {t("Cancel")}
+              {cancelling ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-200 border-t-red-600 motion-reduce:animate-none" aria-hidden="true" />
+                  {t("Cancelling…")}
+                </span>
+              ) : t("Cancel")}
             </button>
           )}
         </div>

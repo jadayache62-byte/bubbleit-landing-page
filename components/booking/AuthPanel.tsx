@@ -6,6 +6,7 @@
 
 import { useEffect, useState, type MouseEventHandler } from "react";
 import clsx from "clsx";
+import { AppToast } from "@/components/AppToast";
 import {
   ApiError,
   checkPhone,
@@ -507,11 +508,7 @@ export function AuthPanel({
           </>
         )}
 
-        {error && (
-          <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {error}
-          </p>
-        )}
+        {error && <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={() => setError(null)} />}
         {notice && (
           <p role="status" className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
             {notice}

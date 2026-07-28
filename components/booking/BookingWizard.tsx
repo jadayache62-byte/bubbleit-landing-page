@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
+import { AppToast } from "@/components/AppToast";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import { HourSlotPicker } from "@/components/booking/HourSlotPicker";
 import { PaymentMethodSelector } from "@/components/payments/PaymentMethodSelector";
@@ -125,6 +126,10 @@ function typesForKind(kind: WashKind): VehicleType[] {
 
 function priceFor(service: Service, vtype: VehicleType) {
   return vtype === "suv" ? service.price_suv : service.price;
+}
+
+function durationFor(service: Service, vtype: VehicleType) {
+  return vtype === "suv" ? service.duration_suv : service.duration_minutes;
 }
 
 const STEPS = [
@@ -915,11 +920,11 @@ export function BookingWizard() {
   if (confirmed) {
     return (
       <div ref={topRef} className="mx-auto w-full max-w-3xl scroll-mt-24">
+        {error && <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={() => setError(null)} />}
         <SuccessPanel
           booking={confirmed}
           paymentRetrying={paymentRetrying}
           onRetryPayment={retryPayment}
-          error={error}
         />
       </div>
     );
@@ -1208,9 +1213,9 @@ export function BookingWizard() {
             )}
 
             {authed && !quoteLoading && quoteError && !quote && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5" role="alert">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                <AppToast message={quoteError} dismissLabel={t("Dismiss message")} onDismiss={() => setQuoteError(null)} />
                 <h3 className="font-bold text-amber-950">{t("Price confirmation required")}</h3>
-                <p className="mt-1 text-sm leading-6 text-amber-900">{quoteError}</p>
                 <button
                   type="button"
                   className="secondary-button mt-4"
@@ -1279,6 +1284,7 @@ export function BookingWizard() {
                 value={promoInput}
                 busy={promoBusy}
                 error={promoError}
+                onErrorDismiss={() => setPromoError(null)}
                 onChange={setPromoInput}
                 onApply={applyPromo}
                 onClear={clearPromo}
@@ -1332,14 +1338,7 @@ export function BookingWizard() {
           </StepPanel>
         )}
 
-        {error && (
-          <p
-            role="alert"
-            className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
-          >
-            {error}
-          </p>
-        )}
+        {error && <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={() => setError(null)} />}
       </div>
 
         {/* Persistent booking actions */}
@@ -1673,18 +1672,16 @@ function StepServices({
                         )}
                       >
                         {fmt(priceFor(service, car.vtype), lang)}
-                        {service.duration_label && (
-                          <span
-                            className={clsx(
-                              "font-medium",
-                              car.serviceId === service.id
-                                ? "text-white/70"
-                                : "text-[color:var(--muted-foreground)]",
-                            )}
-                          >
-                            · {service.duration_label}
-                          </span>
-                        )}
+                        <span
+                          className={clsx(
+                            "font-medium",
+                            car.serviceId === service.id
+                              ? "text-white/70"
+                              : "text-[color:var(--muted-foreground)]",
+                          )}
+                        >
+                          · {durationFor(service, car.vtype)} {t("min")}
+                        </span>
                       </span>
                     </button>
                   );
@@ -1821,31 +1818,6 @@ function StepServices({
         {t("+ Add another vehicle")}
       </button>
     </StepPanel>
-  );
-}
-
-function PayOption({
-  active,
-  onClick,
-  title,
-}: {
-  active: boolean;
-  onClick: () => void;
-  title: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={clsx(
-        "flex flex-col items-start rounded-2xl border p-5 text-left transition",
-        active
-          ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
-          : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
-      )}
-    >
-      <span className="font-bold">{title}</span>
-    </button>
   );
 }
 
@@ -2285,6 +2257,7 @@ function PromoField({
   value,
   busy,
   error,
+  onErrorDismiss,
   onChange,
   onApply,
   onClear,
@@ -2293,6 +2266,7 @@ function PromoField({
   value: string;
   busy: boolean;
   error: string | null;
+  onErrorDismiss: () => void;
   onChange: (v: string) => void;
   onApply: () => void;
   onClear: () => void;
@@ -2343,9 +2317,7 @@ function PromoField({
           {busy ? t("Checking…") : t("Apply")}
         </button>
       </div>
-      {error && (
-        <p className="mt-1 text-xs font-medium text-red-600">{error}</p>
-      )}
+      {error && <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={onErrorDismiss} />}
     </div>
   );
 }
@@ -2354,12 +2326,10 @@ function SuccessPanel({
   booking,
   paymentRetrying,
   onRetryPayment,
-  error,
 }: {
   booking: Booking;
   paymentRetrying: boolean;
   onRetryPayment: () => void;
-  error: string | null;
 }) {
   const { lang, t } = useI18n();
   const paymentState = bookingPaymentUiState(booking.payment?.status);
@@ -2418,7 +2388,6 @@ function SuccessPanel({
           >
             {paymentRetrying ? t("Retrying…") : t("Retry secure payment")}
           </button>
-          {error && <p className="mt-3 text-xs font-semibold text-red-700">{error}</p>}
         </div>
       )}
       <p className="mt-4 text-sm leading-7 text-[color:var(--muted-foreground)]">

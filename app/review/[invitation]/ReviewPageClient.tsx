@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { AppToast } from "@/components/AppToast";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
@@ -61,6 +62,7 @@ export function ReviewPageClient({ invitation }: { invitation: string }) {
   return (
     <>
       <Navbar />
+      {error && <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={() => setError(null)} />}
       <main id="main-content" className="section-shell flex min-h-[70dvh] items-center py-8 sm:py-14">
         <section className="mx-auto w-full max-w-xl" aria-labelledby="review-title">
           {loading ? (
@@ -81,7 +83,6 @@ export function ReviewPageClient({ invitation }: { invitation: string }) {
             <div className="commerce-card p-6 text-center sm:p-8">
               <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-red-50 text-2xl" aria-hidden="true">!</div>
               <h1 id="review-title" className="mt-5 text-2xl font-bold text-[color:var(--navy)]">{t("Review unavailable")}</h1>
-              <p role="alert" className="mt-3 text-sm leading-6 text-[color:var(--muted-foreground)]">{error}</p>
               <button type="button" className="primary-button mt-6" onClick={() => load()}>{t("Try again")}</button>
             </div>
           ) : entry?.state === "expired" ? (
@@ -144,7 +145,6 @@ export function ReviewPageClient({ invitation }: { invitation: string }) {
                 />
                 <div className="mt-1 text-end text-xs text-slate-500"><span aria-hidden="true">{comment.length}/2000</span><span className="sr-only">{t("characters used")}</span></div>
 
-                {error && <p role="alert" className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
                 <button
                   type="button"
                   className="primary-button mt-5 w-full text-base disabled:opacity-50"

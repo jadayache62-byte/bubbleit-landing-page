@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AppToast } from "@/components/AppToast";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
@@ -142,6 +143,20 @@ export function AccountDeletionClient() {
   return (
     <>
       <Navbar />
+      {error ? (
+        <AppToast
+          message={error}
+          dismissLabel={lang === "ar" ? "إغلاق الرسالة" : "Dismiss message"}
+          onDismiss={() => setError(null)}
+        />
+      ) : message ? (
+        <AppToast
+          message={message}
+          tone="success"
+          dismissLabel={lang === "ar" ? "إغلاق الرسالة" : "Dismiss message"}
+          onDismiss={() => setMessage(null)}
+        />
+      ) : null}
       <main id="main-content" className="section-shell min-h-[60dvh] py-10 sm:py-16">
         <div className="mx-auto max-w-3xl">
           <header>
@@ -162,8 +177,6 @@ export function AccountDeletionClient() {
             <div className="mt-8"><AuthPanel title={copy.signIn} onAuthed={setCustomer} /></div>
           ) : (
             <div className="mt-8 space-y-6">
-              {(error || message) && <p className={`rounded-2xl px-4 py-3 text-sm font-semibold ${error ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`} role={error ? "alert" : "status"}>{error ?? message}</p>}
-
               <section className="commerce-card p-5 sm:p-8">
                 <h2 className="text-xl font-extrabold text-[color:var(--navy)]">{copy.exportTitle}</h2>
                 <p className="mt-3 leading-7 text-[color:var(--muted-foreground)]">{copy.exportBody}</p>

@@ -5,6 +5,7 @@ import test from "node:test";
 const page = readFileSync(new URL("../app/review/[invitation]/ReviewPageClient.tsx", import.meta.url), "utf8");
 const api = readFileSync(new URL("../lib/api/client.ts", import.meta.url), "utf8");
 const metadata = readFileSync(new URL("../app/review/[invitation]/page.tsx", import.meta.url), "utf8");
+const toast = readFileSync(new URL("../components/AppToast.tsx", import.meta.url), "utf8");
 
 test("review entry is opaque, authenticated, rating-first, optional-notes, and one-shot", () => {
   assert.match(api, /review-invitations\/\$\{encodeURIComponent\(publicId\)\}/);
@@ -20,6 +21,7 @@ test("review links stay out of search indexes and expose accessible loading and 
   assert.match(metadata, /index: false/);
   assert.match(metadata, /follow: false/);
   assert.match(page, /role="status"/);
-  assert.match(page, /role="alert"/);
+  assert.match(page, /<AppToast/);
+  assert.match(toast, /role=\{tone === "danger" \? "alert" : "status"\}/);
   assert.match(page, /aria-label/);
 });

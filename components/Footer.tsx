@@ -56,22 +56,31 @@ export function Footer() {
               >
                 {t("WhatsApp")}
               </a>
-              <div className="mt-3 flex flex-col gap-2 text-base">
+              <div className="mt-4 flex items-center gap-3">
                 <a
                   href="https://instagram.com/bubbleitqa"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-white/82 transition hover:text-[color:var(--cyan)]"
+                  aria-label={`${t("Instagram")} @bubbleitqa`}
+                  className="grid h-11 w-11 place-items-center rounded-full border border-white/20 text-white/82 transition hover:border-[color:var(--cyan)] hover:text-[color:var(--cyan)]"
                 >
-                  Instagram @bubbleitqa
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+                    <rect x="3.5" y="3.5" width="17" height="17" rx="5" stroke="currentColor" strokeWidth="1.8" />
+                    <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
+                    <circle cx="17.5" cy="6.7" r="1" fill="currentColor" />
+                  </svg>
                 </a>
                 <a
                   href="https://tiktok.com/@bubbleitqa"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-white/82 transition hover:text-[color:var(--cyan)]"
+                  aria-label={`${t("TikTok")} @bubbleitqa`}
+                  className="grid h-11 w-11 place-items-center rounded-full border border-white/20 text-white/82 transition hover:border-[color:var(--cyan)] hover:text-[color:var(--cyan)]"
                 >
-                  TikTok @bubbleitqa
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+                    <path d="M14.5 4v10.1a4.3 4.3 0 1 1-3.6-4.24" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                    <path d="M14.5 4c.5 2.7 2.14 4.35 5 4.9" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                  </svg>
                 </a>
               </div>
             </div>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { AppToast } from "@/components/AppToast";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import {
   ApiError,
@@ -1032,7 +1033,13 @@ export function StoreCheckoutClient() {
                     {geoState === "locating" ? t("Finding your location…") : geo ? t("Update precise location") : t("Use my precise location")}
                   </button>
                   {geo && <p className="text-center text-xs font-semibold text-emerald-700">{t("Location pinned successfully")}</p>}
-                  {geoState === "error" && <p role="alert" className="text-center text-xs font-medium text-red-600">{t("Location access failed. Tap the map to place the pin manually.")}</p>}
+                  {geoState === "error" && (
+                    <AppToast
+                      message={t("Location access failed. Tap the map to place the pin manually.")}
+                      dismissLabel={t("Dismiss message")}
+                      onDismiss={() => setGeoState("idle")}
+                    />
+                  )}
                   <div className="rounded-3xl border border-[color:var(--border)] bg-white p-3 shadow-sm sm:p-4">
                     <p className="mb-3 text-sm font-bold text-[color:var(--navy)]">{t("Blue plate")}</p>
                     <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-center text-white">
@@ -1119,7 +1126,7 @@ export function StoreCheckoutClient() {
                 ) : pendingCheckout ? (
                   <p role={paymentNotice ? "alert" : "status"} className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">{t("Order")} {pendingCheckout.order.reference} {t("is saved.")} {paymentNotice ?? t("Retry payment to continue.")}</p>
                 ) : null}
-                {error && <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p>}
+                {error && <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={() => setError(null)} />}
                 <button type="submit" className="primary-button min-h-14 w-full text-base disabled:opacity-50" disabled={submitting}>{submitLabel}</button>
                 <p className="text-center text-xs text-[color:var(--muted-foreground)]">{t("By placing your order, you confirm the delivery and contact details above.")}</p>
               </form>

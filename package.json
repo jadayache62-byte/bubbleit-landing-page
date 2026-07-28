@@ -32,10 +32,12 @@
     "eslint-config-next": "^16.2.11",
     "minimatch": "file:vendor/minimatch-compat",
     "tailwindcss": "^4.1.13",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "nx": "23.1.0"
   },
   "overrides": {
     "postcss": "8.5.23",
     "sharp": "0.35.3"
-  }
+  },
+  "nx": {}
 }
