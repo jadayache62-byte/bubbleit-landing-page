@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-31 — Repository guidance synchronized
+
+- Updated `CLAUDE.md` and `AGENTS.md` to match the current authenticated store-checkout contract,
+  same-origin HttpOnly BFF boundary, and production configuration safeguards.
+- Documented booking-reference-first sorting, booking search and lifecycle filters, duplicate-safe
+  cancellation updates, vehicle-specific sedan/SUV duration, and accessible top snackbars as durable
+  customer behavior.
+- Added current Next.js/Nx workflow, contract-copy, test-isolation, localization, accessibility, and
+  release-gate guidance without changing or deploying customer-facing code.
+
 ## 2026-07-28 — Customer booking UX and consistent top snackbars
 
 - Added duplicate-safe cancellation progress and immediate booking-card updates so customers always see when an online cancellation is processing and complete.

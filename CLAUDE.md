@@ -1,5 +1,27 @@
 # Bubble It Landing Page — CLAUDE.md
 
+## Current product and repository state (2026-07-31)
+
+- This is the Next.js 16 customer website for marketing, booking, memberships, store checkout,
+  authenticated account management, legal pages, and the development-only mock customer API.
+- It is an Nx workspace. Use the declared Nx targets for lint, unit/contract tests, Playwright,
+  security checks, and production builds.
+- Store checkout requires an authenticated or OTP-verified customer before review and order creation.
+  Preserve the browser cart across authentication and keep any server-created pending order bound to
+  its authenticated owner. Guest order creation is not supported.
+- Customer booking history sorts newest booking reference first and supports search plus lifecycle
+  filtering. Keep duplicate-safe cancellation progress and immediate card updates.
+- Service-card duration must use the selected vehicle type's backend-owned sedan or SUV duration;
+  never display the sedan value for every vehicle.
+- Customer action failures use accessible, dismissible top snackbars across booking, authentication,
+  memberships, store checkout, saved locations, notifications, reviews, and account deletion.
+- Browser code uses only the same-origin `/api/customer` BFF. The bearer token remains in the
+  server-owned HttpOnly cookie, and production builds fail when `CUSTOMER_API_BASE` is absent.
+- Never expose internal accounting, ledger, reconciliation, provider, or revenue-recognition details
+  in customer contracts or screens.
+- Do not deploy or run provider-facing browser tests against live payment, messaging, production, or
+  shared customer data.
+
 ## Customer financial privacy and payment returns
 
 - Customer responses and screens show only customer-relevant payment, refund, fulfillment, and delivery outcomes. Never expose revenue recognition, deferred revenue, accounting status/codes, journal data, posting policies, internal fingerprints, or reconciliation internals.
@@ -91,7 +113,10 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - **View cart** opens the mini-cart modal; **Checkout** navigates directly to `/store/checkout`. Hidden cart backdrops must use opacity, visibility, pointer-events, `aria-hidden`, and `inert` safeguards so no tint or invisible click layer remains.
 - Store checkout is a focused three-step flow: **Location → Contact → Review**. Do not collapse it back into one long page.
 - Store checkout uses the same Qatar address card as booking: map pin/current location, mandatory building number, optional zone/street, optional area and extra details.
-- Guest checkout is the default and does not require an account. Require a name and valid eight-digit Qatar phone number, normalize it to `+974`, and preserve the contact step as the future OTP insertion point.
+- Store checkout requires sign-in or OTP-backed account verification before review and order
+  creation. For an unauthenticated customer, the Contact step is the authentication gate; once the
+  customer is verified, continue directly to Review. Accept exactly eight local Qatar phone digits
+  and normalize them to `+974`.
 - Creating a pending order reserves the checkout but does not complete it. Preserve the cart and
   pending order when hosted checkout is abandoned or payment initialization fails; clear the cart
   only after the backend confirms capture.
@@ -128,9 +153,14 @@ Repository notes for agents working on the Bubble It marketing site and customer
   It must expose booking/rebooking/cancellation and payment recovery, membership
   redemption/renewal, store-order payment/cancellation/refund tracking, vehicle booking/removal,
   localized notification recovery, quick actions, loading states, and clear empty states.
+- Booking history sorts by booking reference descending and provides search plus lifecycle filters.
+  Cancellation is duplicate-safe, exposes in-progress state, and updates the matching card from the
+  authoritative response without waiting for an unrelated full-page reload.
 - Account section controls follow the ARIA tabs pattern, including a single tab stop, `aria-selected`, linked tabpanels, Arrow Left/Right, Home, and End behavior. Avoid horizontally clipped mobile tabs.
 - Keep normal text contrast at WCAG AA, interactive targets at least 44×44px on mobile, visible `:focus-visible` outlines, contextual accessible names for repeated actions, and one page-level `<h1>` per rendered account state.
 - Respect `prefers-reduced-motion`. Use compositor-friendly opacity/transform motion for modal entrances, and avoid long scripted page-scroll animations between wizard steps.
+- Customer action failures use the shared accessible top snackbar with a dismiss action. Do not
+  reintroduce inconsistent inline-only error banners for comparable actions.
 - Render hour-slot option popovers through a document-level portal and clamp their measured box to the current visual viewport. Reposition on scroll and resize, open upward when the bottom edge is constrained, and keep outside-click/focus restoration working across the portal; grid-column alignment alone is not safe for right-edge mobile pills or large text.
 - Map selection must include the localized coordinate form in `LocationMap`; pointer dragging and geolocation permission cannot be the only input paths. Time pickers and modal dialogs must restore the invoking control's focus after selection or dismissal and trap focus while open.
 - `tests/e2e/accessibility.spec.ts` is a blocking axe WCAG A/AA gate for customer release surfaces. Do not suppress violations without a documented false-positive proof; fix the rendered semantics or contrast instead.

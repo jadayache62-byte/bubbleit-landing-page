@@ -1,3 +1,52 @@
+# Bubble It Customer Web — Agent Instructions
+
+Read `CLAUDE.md` before changing customer behavior; it contains the detailed booking, store,
+membership, authentication, localization, security, and accessibility contracts.
+
+## Current architecture
+
+- Next.js 16 App Router customer website with React 19 and TypeScript.
+- Scope: marketing pages, the four-step booking wizard, memberships, store, authenticated account,
+  legal/release pages, and a development-only mock API.
+- Browser requests go to the same-origin `/api/customer` BFF. Only the BFF may hold the backend bearer
+  token, in an HttpOnly, Secure-in-production, SameSite=Lax cookie.
+- Production requires the server-only `CUSTOMER_API_BASE`. Never add a browser API base, direct
+  browser authorization header, localStorage token, or script-readable auth cookie.
+- Customer contracts expose customer-relevant payment/refund/fulfillment state only. Never expose
+  journal, revenue-recognition, accounting, reconciliation, provider, or internal fingerprint data.
+
+## Current customer behavior
+
+- Booking is one flow: Services → Location → Schedule → Pay & Confirm. Membership redemption stays
+  inside that flow.
+- Availability, duration, price, membership coverage, inventory, service-area version, and payment
+  outcome are backend-owned. Do not calculate operational or financial truth in the browser.
+- Display the selected vehicle type's sedan/SUV duration. Customers never choose a bus or see bus,
+  plate, driver, or dispatch details.
+- Booking history is booking-reference-first, newest first, with search and lifecycle filters.
+  Cancellation must remain duplicate-safe and update the matching card immediately.
+- Store checkout is Location → Contact → Review for unauthenticated customers and Location → Review
+  for authenticated customers. Contact is an authentication/OTP gate; guest order creation is not
+  supported. Preserve the cart through authentication and bind pending orders to their server owner.
+- A provider return is not proof of payment. Reconcile through the backend and preserve processing,
+  failed, cancelled, review, refund, and payment-recovery states.
+- Use the shared accessible, dismissible top snackbar for customer action errors.
+
+## Quality and safety
+
+- English/Arabic, server-rendered `lang`/`dir`, RTL, 320 px reflow, increased text, keyboard access,
+  visible focus, focus restoration, reduced motion, and axe WCAG A/AA coverage are release gates.
+- Keep `docs/contracts/public-contract-v1.schema.json` and
+  `docs/contracts/duration-v1.json` byte-identical with the backend and Flutter consumers.
+- The local mock must follow production contracts but must never become a production fallback.
+- Tests must not contact real payment, messaging, production, or shared services.
+- Use the declared Nx targets through `npm exec nx -- <target> bubbleit-landing-page`; do not bypass
+  Nx for routine lint, test, build, or end-to-end work and do not guess flags.
+- Before release, run the relevant focused tests followed by lint, unit/contract tests, Playwright
+  release gates, session/security verification, and the production build.
+- Keep `CHANGELOG.md`, `CLAUDE.md`, and this file synchronized whenever durable behavior,
+  architecture, contracts, release state, or operational knowledge changes.
+
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->
 
