@@ -174,7 +174,7 @@ const AR: Record<string, string> = {
   "Choose a saved vehicle": "اختر مركبة محفوظة",
   "Add a different vehicle": "أضف مركبة أخرى",
   "Add a covered vehicle": "أضف مركبة مشمولة",
-  "The plate number is required; the other details are optional.": "رقم اللوحة مطلوب، وبقية التفاصيل اختيارية.",
+  "Enter the plate number to save this vehicle.": "أدخل رقم اللوحة لحفظ هذه المركبة.",
   "Choose your membership time": "اختر موعد الاشتراك",
   "This membership includes private booking times from 12:00 a.m. to 5:00 a.m.": "يشمل هذا الاشتراك مواعيد حجز خاصة من 12:00 ص إلى 5:00 ص.",
   "Midnight membership access": "دخول اشتراك منتصف الليل",

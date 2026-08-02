@@ -51,6 +51,7 @@ import type {
   Booking,
   BookingQuote,
   CustomerMembership,
+  CreateVehiclePayload,
   MembershipBookingOptions,
   DurationContribution,
   DurationSnapshot,
@@ -73,6 +74,10 @@ import {
   canRetryBookingPayment,
   usableCheckoutUrl,
 } from "@/lib/booking/payment-flow";
+import {
+  vehicleIdempotencyKey,
+  type VehicleIdempotencyEntry,
+} from "@/lib/booking/vehicle-idempotency";
 const STALE_SLOT_MS = 15 * 60 * 1000;
 const BOOKING_ATTEMPT_KEY = "bubbleit.booking.idempotency";
 
@@ -312,6 +317,7 @@ export function BookingWizard() {
   const [membershipsLoading, setMembershipsLoading] = useState(false);
   const [membershipsLoaded, setMembershipsLoaded] = useState(false);
   const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null);
+  const [addingMembershipVehicle, setAddingMembershipVehicle] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -320,6 +326,7 @@ export function BookingWizard() {
   const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
   const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>("skipcash_hosted");
   const bookingAttemptRef = useRef<string | null>(null);
+  const vehicleIdempotencyEntriesRef = useRef(new Map<string, VehicleIdempotencyEntry>());
 
   const redeemableMemberships = useMemo(
     () => memberships.filter((membership) => (
@@ -345,8 +352,18 @@ export function BookingWizard() {
     return key;
   }, []);
 
+  const vehicleCommandKey = useCallback((scope: string, payload: CreateVehiclePayload) => (
+    vehicleIdempotencyKey(
+      vehicleIdempotencyEntriesRef.current,
+      scope,
+      payload,
+      () => window.crypto.randomUUID(),
+    )
+  ), []);
+
   const clearBookingAttempt = useCallback(() => {
     bookingAttemptRef.current = null;
+    vehicleIdempotencyEntriesRef.current.clear();
     window.sessionStorage.removeItem(BOOKING_ATTEMPT_KEY);
   }, []);
 
@@ -439,6 +456,7 @@ export function BookingWizard() {
     const membership = redeemableMemberships[0];
     queueMicrotask(() => {
       setSelectedMembershipId(membership.id);
+      setAddingMembershipVehicle(false);
       setCars([{
         ...emptyCar(1),
         vtype: membership.plan.vehicle_type ?? "suv",
@@ -453,7 +471,12 @@ export function BookingWizard() {
   }, [membershipMode, redeemableMemberships]);
 
   useEffect(() => {
-    if (!membershipMode || !selectedMembership || cars[0]?.vehicleId !== null) return;
+    if (
+      !membershipMode
+      || !selectedMembership
+      || addingMembershipVehicle
+      || cars[0]?.vehicleId !== null
+    ) return;
     const eligible = myVehicles.filter((vehicle) => membershipCoversVehicle(selectedMembership, vehicle.type));
     if (eligible.length !== 1) return;
     const vehicle = eligible[0];
@@ -471,7 +494,7 @@ export function BookingWizard() {
         addOnIds: [],
       }]);
     });
-  }, [membershipMode, selectedMembership, myVehicles, cars]);
+  }, [membershipMode, selectedMembership, myVehicles, cars, addingMembershipVehicle]);
 
   // Reference "now" captured when slots load, used to hide today's past slots.
   const [nowMs, setNowMs] = useState(0);
@@ -838,6 +861,7 @@ export function BookingWizard() {
     const membership = redeemableMemberships.find((item) => item.id === membershipId);
     if (!membership || membership.id === selectedMembership?.id) return;
     setSelectedMembershipId(membership.id);
+    setAddingMembershipVehicle(false);
     setCars([{
       ...emptyCar(1),
       vtype: membership.plan.vehicle_type ?? "suv",
@@ -864,14 +888,14 @@ export function BookingWizard() {
     try {
       let vehicleId = cars[0].vehicleId;
       if (vehicleId === null) {
-        const vehicle = await createVehicle({
-          make: cars[0].make.trim(),
-          model: cars[0].model.trim(),
-          year: null,
-          color: cars[0].color.trim(),
+        const vehiclePayload: CreateVehiclePayload = {
           plate_number: cars[0].plate.trim(),
           type: cars[0].vtype,
-        }, `${bookingAttemptKey()}:membership-vehicle`);
+        };
+        const vehicle = await createVehicle(
+          vehiclePayload,
+          vehicleCommandKey("membership", vehiclePayload),
+        );
         if (!membershipCoversVehicle(selectedMembership, vehicle.type)) {
           throw new Error(t("The saved vehicle does not match this membership."));
         }
@@ -1015,14 +1039,14 @@ export function BookingWizard() {
         for (const car of cars) {
           let vehicleId = car.vehicleId;
           if (vehicleId === null) {
-            const vehicle = await createVehicle({
-              make: car.make.trim(),
-              model: car.model.trim(),
-              year: null,
-              color: car.color.trim(),
+            const vehiclePayload: CreateVehiclePayload = {
               plate_number: car.plate.trim(),
               type: car.vtype,
-            }, `${attemptKey}:vehicle:${car.key}`);
+            };
+            const vehicle = await createVehicle(
+              vehiclePayload,
+              vehicleCommandKey(`booking:${car.key}`, vehiclePayload),
+            );
             vehicleId = vehicle.id;
           }
           carPayloads.push({
@@ -1250,7 +1274,9 @@ export function BookingWizard() {
               selectedMembership={selectedMembership}
               vehicles={myVehicles}
               car={cars[0] ?? emptyCar(1)}
+              addingNewVehicle={addingMembershipVehicle}
               onMembershipChange={chooseMembership}
+              onAddingNewVehicleChange={setAddingMembershipVehicle}
               onUpdate={(patch) => updateCar(cars[0]?.key ?? 1, patch)}
             />
           ) : (
@@ -1850,20 +1876,23 @@ function StepMembershipVehicle({
   selectedMembership,
   vehicles,
   car,
+  addingNewVehicle,
   onMembershipChange,
+  onAddingNewVehicleChange,
   onUpdate,
 }: {
   memberships: CustomerMembership[];
   selectedMembership: CustomerMembership;
   vehicles: Vehicle[];
   car: CarDraft;
+  addingNewVehicle: boolean;
   onMembershipChange: (membershipId: number) => void;
+  onAddingNewVehicleChange: (adding: boolean) => void;
   onUpdate: (patch: Partial<CarDraft>) => void;
 }) {
   const { lang, t } = useI18n();
   const eligibleVehicles = vehicles.filter((vehicle) => membershipCoversVehicle(selectedMembership, vehicle.type));
-  const [showNewVehicle, setShowNewVehicle] = useState(false);
-  const newVehicleVisible = eligibleVehicles.length === 0 || showNewVehicle;
+  const newVehicleVisible = eligibleVehicles.length === 0 || addingNewVehicle;
 
   const vehicleType = selectedMembership.plan.vehicle_type;
   const typeDescription = vehicleType === "sedan"
@@ -1954,7 +1983,7 @@ function StepMembershipVehicle({
                   type="button"
                   aria-pressed={active}
                   onClick={() => {
-                    setShowNewVehicle(false);
+                    onAddingNewVehicleChange(false);
                     onUpdate({
                       kind: "car",
                       vehicleId: vehicle.id,
@@ -1983,7 +2012,7 @@ function StepMembershipVehicle({
                   <span className="min-w-0 flex-1">
                     <span className="block text-lg font-extrabold" dir="ltr">{vehicle.plate_number}</span>
                     <span className={clsx("mt-1 block truncate text-xs", active ? "text-white/75" : "text-[color:var(--muted-foreground)]")}>
-                      {[vehicle.make, vehicle.model, t(vtypeLabel(vehicle.type))].filter(Boolean).join(" · ")}
+                      {t(vtypeLabel(vehicle.type))}
                     </span>
                   </span>
                   {active && <span className="text-sm font-bold" aria-hidden="true">✓</span>}
@@ -1999,19 +2028,18 @@ function StepMembershipVehicle({
           type="button"
           className="secondary-button self-start"
           onClick={() => {
-            setShowNewVehicle((current) => !current);
-            if (!newVehicleVisible) {
-              onUpdate({
-                vehicleId: null,
-                vtype: selectedMembership.plan.vehicle_type ?? "suv",
-                make: "",
-                model: "",
-                color: "",
-                plate: "",
-                serviceId: null,
-                addOnIds: [],
-              });
-            }
+            const addNewVehicle = !newVehicleVisible;
+            onAddingNewVehicleChange(addNewVehicle);
+            onUpdate({
+              vehicleId: null,
+              vtype: selectedMembership.plan.vehicle_type ?? "suv",
+              make: "",
+              model: "",
+              color: "",
+              plate: "",
+              serviceId: null,
+              addOnIds: [],
+            });
           }}
         >
           {newVehicleVisible ? t("Choose a saved vehicle") : t("Add a different vehicle")}
@@ -2024,7 +2052,7 @@ function StepMembershipVehicle({
             {t("Add a covered vehicle")}
           </h3>
           <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-            {typeDescription}. {t("The plate number is required; the other details are optional.")}
+            {typeDescription}. {t("Enter the plate number to save this vehicle.")}
           </p>
           {vehicleType === null && (
             <div className="mt-4 grid grid-cols-2 gap-2" aria-label={t("Vehicle type")}>
@@ -2046,7 +2074,7 @@ function StepMembershipVehicle({
               ))}
             </div>
           )}
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 max-w-md">
             <Field label={t("Plate no.")} required>
               <input
                 className="wizard-input"
@@ -2060,15 +2088,6 @@ function StepMembershipVehicle({
                   plate: event.target.value.replace(/\D/g, "").slice(0, 6),
                 })}
               />
-            </Field>
-            <Field label={t("Make")}>
-              <input className="wizard-input" value={car.make} onChange={(event) => onUpdate({ vehicleId: null, make: event.target.value })} />
-            </Field>
-            <Field label={t("Model")}>
-              <input className="wizard-input" value={car.model} onChange={(event) => onUpdate({ vehicleId: null, model: event.target.value })} />
-            </Field>
-            <Field label={t("Color")}>
-              <input className="wizard-input" value={car.color} onChange={(event) => onUpdate({ vehicleId: null, color: event.target.value })} />
             </Field>
           </div>
         </section>

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-02 — Membership vehicle entry fix
+
+- Reduced new membership vehicle entry to the plate number; the membership still supplies the
+  eligible sedan/SUV type automatically.
+- Replaced the reused booking-level vehicle idempotency key with an internal payload-scoped key, so
+  retries remain duplicate-safe while a different plate creates a distinct vehicle command.
+- Prevented the single-saved-vehicle auto-selection from overriding an explicit “Add a different
+  vehicle” choice.
+- Added unit and browser regression coverage for plate-only requests and consecutive vehicle saves.
+
 ## 2026-08-02 — English/Arabic localization hardening
 
 - Moved account deletion, legal chrome, membership validity/actions, generated location labels,

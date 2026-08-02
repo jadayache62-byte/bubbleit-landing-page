@@ -31,6 +31,9 @@ membership, authentication, localization, security, and accessibility contracts.
   Sedan plans accept only sedans, SUV plans accept only SUVs, and 00:00–05:00 slots remain private
   to eligible midnight memberships. A product-free redemption confirms immediately; a redemption
   with products checks out only those products.
+- Adding a membership vehicle asks only for its plate number. Keep the internally generated
+  vehicle-create idempotency key stable for an identical retry and rotate it when plate/type changes.
+  Do not let automatic saved-vehicle selection override “Add a different vehicle.”
 - Display the selected vehicle type's sedan/SUV duration. Customers never choose a bus or see bus,
   plate, driver, or dispatch details.
 - Booking history is booking-reference-first, newest first, with search and lifecycle filters.

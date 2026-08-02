@@ -133,6 +133,9 @@ export type Vehicle = {
   type: VehicleType;
 };
 
+export type CreateVehiclePayload = Pick<Vehicle, "plate_number" | "type"> &
+  Partial<Pick<Vehicle, "make" | "model" | "year" | "color">>;
+
 export type Address = {
   id: number;
   label: string;

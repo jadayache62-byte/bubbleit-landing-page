@@ -124,6 +124,10 @@ Repository notes for agents working on the Bubble It marketing site and customer
   redemption wizard. The purchased plan derives the service. The customer selects one vehicle;
   sedan plans show only sedans and SUV plans show only SUVs. New vehicles must be saved before
   requesting membership slots so the backend can authorize the exact vehicle.
+- New membership vehicles ask only for the plate number; the membership supplies the eligible
+  sedan/SUV type. Keep an internal vehicle-create idempotency key stable for an identical retry and
+  rotate it when the plate or type changes. An explicit “Add a different vehicle” choice must
+  suspend automatic saved-vehicle selection until the customer chooses a saved vehicle again.
 - Membership availability comes exclusively from
   `GET /memberships/{membership}/booking-options?date=YYYY-MM-DD&vehicle_id={id}`. Public
   availability must not expose the midnight grid. Plans with the private window may show only

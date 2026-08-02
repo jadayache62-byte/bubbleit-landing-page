@@ -16,6 +16,7 @@ import type {
   CustomerNotificationDevice,
   CustomerNotificationPreference,
   CustomerReviewInvitation,
+  CreateVehiclePayload,
   Envelope,
   MembershipPlan,
   MembershipBookingOptions,
@@ -376,7 +377,7 @@ export function listVehicles() {
   return request<Paginated<Vehicle>>("/vehicles").then((r) => r.data);
 }
 
-export function createVehicle(payload: Omit<Vehicle, "id">, idempotencyKey?: string) {
+export function createVehicle(payload: CreateVehiclePayload, idempotencyKey?: string) {
   return request<Vehicle>("/vehicles", {
     method: "POST",
     body: payload,

@@ -297,3 +297,124 @@ test("a midnight member books the covered vehicle without choosing a service", a
   expect(bookingPayload).not.toHaveProperty("quote_id");
   expect(paymentInitializationRequests).toBe(0);
 });
+
+test("changing a new membership vehicle uses a new internal key and plate-only payload", async ({ page }) => {
+  const vehicleRequests: Array<{
+    body: Record<string, unknown>;
+    idempotencyKey: string | null;
+  }> = [];
+
+  await page.route("**/api/customer/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname.replace(/^\/api\/customer/, "");
+
+    if (path === "/auth/me") {
+      return route.fulfill({ json: envelope({
+        id: 1,
+        name: "Membership Customer",
+        phone: "+97450000000",
+        email: null,
+      }) });
+    }
+
+    if (path === "/services" || path === "/store/products") {
+      return route.fulfill({ json: envelope(paginated([])) });
+    }
+
+    if (path === "/payment-options") {
+      return route.fulfill({ json: envelope({
+        mode: "online",
+        methods: [{ channel: "skipcash_hosted", label: "Card or Apple Pay" }],
+      }) });
+    }
+
+    if (path === "/memberships") {
+      return route.fulfill({ json: envelope(paginated([{
+        id: 7,
+        status: "active",
+        washes_used: 0,
+        washes_remaining: 8,
+        price_paid: 400,
+        activated_at: "2026-07-01T00:00:00+03:00",
+        expires_at: "2027-07-01T00:00:00+03:00",
+        plan: {
+          id: 4,
+          name: "SUV Membership",
+          name_ar: "اشتراك الدفع الرباعي",
+          description: "SUV washes.",
+          description_ar: "غسيل الدفع الرباعي.",
+          scope: "standard",
+          vehicle_type: "suv",
+          washes_count: 8,
+          price: 400,
+          validity_days: 365,
+          window_start: null,
+          window_end: null,
+        },
+      }])) });
+    }
+
+    if (path === "/vehicles" && request.method() === "GET") {
+      return route.fulfill({ json: envelope(paginated([])) });
+    }
+
+    if (path === "/vehicles" && request.method() === "POST") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      vehicleRequests.push({
+        body,
+        idempotencyKey: await request.headerValue("idempotency-key"),
+      });
+      return route.fulfill({
+        status: 201,
+        json: envelope({
+          id: 100 + vehicleRequests.length,
+          make: "",
+          model: "",
+          year: null,
+          color: "",
+          plate_number: body.plate_number,
+          type: body.type,
+        }),
+      });
+    }
+
+    if (path === "/addresses") {
+      return route.fulfill({ json: envelope(paginated([])) });
+    }
+
+    return route.fulfill({
+      status: 404,
+      json: {
+        success: false,
+        message: `Unexpected customer API request: ${request.method()} ${path}`,
+        data: null,
+        errors: null,
+      },
+    });
+  });
+
+  await page.goto("/book");
+
+  await expect(page.getByRole("heading", { name: "Add a covered vehicle" })).toBeVisible();
+  await expect(page.getByLabel("Make", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Color", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("textbox", { name: /Plate no\./ }).fill("123456");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Where should we come?" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("button", { name: "Add a different vehicle" }).click();
+  await page.getByRole("textbox", { name: /Plate no\./ }).fill("654321");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Where should we come?" })).toBeVisible();
+
+  expect(vehicleRequests).toHaveLength(2);
+  expect(vehicleRequests[0].body).toEqual({ plate_number: "123456", type: "suv" });
+  expect(vehicleRequests[1].body).toEqual({ plate_number: "654321", type: "suv" });
+  expect(vehicleRequests[0].idempotencyKey).toBeTruthy();
+  expect(vehicleRequests[1].idempotencyKey).toBeTruthy();
+  expect(vehicleRequests[1].idempotencyKey).not.toBe(vehicleRequests[0].idempotencyKey);
+});
