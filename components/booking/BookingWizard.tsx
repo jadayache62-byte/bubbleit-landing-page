@@ -80,6 +80,17 @@ import {
 } from "@/lib/booking/vehicle-idempotency";
 const STALE_SLOT_MS = 15 * 60 * 1000;
 const BOOKING_ATTEMPT_KEY = "bubbleit.booking.idempotency";
+type LocationCoverageIssue = "outside" | "stale" | "missing";
+
+function locationCoverageIssue(error: ApiError): LocationCoverageIssue | null {
+  if (["SERVICE_AREA_OUTSIDE_QATAR", "DISPATCH_ZONE_UNCOVERED"].includes(error.code ?? "")) {
+    return "outside";
+  }
+  if (["SERVICE_AREA_STALE", "DISPATCH_ZONE_STALE"].includes(error.code ?? "")) {
+    return "stale";
+  }
+  return null;
+}
 
 // The three vehicle cards. Jet ski & jet boat share one "Jet" card with a
 // sub-toggle; each vehicle in a booking can independently be any kind.
@@ -153,7 +164,7 @@ const MEMBERSHIP_STEPS = [
   "Vehicle",
   "Location",
   "Schedule",
-  "Products & confirm",
+  "Pay & Confirm",
 ] as const;
 
 const KINDS: { value: WashKind; label: string; icon: string }[] = [
@@ -291,6 +302,7 @@ export function BookingWizard() {
   const [geoState, setGeoState] = useState<"idle" | "locating" | "error">(
     "idle",
   );
+  const [locationIssue, setLocationIssue] = useState<LocationCoverageIssue | null>(null);
 
   // Step 3 — schedule
   const days = useMemo(() => next7Days(lang), [lang]);
@@ -308,7 +320,6 @@ export function BookingWizard() {
   const [bookingProducts, setBookingProducts] = useState<StoreProductInventory[]>([]);
   const [productQuantities, setProductQuantities] = useState<Record<string, number>>({});
   const [productPromptSeen, setProductPromptSeen] = useState(false);
-  const [membershipProductChoice, setMembershipProductChoice] = useState<"none" | "add" | null>(null);
 
   // Step 5 — identity + confirm
   const [authed, setAuthed] = useState(false);
@@ -340,8 +351,6 @@ export function BookingWizard() {
     (membership) => membership.id === selectedMembershipId,
   ) ?? redeemableMemberships[0] ?? null;
   const steps = membershipMode ? MEMBERSHIP_STEPS : REGULAR_STEPS;
-  const effectiveMembershipProductChoice = membershipProductChoice
-    ?? (membershipMode && !productsLoading && bookingProducts.length === 0 ? "none" : null);
 
   const bookingAttemptKey = useCallback(() => {
     if (bookingAttemptRef.current) return bookingAttemptRef.current;
@@ -462,7 +471,7 @@ export function BookingWizard() {
         vtype: membership.plan.vehicle_type ?? "suv",
       }]);
       setProductQuantities({});
-      setMembershipProductChoice(null);
+      setProductPromptSeen(false);
       setSlot(null);
       setSlots(null);
       setAvailabilityDuration(null);
@@ -499,18 +508,20 @@ export function BookingWizard() {
   // Reference "now" captured when slots load, used to hide today's past slots.
   const [nowMs, setNowMs] = useState(0);
   const slotRequestRef = useRef(0);
+  const skipNextAvailabilityLoadRef = useRef(false);
 
-  const loadSlots = useCallback((
+  const loadSlots = useCallback(async (
     d: string,
     cart: { service_id: number; add_on_ids: number[] }[] = [],
     requestId = ++slotRequestRef.current,
-  ) => {
+  ): Promise<boolean> => {
     if (!geo) {
       setSlots([]);
       setServiceAreaVersion(null);
       setDispatchZoneVersion(null);
-      setError(t("Confirm your map location before checking availability."));
-      return;
+      setLocationIssue("missing");
+      setError(null);
+      return false;
     }
     setSlots(null);
     setAvailabilityDuration(null);
@@ -544,37 +555,42 @@ export function BookingWizard() {
             dispatchZoneVersion: availability.dispatch_zone.version,
           }));
 
-    request
-      .then((a) => {
-        if (slotRequestRef.current === requestId) {
-          setSlots(a.slots);
-          setServiceAreaVersion(a.serviceAreaVersion);
-          setAvailabilityDuration(a.duration);
-          setMembershipOptions(a.membershipOptions);
-          setDispatchZoneVersion(a.dispatchZoneVersion);
-          setError(null);
-        }
-      })
-      .catch((caught) => {
-        if (slotRequestRef.current === requestId) {
-          setSlots([]);
-          setServiceAreaVersion(null);
-          setAvailabilityDuration(null);
-          setMembershipOptions(null);
-          setDispatchZoneVersion(null);
-          setError(
-            caught instanceof ApiError && caught.code === "DISPATCH_ZONE_UNCOVERED"
-              ? t("We do not currently serve this location. Choose a location inside an available service area.")
-              : caught instanceof ApiError
-                ? caught.message
-                : t("Could not validate this location."),
-          );
-        }
-      });
+    try {
+      const availability = await request;
+      if (slotRequestRef.current !== requestId) return false;
+      setSlots(availability.slots);
+      setServiceAreaVersion(availability.serviceAreaVersion);
+      setAvailabilityDuration(availability.duration);
+      setMembershipOptions(availability.membershipOptions);
+      setDispatchZoneVersion(availability.dispatchZoneVersion);
+      setLocationIssue(null);
+      setError(null);
+      return true;
+    } catch (caught) {
+      if (slotRequestRef.current !== requestId) return false;
+      setSlots([]);
+      setServiceAreaVersion(null);
+      setAvailabilityDuration(null);
+      setMembershipOptions(null);
+      setDispatchZoneVersion(null);
+      const coverageIssue = caught instanceof ApiError ? locationCoverageIssue(caught) : null;
+      if (coverageIssue) {
+        setLocationIssue(coverageIssue);
+        setError(null);
+        setStep(1);
+      } else {
+        setError(caught instanceof ApiError ? caught.message : t("Could not validate this location."));
+      }
+      return false;
+    }
   }, [geo, t, membershipMode, selectedMembership, cars]);
 
   useEffect(() => {
     if (step !== 2) return;
+    if (skipNextAvailabilityLoadRef.current) {
+      skipNextAvailabilityLoadRef.current = false;
+      return;
+    }
     // Pass the selected cart so slots reflect its full service and add-on duration.
     const requestId = ++slotRequestRef.current;
     queueMicrotask(() => {
@@ -758,9 +774,12 @@ export function BookingWizard() {
       .catch((caught) => {
         if (cancelled) return;
         setQuote(null);
-        if (caught instanceof ApiError && ["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR"].includes(caught.code ?? "")) {
-          setError(caught.message);
+        const coverageIssue = caught instanceof ApiError ? locationCoverageIssue(caught) : null;
+        if (coverageIssue) {
+          setLocationIssue(coverageIssue);
+          setError(null);
           setServiceAreaVersion(null);
+          setDispatchZoneVersion(null);
           setStep(1);
         } else if (caught instanceof ApiError && caught.code === "DURATION_VERSION_STALE") {
           setError(t("Service timing changed. Please choose your time again."));
@@ -804,7 +823,7 @@ export function BookingWizard() {
 
   const canContinue =
     (step === 0 && carsValid) ||
-    (step === 1 && (selectedAddressId !== null || (geo !== null && buildingNumber.trim().length > 0))) ||
+    (step === 1 && geo !== null && (selectedAddressId !== null || buildingNumber.trim().length > 0)) ||
     (step === 2 && slot !== null);
 
   function selectSlot(nextSlot: string | null) {
@@ -813,20 +832,20 @@ export function BookingWizard() {
   }
 
   function applySavedAddress(address: Address) {
+    const savedGeo = typeof address.latitude === "number" && typeof address.longitude === "number"
+      ? { lat: address.latitude, lng: address.longitude }
+      : null;
     setSelectedAddressId(address.id);
     setArea(address.area ?? "");
     setBuildingNumber(address.building_number ?? "");
     setZoneNumber(address.zone_number ?? "");
     setStreetNumber(address.street_number ?? "");
     setDetails(address.details ?? "");
-    setGeo(
-      typeof address.latitude === "number" && typeof address.longitude === "number"
-        ? { lat: address.latitude, lng: address.longitude }
-        : null,
-    );
+    setGeo(savedGeo);
     setSlot(null);
     setSlots(null);
     setDispatchZoneVersion(null);
+    setLocationIssue(savedGeo ? null : "missing");
     setGeoState("idle");
   }
 
@@ -871,12 +890,23 @@ export function BookingWizard() {
     setAvailabilityDuration(null);
     setMembershipOptions(null);
     setProductQuantities({});
-    setMembershipProductChoice(null);
+    setProductPromptSeen(false);
     setError(null);
   }
 
   async function continueBooking() {
     if (step >= steps.length - 1) return;
+    if (step === 1) {
+      setAdvancing(true);
+      setError(null);
+      const locationAccepted = await loadSlots(date, availabilityCars);
+      if (locationAccepted) {
+        skipNextAvailabilityLoadRef.current = true;
+        setStep(2);
+      }
+      setAdvancing(false);
+      return;
+    }
     if (!membershipMode || step !== 0) {
       setStep(step + 1);
       return;
@@ -951,6 +981,7 @@ export function BookingWizard() {
       markLocationManual();
       setGeo(v);
       setDispatchZoneVersion(null);
+      setLocationIssue(null);
       setGeoState("idle");
       reverseGeocode(v.lat, v.lng);
     },
@@ -969,6 +1000,7 @@ export function BookingWizard() {
         markLocationManual();
         setGeo({ lat: latitude, lng: longitude });
         setDispatchZoneVersion(null);
+        setLocationIssue(null);
         setGeoState("idle");
         reverseGeocode(latitude, longitude);
       },
@@ -979,7 +1011,8 @@ export function BookingWizard() {
 
   async function submit() {
     if (!slot || !geo || !serviceAreaVersion) {
-      setError(t("Confirm an eligible Qatar location and refresh availability."));
+      setLocationIssue(geo ? "stale" : "missing");
+      setError(null);
       setStep(1);
       return;
     }
@@ -993,9 +1026,9 @@ export function BookingWizard() {
       setStep(2);
       return;
     }
-    if (membershipMode && (!selectedMembership || !cars[0]?.vehicleId || effectiveMembershipProductChoice === null)) {
-      setError(t("Choose your membership vehicle and whether you want store products."));
-      setStep(cars[0]?.vehicleId ? 3 : 0);
+    if (membershipMode && (!selectedMembership || !cars[0]?.vehicleId)) {
+      setError(t("Choose your membership vehicle."));
+      setStep(0);
       return;
     }
     setSubmitting(true);
@@ -1031,7 +1064,7 @@ export function BookingWizard() {
             : {}),
           payment_method: "online",
           notes: notes.trim() || undefined,
-          product_lines: effectiveMembershipProductChoice === "add" ? productLines : [],
+          product_lines: productLines,
         }, `${attemptKey}:booking`);
       } else {
         if (!quote) throw new Error(t("An authoritative quote is required."));
@@ -1112,8 +1145,10 @@ export function BookingWizard() {
       clearBookingAttempt();
       setConfirmed(booking);
     } catch (e) {
-      if (e instanceof ApiError && ["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR", "DISPATCH_ZONE_STALE", "DISPATCH_ZONE_UNCOVERED"].includes(e.code ?? "")) {
-        setError(t("The Qatar service-area map changed or this saved location needs confirmation. Please reselect the location."));
+      const coverageIssue = e instanceof ApiError ? locationCoverageIssue(e) : null;
+      if (coverageIssue) {
+        setLocationIssue(coverageIssue);
+        setError(null);
         setServiceAreaVersion(null);
         setDispatchZoneVersion(null);
         setStep(1);
@@ -1319,6 +1354,35 @@ export function BookingWizard() {
             title={t("Where should we come?")}
             subtitle={t("Our wash bus comes to you — home, office, anywhere.")}
           >
+            {locationIssue && (
+              <section
+                className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sky-950"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-sky-600 text-white" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none"><path d="M12 21s6-5.7 6-11a6 6 0 1 0-12 0c0 5.3 6 11 6 11Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><circle cx="12" cy="10" r="2" fill="currentColor"/></svg>
+                  </span>
+                  <div>
+                    <h3 className="font-bold">
+                      {locationIssue === "outside"
+                        ? t("Choose a location inside our service area")
+                        : locationIssue === "missing"
+                          ? t("Pin this location on the map")
+                          : t("Please confirm this location again")}
+                    </h3>
+                    <p className="mt-1 text-sm leading-6 text-sky-900">
+                      {locationIssue === "outside"
+                        ? t("We cannot reach the selected location yet. Move the pin or choose a saved location inside our service area to continue.")
+                        : locationIssue === "missing"
+                          ? t("This saved location has no map pin. Tap the map to set the exact location before continuing.")
+                          : t("Our coverage map changed. Check the pin, then continue to refresh the available times.")}
+                    </p>
+                  </div>
+                </div>
+              </section>
+            )}
             {authed && myAddresses.length > 0 && (
               <section className="rounded-3xl border border-[color:var(--border)] bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -1652,13 +1716,8 @@ export function BookingWizard() {
                 products={bookingProducts}
                 loading={productsLoading}
                 quantities={productQuantities}
-                autoOpen={!membershipMode && !productPromptSeen}
+                autoOpen={!productPromptSeen}
                 onAutoOpen={() => setProductPromptSeen(true)}
-                membershipDecision={membershipMode ? effectiveMembershipProductChoice : undefined}
-                onMembershipDecision={membershipMode ? (decision) => {
-                  setMembershipProductChoice(decision);
-                  if (decision === "none") setProductQuantities({});
-                } : undefined}
                 onChange={(id, quantity) => setProductQuantities((current) => ({
                   ...current,
                   [id]: quantity,
@@ -1789,7 +1848,7 @@ export function BookingWizard() {
                 disabled={!canContinue || advancing}
                 onClick={continueBooking}
               >
-                {advancing ? t("Saving vehicle…") : t("Continue")}
+                {advancing ? t(step === 1 ? "Checking location…" : "Saving vehicle…") : t("Continue")}
               </button>
             ) : (
               <button
@@ -1800,9 +1859,7 @@ export function BookingWizard() {
                   || !authed
                   || quoteLoading
                   || (membershipMode
-                    ? effectiveMembershipProductChoice === null
-                      || (effectiveMembershipProductChoice === "add" && productTotal <= 0)
-                      || !availabilityDuration?.version
+                    ? !availabilityDuration?.version
                     : !quote?.quote_id || !quote?.quote_version)
                 }
                 onClick={submit}
@@ -2455,8 +2512,6 @@ function BookingProductPicker({
   quantities,
   autoOpen,
   onAutoOpen,
-  membershipDecision,
-  onMembershipDecision,
   onChange,
 }: {
   products: StoreProductInventory[];
@@ -2464,8 +2519,6 @@ function BookingProductPicker({
   quantities: Record<string, number>;
   autoOpen: boolean;
   onAutoOpen: () => void;
-  membershipDecision?: "none" | "add" | null;
-  onMembershipDecision?: (decision: "none" | "add") => void;
   onChange: (id: string, quantity: number) => void;
 }) {
   const { lang, t } = useI18n();
@@ -2551,59 +2604,6 @@ function BookingProductPicker({
     0,
   );
 
-  if (membershipDecision === null && onMembershipDecision) {
-    return (
-      <section className="rounded-3xl border border-[color:var(--border)] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="membership-products-heading">
-        <h3 id="membership-products-heading" className="text-lg font-bold text-[color:var(--navy)]">
-          {t("Would you like any store products?")}
-        </h3>
-        <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-          {t("Your wash is already paid. You’ll only pay for products you add.")}
-        </p>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            className="secondary-button min-h-12 w-full"
-            onClick={() => onMembershipDecision("none")}
-          >
-            {t("No, confirm my wash")}
-          </button>
-          <button
-            type="button"
-            className="primary-button min-h-12 w-full"
-            onClick={() => {
-              onMembershipDecision("add");
-              setOpen(true);
-            }}
-          >
-            {t("Yes, browse products")}
-          </button>
-        </div>
-      </section>
-    );
-  }
-
-  if (membershipDecision === "none" && onMembershipDecision) {
-    return (
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3" role="status">
-        <div>
-          <p className="font-bold text-emerald-950">{t("No store products")}</p>
-          <p className="mt-1 text-sm text-emerald-800">{t("Your membership wash can be confirmed now with nothing to pay.")}</p>
-        </div>
-        <button
-          type="button"
-          className="min-h-11 cursor-pointer rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-bold text-emerald-900 transition-colors hover:bg-emerald-100 focus-visible:ring-2 focus-visible:ring-emerald-600"
-          onClick={() => {
-            onMembershipDecision("add");
-            setOpen(true);
-          }}
-        >
-          {t("Add products instead")}
-        </button>
-      </section>
-    );
-  }
-
   return (
     <>
       <button
@@ -2638,16 +2638,6 @@ function BookingProductPicker({
           <svg viewBox="0 0 20 20" className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" fill="none" aria-hidden="true"><path d="m7 4 6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </span>
       </button>
-
-      {membershipDecision === "add" && onMembershipDecision && (
-        <button
-          type="button"
-          className="min-h-11 cursor-pointer self-start rounded-full px-4 py-2 text-sm font-bold text-[color:var(--blue)] transition-colors hover:bg-sky-50 focus-visible:ring-2 focus-visible:ring-[color:var(--blue)]"
-          onClick={() => onMembershipDecision("none")}
-        >
-          {t("Continue without products")}
-        </button>
-      )}
 
       {open && createPortal(
         <div

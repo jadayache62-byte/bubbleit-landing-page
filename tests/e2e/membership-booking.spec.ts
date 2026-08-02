@@ -22,6 +22,7 @@ test("a midnight member books the covered vehicle without choosing a service", a
   let bookingPayload: Record<string, unknown> | null = null;
   let publicAvailabilityRequests = 0;
   let paymentInitializationRequests = 0;
+  let uncoveredAvailabilityRequests = 0;
 
   await page.route("**/api/customer/**", async (route) => {
     const request = route.request();
@@ -130,18 +131,32 @@ test("a midnight member books the covered vehicle without choosing a service", a
     }
 
     if (path === "/addresses") {
-      return route.fulfill({ json: envelope(paginated([{
-        id: 21,
-        label: "Home",
-        area: "West Bay",
-        details: "Tower entrance",
-        building_number: "24",
-        zone_number: "66",
-        street_number: "810",
-        latitude: 25.329,
-        longitude: 51.531,
-        service_area: { version: "qatar-area-v1", eligible: true, stale: false },
-      }])) });
+      return route.fulfill({ json: envelope(paginated([
+        {
+          id: 22,
+          label: "Outside office",
+          area: "Unsupported area",
+          details: "Outside current coverage",
+          building_number: "10",
+          zone_number: "1",
+          street_number: "1",
+          latitude: 25,
+          longitude: 50,
+          service_area: { version: "qatar-area-v1", eligible: true, stale: false },
+        },
+        {
+          id: 21,
+          label: "Home",
+          area: "West Bay",
+          details: "Tower entrance",
+          building_number: "24",
+          zone_number: "66",
+          street_number: "810",
+          latitude: 25.329,
+          longitude: 51.531,
+          service_area: { version: "qatar-area-v1", eligible: true, stale: false },
+        },
+      ])) });
     }
 
     if (path === "/service-area/validate") {
@@ -149,6 +164,19 @@ test("a midnight member books the covered vehicle without choosing a service", a
     }
 
     if (/^\/memberships\/7\/booking-options$/.test(path)) {
+      if (url.searchParams.get("latitude") === "25") {
+        uncoveredAvailabilityRequests += 1;
+        return route.fulfill({
+          status: 422,
+          json: {
+            success: false,
+            message: "We do not currently serve this location.",
+            data: { dispatch_zone: { version: null, eligible: false } },
+            errors: null,
+            code: "DISPATCH_ZONE_UNCOVERED",
+          },
+        });
+      }
       bookingOptionsUrl = url;
       const date = url.searchParams.get("date");
       return route.fulfill({ json: envelope({
@@ -258,6 +286,16 @@ test("a midnight member books the covered vehicle without choosing a service", a
   await expect(page.getByText("Standard Bubble")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: /Outside office/ }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(page.getByRole("heading", { name: "Where should we come?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose a location inside our service area" })).toBeVisible();
+  await expect(page.getByText("Move the pin or choose a saved location inside our service area to continue.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose your membership time" })).toHaveCount(0);
+  await expect(page.locator('[role="alert"].border-red-200')).toHaveCount(0);
+  expect(uncoveredAvailabilityRequests).toBe(1);
+
   await page.getByRole("button", { name: /Home/ }).click();
   await page.getByRole("button", { name: "Continue" }).click();
 
@@ -272,13 +310,14 @@ test("a midnight member books the covered vehicle without choosing a service", a
   await page.getByRole("option", { name: "00:00", exact: true }).click();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  await expect(page.getByRole("heading", { name: "Would you like any store products?" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "No, confirm my wash" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Yes, browse products" })).toBeVisible();
+  const productsDialog = page.getByRole("dialog", { name: "Complete your wash" });
+  await expect(productsDialog).toBeVisible();
+  await expect(productsDialog.getByText("Microfiber cloth")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Would you like any store products?" })).toHaveCount(0);
   await expect(page.getByText("Service selected automatically")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "No, confirm my wash" }).click();
-  await expect(page.getByText("No store products")).toBeVisible();
+  await productsDialog.getByRole("button", { name: "Close" }).click();
+  await expect(productsDialog).toBeHidden();
   await page.getByRole("button", { name: "Confirm booking" }).click();
 
   await expect(page.getByRole("heading", { name: "Booking confirmed — membership covered" })).toBeVisible();

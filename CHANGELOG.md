@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-02 — Unified membership checkout and early coverage guidance
+
+- Replaced the membership-only yes/no product question with the same automatically opened,
+  dismissible product modal used by ordinary booking checkout.
+- Kept product-free membership confirmation immediate while sending any selected products through
+  the existing product-only payment path.
+- Moved authoritative service-area and dispatch-zone validation into the Location step, preventing
+  unsupported locations from advancing and showing localized, actionable, non-red map guidance.
+- Kept covered locations with no free slots distinct so customers can continue to Schedule and
+  choose another day.
+
 ## 2026-08-02 — Membership vehicle entry fix
 
 - Reduced new membership vehicle entry to the plate number; the membership still supplies the

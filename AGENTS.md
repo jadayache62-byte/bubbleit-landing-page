@@ -19,18 +19,20 @@ membership, authentication, localization, security, and accessibility contracts.
 
 - Booking remains one adaptive flow. Ordinary customers use Services → Location → Schedule → Pay &
   Confirm. An authenticated customer with a redeemable membership uses Vehicle → Location →
-  Schedule → Products & confirm; the plan owns the service and the browser never asks them to choose
+  Schedule → Pay & Confirm; the plan owns the service and the browser never asks them to choose
   or price it.
 - Availability, duration, price, membership coverage, inventory, service-area version, and payment
   outcome are backend-owned. Do not calculate operational or financial truth in the browser.
 - Regular and membership availability require the selected latitude/longitude and return an opaque
   dispatch-zone version that must survive quote/confirmation. A location outside configured coverage
-  is different from a covered zone with no available time. Never expose internal zone names, buses,
-  drivers, candidate counts, or automatic-assignment details to customers.
+  is blocked on Location with calm, actionable map guidance; a covered zone with no available time
+  advances to Schedule so the customer can choose another day. Never expose internal zone names,
+  buses, drivers, candidate counts, or automatic-assignment details to customers.
 - Membership vehicle and slot choices come only from the owner-scoped booking-options endpoint.
   Sedan plans accept only sedans, SUV plans accept only SUVs, and 00:00–05:00 slots remain private
-  to eligible midnight memberships. A product-free redemption confirms immediately; a redemption
-  with products checks out only those products.
+  to eligible midnight memberships. Membership Pay & Confirm opens the same optional-product modal
+  as an ordinary booking; dismissing it confirms the prepaid wash without products, while selected
+  products are the only payable amount.
 - Adding a membership vehicle asks only for its plate number. Keep the internally generated
   vehicle-create idempotency key stable for an identical retry and rotate it when plate/type changes.
   Do not let automatic saved-vehicle selection override “Add a different vehicle.”

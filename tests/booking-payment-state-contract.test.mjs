@@ -12,7 +12,7 @@ test("quote timeout or 500 exposes retry and cannot submit without an authoritat
   assert.match(wizard, /setQuoteError\(/);
   assert.match(wizard, /Retry quote/);
   assert.match(wizard, /!quote\?\.quote_id \|\| !quote\?\.quote_version/);
-  assert.match(wizard, /membershipMode[\s\S]*effectiveMembershipProductChoice/);
+  assert.match(wizard, /membershipMode[\s\S]*!availabilityDuration\?\.version/);
   assert.match(wizard, /We couldn't verify the current price and coverage/);
 });
 

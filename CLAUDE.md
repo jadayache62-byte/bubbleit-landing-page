@@ -1,6 +1,6 @@
 # Bubble It Landing Page — CLAUDE.md
 
-## Current product and repository state (2026-08-01)
+## Current product and repository state (2026-08-02)
 
 - This is the Next.js 16 customer website for marketing, booking, memberships, store checkout,
   authenticated account management, legal pages, and the development-only mock customer API.
@@ -18,8 +18,10 @@
   location, a server-returned slot, and optional store products.
 - Regular and membership availability are geofenced by the selected coordinates. Preserve the opaque
   `dispatch_zone.version` returned with availability through quote and booking commit, and recover a
-  stale version by returning to Location and reloading slots. The browser never resolves polygons,
-  combines capacity across zones, or performs a cross-zone fallback.
+  stale version by returning to Location and reloading slots. Validate coverage before leaving
+  Location: unsupported coordinates stay on that step with a non-danger guidance panel explaining
+  how to move the pin or choose another saved location. The browser never resolves polygons, combines
+  capacity across zones, or performs a cross-zone fallback.
 - Keep customer dispatch messaging intentionally narrow: distinguish a location outside configured
   coverage from a covered zone with no available time, but never reveal internal zone names, bus or
   driver data, candidate counts, or assignment explanations. The development mock must preserve the
@@ -87,7 +89,7 @@ Repository notes for agents working on the Bubble It marketing site and customer
 
 - The customer booking experience is one adaptive four-step wizard. Ordinary bookings are
   **Services → Location → Schedule → Pay & Confirm**. A redeemable membership changes the same
-  wizard to **Vehicle → Location → Schedule → Products & confirm**. Do not create a separate route or
+  wizard to **Vehicle → Location → Schedule → Pay & Confirm**. Do not create a separate route or
   ask a membership customer to choose the plan-owned service.
 - Customers do **not** select a bus.
 - Availability slots are quarter-hour starts grouped into hour pills. Each hour pill opens the connected `HourSlotPicker` popover for `:00`, `:15`, `:30`, and `:45`; keep disabled/past choices visible but unselectable.
@@ -98,7 +100,7 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Do not change the booking creation payload shape just to support manager-side dispatch assistance.
 - Physical products selected in the booking confirmation step use `product_lines` and belong to the booking's single payment. They are distinct from service add-ons and from standalone `/store` orders, which retain their own checkout.
 - Standard booking actions stay visible in a viewport-fixed, safe-area-aware footer. Active forms must reserve enough bottom space that fields, errors, and time popovers are never hidden behind it. Page-transition wrappers must not retain transforms, because transformed ancestors break viewport-fixed positioning.
-- The location step requires a pinned coordinate plus a Qatar address card. Building number is mandatory; zone and street numbers are optional. If a selected slot becomes stale after the page is restored or revisited, clear the slot and return the customer to Location before they can pick a fresh time.
+- The location step requires a pinned coordinate plus a Qatar address card. Building number is mandatory; zone and street numbers are optional. Resolve authoritative service/dispatch coverage before advancing to Schedule. An unsupported location stays on Location and uses calm, actionable inline guidance rather than a red global error; a covered location with no available slots advances normally so another day can be chosen. If a selected slot becomes stale after the page is restored or revisited, clear the slot and return the customer to Location before they can pick a fresh time.
 - Service selection is mobile-first: two compact service cards per row, SUV / 4-Wheel first, and a reduced-motion-aware guided scroll to the vehicle/add-ons section. Selecting a service focuses and selects its plate/registration input.
 - Preserve space for server-backed booking content with responsive skeletons; do not replace service, product, membership, or availability regions with blank space or unstructured loading text.
 - Keep optional physical booking products behind the explicit “Add products to your booking” confirmation-step trigger so notes and the summary remain visible. The picker opens once when Pay & Confirm is first reached. It must be a centered document-level modal portal—not a bottom drawer or a fixed element nested inside the glass wizard—and must freeze background scroll while quantities change.
@@ -132,9 +134,11 @@ Repository notes for agents working on the Bubble It marketing site and customer
   `GET /memberships/{membership}/booking-options?date=YYYY-MM-DD&vehicle_id={id}`. Public
   availability must not expose the midnight grid. Plans with the private window may show only
   backend-returned quarter-hour slots from 00:00 through 04:45.
-- Ask explicitly whether store products are wanted. No products creates and confirms the prepaid
-  membership booking immediately. Selected products are sent in `product_lines`; checkout and the
-  displayed amount due cover products only, while the wash remains reserved until verified payment.
+- Membership Pay & Confirm uses the same optional-product modal as an ordinary booking and opens it
+  once when the step is first reached. Do not add a separate yes/no product question. Closing the
+  modal with no selection allows the prepaid membership booking to confirm immediately. Selected
+  products are sent in `product_lines`; checkout and the displayed amount due cover products only,
+  while the wash remains reserved until verified payment.
 - Final booking copy follows the payable state: **Confirm booking** when fully covered, **Pay for
   products** when only products are due, and **Confirm & Pay** for an ordinary paid booking.
 - Selecting a membership plan must open a review dialog before any purchase request. Show wash scope, vehicle type, wash count, validity, per-wash price, and total; only the explicit confirmation action may continue to authentication/payment.
@@ -174,8 +178,9 @@ Repository notes for agents working on the Bubble It marketing site and customer
 - Availability validates the pinned coordinates and returns a
   `service_area.version`. Quote, booking creation, and store order creation must
   carry that exact version. Handle `SERVICE_AREA_STALE` by returning the
-  customer to Location for confirmation; display `SERVICE_AREA_OUTSIDE_QATAR`
-  as a recoverable location error.
+  customer to Location for confirmation. Handle `SERVICE_AREA_OUTSIDE_QATAR`
+  and `DISPATCH_ZONE_UNCOVERED` on Location with localized, non-danger guidance
+  that tells the customer to move the pin or choose another saved location.
 - Saved addresses without current eligibility evidence must be edited and
   revalidated. Never infer eligibility from an address containing “Qatar”.
 

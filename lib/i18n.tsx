@@ -192,7 +192,9 @@ const AR: Record<string, string> = {
   "Products due": "قيمة المنتجات",
   "wash covered by membership": "الغسلة مغطاة بالاشتراك",
   "Saving vehicle…": "جارٍ حفظ المركبة…",
+  "Checking location…": "جارٍ التحقق من الموقع…",
   "Pay for products": "ادفع للمنتجات",
+  "Choose your membership vehicle.": "اختر مركبة الاشتراك.",
   "Choose your membership vehicle and whether you want store products.": "اختر مركبة الاشتراك وحدد ما إذا كنت تريد منتجات من المتجر.",
   "We couldn't save this vehicle. Please try again.": "تعذّر حفظ هذه المركبة. يرجى المحاولة مجدداً.",
   "Your membership availability changed. Choose an eligible vehicle and time again.": "تغيّر توفر اشتراكك. اختر مركبة وموعداً مؤهلين مرة أخرى.",
@@ -560,6 +562,15 @@ const AR: Record<string, string> = {
   "Could not validate this location.": "تعذّر التحقق من هذا الموقع.",
   "We do not currently serve this location. Choose a location inside an available service area.":
     "لا نخدم هذا الموقع حالياً. اختر موقعاً داخل منطقة خدمة متاحة.",
+  "Choose a location inside our service area": "اختر موقعاً داخل منطقة خدمتنا",
+  "We cannot reach the selected location yet. Move the pin or choose a saved location inside our service area to continue.":
+    "لا يمكننا الوصول إلى الموقع المحدد حالياً. حرّك العلامة أو اختر موقعاً محفوظاً داخل منطقة خدمتنا للمتابعة.",
+  "Pin this location on the map": "حدّد هذا الموقع على الخريطة",
+  "This saved location has no map pin. Tap the map to set the exact location before continuing.":
+    "لا يحتوي هذا الموقع المحفوظ على علامة خريطة. اضغط على الخريطة لتحديد الموقع الدقيق قبل المتابعة.",
+  "Please confirm this location again": "يرجى تأكيد هذا الموقع مرة أخرى",
+  "Our coverage map changed. Check the pin, then continue to refresh the available times.":
+    "تغيّرت خريطة التغطية لدينا. تحقق من العلامة، ثم تابع لتحديث المواعيد المتاحة.",
   "Date": "التاريخ",
   "Edit": "تعديل",
   "Edit added products": "تعديل المنتجات المضافة",

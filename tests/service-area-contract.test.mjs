@@ -10,13 +10,15 @@ const mock = readFileSync(new URL("../app/api/mock/v1/customer/[...path]/route.t
 test("availability sends coordinates and returns the versioned service-area contract", () => {
   assert.match(client, /latitude: String\(coordinates\.latitude\)/);
   assert.match(client, /longitude: String\(coordinates\.longitude\)/);
-  assert.match(wizard, /setServiceAreaVersion\(a\.serviceAreaVersion\)/);
+  assert.match(wizard, /setServiceAreaVersion\(availability\.serviceAreaVersion\)/);
   assert.match(wizard, /validateServiceArea\(geo\.lat, geo\.lng\)/);
 });
 
 test("quote and booking carry one authoritative service-area version", () => {
   assert.match(wizard, /service_area_version: serviceAreaVersion/g);
-  assert.match(wizard, /\["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR"\]\.includes/);
+  assert.match(wizard, /SERVICE_AREA_STALE/);
+  assert.match(wizard, /SERVICE_AREA_OUTSIDE_QATAR/);
+  assert.match(wizard, /locationCoverageIssue\(e\)/);
 });
 
 test("store validates coordinates before creating an order", () => {
