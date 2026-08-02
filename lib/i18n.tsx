@@ -14,6 +14,67 @@ export type { Lang } from "@/lib/locale";
 
 // UI strings. Keys are English; Arabic provided per key.
 const AR: Record<string, string> = {
+  "Account data and deletion": "بيانات الحساب وحذفه",
+  "Download your BubbleIt data or permanently delete your account. Deletion cannot be undone.":
+    "نزّل بياناتك من ببلت أو احذف حسابك نهائياً. لا يمكن التراجع عن الحذف.",
+  "Sign in to manage your account data": "سجّل الدخول لإدارة بيانات حسابك",
+  "Download my data": "تنزيل بياناتي",
+  "Creates a portable JSON file. The download credential works once and expires after 15 minutes.":
+    "يُنشئ ملف JSON قابلاً للنقل. تعمل بيانات التنزيل مرة واحدة وتنتهي صلاحيتها بعد ١٥ دقيقة.",
+  "Create and download export": "إنشاء النسخة وتنزيلها",
+  "Preparing export…": "جارٍ إعداد النسخة…",
+  "Permanently delete my account": "حذف حسابي نهائياً",
+  "We immediately revoke every session and notification device, disable the account, and anonymize non-retained personal data. Pseudonymous booking records are retained for 5 years and financial, order, refund, invoice, and membership ledgers for 10 years.":
+    "نلغي فوراً جميع الجلسات وأجهزة الإشعارات ونعطل الحساب ونجهّل البيانات الشخصية غير المحتفظ بها. نحتفظ بسجلات الحجوزات مجهولة الهوية لمدة ٥ سنوات، وبالسجلات المالية والطلبات والمبالغ المستردة والفواتير والاشتراكات لمدة ١٠ سنوات.",
+  "Send fresh verification code": "إرسال رمز تحقق حديث",
+  "Sending code…": "جارٍ إرسال الرمز…",
+  "6-digit verification code": "رمز التحقق المكون من ٦ أرقام",
+  "I understand that deleting my account is permanent and cannot be reversed.":
+    "أفهم أن حذف حسابي نهائي ولا يمكن التراجع عنه.",
+  "Delete my account permanently": "حذف حسابي نهائياً",
+  "Deleting account…": "جارٍ حذف الحساب…",
+  "Your account has been deleted": "تم حذف حسابك",
+  "All sessions were revoked. Non-retained personal data was erased or anonymized under the approved retention policy.":
+    "تم إلغاء جميع الجلسات، وحُذفت البيانات الشخصية غير المحتفظ بها أو جُهّلت وفق سياسة الاحتفاظ المعتمدة.",
+  "Policy version": "إصدار السياسة",
+  "The request could not be completed.": "تعذر إكمال الطلب.",
+  "Your data export was downloaded.": "تم تنزيل نسخة بياناتك.",
+  "A fresh verification code was sent to your registered phone.":
+    "تم إرسال رمز تحقق حديث إلى هاتفك المسجل.",
+  "Version": "الإصدار",
+  "Effective date": "تاريخ السريان",
+  "Commercial Registration": "السجل التجاري",
+  "Valid for": "صالح لمدة",
+  "View plans": "عرض الباقات",
+  "Renew plan": "تجديد الباقة",
+  "Truck": "شاحنة",
+  "Van": "فان",
+  "Other": "أخرى",
+  "Tools": "أدوات",
+  "Accessories": "إكسسوارات",
+  "Car care": "العناية بالسيارة",
+  "cash": "نقداً",
+  "Confirm your booking now and pay cash when the driver arrives.":
+    "أكّد حجزك الآن وادفع نقداً عند وصول السائق.",
+  "OK": "حسناً",
+  "Home": "المنزل",
+  "Qatar": "قطر",
+  "Account": "الحساب",
+  "Review": "المراجعة",
+  "Card or Apple Pay": "بطاقة أو Apple Pay",
+  "Explore wash options": "استكشف خيارات الغسيل",
+  "Save on regular washes": "وفّر في الغسيل المنتظم",
+  "Shop car-care products": "تسوّق منتجات العناية بالسيارة",
+  "Bookings, plans and vehicles": "الحجوزات والاشتراكات والمركبات",
+  "Could not remove the car.": "تعذر حذف السيارة.",
+  "Membership and vehicle are required.": "الاشتراك والمركبة مطلوبان.",
+  "The saved vehicle does not match this membership.":
+    "المركبة المحفوظة لا تطابق هذا الاشتراك.",
+  "An authoritative quote is required.": "يلزم تحميل السعر المعتمد.",
+  "Payment provider did not return a usable checkout link.":
+    "لم يُرجع مزوّد الدفع رابطاً صالحاً لإتمام الدفع.",
+  "The created order does not match the price you confirmed.":
+    "الطلب المنشأ لا يطابق السعر الذي أكدته.",
   "Loading your review…": "جارٍ تحميل طلب التقييم…",
   "Sign in with the phone number used for this booking to leave your review.": "سجّل الدخول برقم الهاتف المستخدم لهذا الحجز لإضافة تقييمك.",
   "Sign in to review your wash": "سجّل الدخول لتقييم خدمة الغسيل",
@@ -93,6 +154,55 @@ const AR: Record<string, string> = {
   "Payment": "الدفع",
   "Confirm": "التأكيد",
   "Pay & Confirm": "ادفع وأكّد",
+  "Products & confirm": "المنتجات والتأكيد",
+  "Checking your membership": "جارٍ التحقق من اشتراكك",
+  "We’re loading the vehicles and booking times included with your plan.": "جارٍ تحميل المركبات ومواعيد الحجز المشمولة في باقتك.",
+  "Already have a membership? Sign in before choosing a service.": "لديك اشتراك؟ سجّل الدخول قبل اختيار الخدمة.",
+  "We’ll skip service selection and show only the vehicles and times your membership covers.": "سنتجاوز اختيار الخدمة ونعرض فقط المركبات والمواعيد التي يغطيها اشتراكك.",
+  "Choose your membership vehicle": "اختر مركبة الاشتراك",
+  "The service is included with your plan, so you only need to choose the car.": "الخدمة مشمولة في باقتك، وما عليك سوى اختيار السيارة.",
+  "Membership to use": "الاشتراك المستخدم",
+  "Membership booking details": "تفاصيل حجز الاشتراك",
+  "Sedan vehicles only": "سيارات السيدان فقط",
+  "SUV vehicles only": "سيارات الدفع الرباعي فقط",
+  "Eligible car vehicles": "السيارات المؤهلة",
+  "Service selected automatically": "تم تحديد الخدمة تلقائياً",
+  "washes available": "غسلات متاحة",
+  "Midnight access 12:00 a.m.–5:00 a.m.": "دخول منتصف الليل من 12:00 ص إلى 5:00 ص",
+  "Covered vehicles": "المركبات المشمولة",
+  "Only vehicles that match this membership are shown.": "تظهر فقط المركبات المطابقة لهذا الاشتراك.",
+  "Choose a saved vehicle": "اختر مركبة محفوظة",
+  "Add a different vehicle": "أضف مركبة أخرى",
+  "Add a covered vehicle": "أضف مركبة مشمولة",
+  "The plate number is required; the other details are optional.": "رقم اللوحة مطلوب، وبقية التفاصيل اختيارية.",
+  "Choose your membership time": "اختر موعد الاشتراك",
+  "This membership includes private booking times from 12:00 a.m. to 5:00 a.m.": "يشمل هذا الاشتراك مواعيد حجز خاصة من 12:00 ص إلى 5:00 ص.",
+  "Midnight membership access": "دخول اشتراك منتصف الليل",
+  "Only eligible midnight membership customers can see and book these slots.": "لا يمكن رؤية هذه المواعيد وحجزها إلا للعملاء المؤهلين باشتراك منتصف الليل.",
+  "Review your membership booking": "راجع حجز الاشتراك",
+  "Your wash is prepaid. Add store products if you want them, then confirm.": "غسلتك مدفوعة مسبقاً. أضف منتجات المتجر إن رغبت ثم أكّد الحجز.",
+  "Would you like any store products?": "هل ترغب في أي منتجات من المتجر؟",
+  "Your wash is already paid. You’ll only pay for products you add.": "غسلتك مدفوعة بالفعل. ستدفع فقط مقابل المنتجات التي تضيفها.",
+  "No, confirm my wash": "لا، أكّد الغسلة",
+  "Yes, browse products": "نعم، تصفح المنتجات",
+  "No store products": "لا توجد منتجات متجر",
+  "Your membership wash can be confirmed now with nothing to pay.": "يمكن الآن تأكيد غسلة الاشتراك دون أي مبلغ مستحق.",
+  "Add products instead": "أضف منتجات بدلاً من ذلك",
+  "Continue without products": "متابعة دون منتجات",
+  "Products due": "قيمة المنتجات",
+  "wash covered by membership": "الغسلة مغطاة بالاشتراك",
+  "Saving vehicle…": "جارٍ حفظ المركبة…",
+  "Pay for products": "ادفع للمنتجات",
+  "Choose your membership vehicle and whether you want store products.": "اختر مركبة الاشتراك وحدد ما إذا كنت تريد منتجات من المتجر.",
+  "We couldn't save this vehicle. Please try again.": "تعذّر حفظ هذه المركبة. يرجى المحاولة مجدداً.",
+  "Your membership availability changed. Choose an eligible vehicle and time again.": "تغيّر توفر اشتراكك. اختر مركبة وموعداً مؤهلين مرة أخرى.",
+  "Membership booking summary": "ملخص حجز الاشتراك",
+  "washes before booking": "غسلات قبل الحجز",
+  "after": "بعده",
+  "Included service": "الخدمة المشمولة",
+  "Amount to pay": "المبلغ المستحق",
+  "The membership covers the wash. Checkout is only for the selected products.": "يغطي الاشتراك الغسلة. الدفع مخصص فقط للمنتجات المحددة.",
+  "The membership covers the wash. No payment is required.": "يغطي الاشتراك الغسلة. لا يلزم أي دفع.",
   "Pay online and confirm your booking in one final step.":
     "ادفع أونلاين وأكّد حجزك في خطوة أخيرة واحدة.",
   "Secure card payment. We'll take you to checkout and confirm your booking after payment.":
@@ -145,6 +255,8 @@ const AR: Record<string, string> = {
   "Tower name, gate number, parking level…": "اسم البرج، رقم البوابة، طابق المواقف…",
   "Pick your time": "اختر وقتك",
   "Choose a day and an available slot.": "اختر اليوم والموعد المتاح.",
+  "We serve this location, but no times are available on this day. Choose another day.":
+    "نخدم هذا الموقع، ولكن لا توجد مواعيد متاحة في هذا اليوم. اختر يوماً آخر.",
   "Checking availability…": "جاري التحقق من المواعيد…",
   "Today": "اليوم",
   "Tomorrow": "غداً",
@@ -446,6 +558,8 @@ const AR: Record<string, string> = {
   "Could not reschedule the booking.": "تعذّر تغيير موعد الحجز.",
   "Could not save this location.": "تعذّر حفظ هذا الموقع.",
   "Could not validate this location.": "تعذّر التحقق من هذا الموقع.",
+  "We do not currently serve this location. Choose a location inside an available service area.":
+    "لا نخدم هذا الموقع حالياً. اختر موقعاً داخل منطقة خدمة متاحة.",
   "Date": "التاريخ",
   "Edit": "تعديل",
   "Edit added products": "تعديل المنتجات المضافة",
@@ -837,4 +951,10 @@ export function useI18n() {
 /** Pick the localized field from an API object ({name, name_ar}, …). */
 export function localized(lang: Lang, en: string, ar?: string | null) {
   return lang === "ar" && ar ? ar : en;
+}
+
+/** Name of the language a switch action will activate, written in that language. */
+export function languageSwitchLabel(lang: Lang, compact = false) {
+  if (lang === "en") return compact ? "عربي" : "العربية";
+  return compact ? "EN" : "English";
 }

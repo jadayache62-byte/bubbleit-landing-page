@@ -149,7 +149,7 @@ const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
 };
 
 export default function AccountPage() {
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [checked, setChecked] = useState(false);
   const [bookings, setBookings] = useState<Booking[] | null>(null);
@@ -473,7 +473,7 @@ export default function AccountPage() {
   }
 
   async function loadRescheduleOptions(booking: Booking, requestedDate: string, key = window.crypto.randomUUID()) {
-    const days = nextQatarDays(7);
+    const days = nextQatarDays(7, lang);
     const date = days.some((day) => day.date === requestedDate) ? requestedDate : days[0].date;
     setError(null);
     setReschedule({ booking, date, days, options: null, slot: null, key, busy: true });
@@ -525,7 +525,7 @@ export default function AccountPage() {
       await deleteVehicle(id);
       refresh();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not remove the car.");
+      setError(e instanceof ApiError ? e.message : t("Could not remove the car."));
     }
   }
 
@@ -939,12 +939,12 @@ function MembershipCard({
   busy: boolean;
   onCancel: () => void;
 }) {
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   const active = membership.status === "active" && membership.washes_remaining > 0;
   const reconciliationRequired = membership.payment?.status === "reconciliation_required";
   const cashDue = membership.payment?.status === "cash_due";
   const expiry = membership.expires_at
-    ? new Date(membership.expires_at).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })
+    ? new Date(membership.expires_at).toLocaleDateString(lang, { month: "short", day: "numeric", year: "numeric" })
     : null;
 
   return (

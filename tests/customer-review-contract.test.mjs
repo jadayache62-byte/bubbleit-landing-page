@@ -5,6 +5,7 @@ import test from "node:test";
 const page = readFileSync(new URL("../app/review/[invitation]/ReviewPageClient.tsx", import.meta.url), "utf8");
 const api = readFileSync(new URL("../lib/api/client.ts", import.meta.url), "utf8");
 const metadata = readFileSync(new URL("../app/review/[invitation]/page.tsx", import.meta.url), "utf8");
+const metadataCatalog = readFileSync(new URL("../lib/localized-metadata.ts", import.meta.url), "utf8");
 const toast = readFileSync(new URL("../components/AppToast.tsx", import.meta.url), "utf8");
 
 test("review entry is opaque, authenticated, rating-first, optional-notes, and one-shot", () => {
@@ -18,8 +19,8 @@ test("review entry is opaque, authenticated, rating-first, optional-notes, and o
 });
 
 test("review links stay out of search indexes and expose accessible loading and errors", () => {
-  assert.match(metadata, /index: false/);
-  assert.match(metadata, /follow: false/);
+  assert.match(metadata, /localizedMetadata\("review"\)/);
+  assert.match(metadataCatalog, /review: \{ robots: \{ index: false, follow: false, nocache: true \} \}/);
   assert.match(page, /role="status"/);
   assert.match(page, /<AppToast/);
   assert.match(toast, /role=\{tone === "danger" \? "alert" : "status"\}/);

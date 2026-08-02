@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-08-02 — English/Arabic localization hardening
+
+- Moved account deletion, legal chrome, membership validity/actions, generated location labels,
+  booking/store validation, navigation descriptions, language controls, and page metadata into the
+  shared English/Arabic localization catalogs.
+- Made Qatar day pickers, membership expiry dates, and generated metadata respect the active locale;
+  authored customer, service, product, and policy content remains verbatim.
+- Expanded the localization release contract to reject untranslated dynamic labels, conditional
+  branches, runtime errors, controlled state messages, accessible copy, and static English metadata.
+
+## 2026-08-01 — Zone-aware customer availability
+
+- Added coordinates and the server-owned opaque dispatch-zone version to regular availability,
+  membership booking options, quote, confirmation, and rescheduling contracts.
+- Kept fleet details private while showing distinct localized states for an uncovered location and a
+  covered zone with no available time; changing location now refreshes zone-specific slot capacity.
+- Updated the development mock and browser/contract coverage to prove that capacity never leaks across
+  zones and stale versions fail closed, without contacting shared services or deploying the website.
+
+## 2026-08-01 — Membership-first customer booking
+
+- Replaced service selection for authenticated membership customers with a four-step
+  Vehicle → Location → Schedule → Products & confirm flow inside the existing `/book` wizard.
+- Added exact sedan/SUV vehicle filtering, owner-scoped server booking options, and private
+  00:00–05:00 midnight membership slots; public availability can no longer expose midnight times.
+- Added an explicit optional-product decision: product-free membership bookings confirm immediately,
+  while product bookings open checkout for the product total only.
+- Aligned the development mock, English/Arabic RTL copy, accessibility semantics, TypeScript API
+  contracts, and release tests while preserving the ordinary service booking and quote flow.
+
 ## 2026-07-31 — Repository guidance synchronized
 
 - Updated `CLAUDE.md` and `AGENTS.md` to match the current authenticated store-checkout contract,

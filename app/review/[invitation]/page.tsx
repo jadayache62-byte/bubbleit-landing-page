@@ -1,11 +1,7 @@
-import type { Metadata } from "next";
 import { ReviewPageClient } from "./ReviewPageClient";
+import { localizedMetadata } from "@/lib/localized-metadata";
 
-export const metadata: Metadata = {
-  title: "Review your wash | Bubbleit",
-  description: "Share feedback about your completed Bubbleit service.",
-  robots: { index: false, follow: false, nocache: true },
-};
+export const generateMetadata = () => localizedMetadata("review");
 
 export default async function ReviewPage({
   params,

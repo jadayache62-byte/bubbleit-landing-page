@@ -28,6 +28,12 @@ export type ServiceAreaSnapshot = {
   eligible: boolean;
 };
 
+export type DispatchZoneSnapshot = {
+  version: string | null;
+  eligible: boolean;
+  enabled: boolean;
+};
+
 export type DurationContribution = {
   line_index: number;
   kind: "service" | "add_on" | "fallback";
@@ -107,6 +113,7 @@ export type Availability = {
   duration: DurationSnapshot;
   slots: Slot[];
   service_area: ServiceAreaSnapshot;
+  dispatch_zone: DispatchZoneSnapshot;
 };
 
 export type Customer = {
@@ -139,7 +146,7 @@ export type Address = {
   service_area: ServiceAreaSnapshot & { stale: boolean };
 };
 
-export type PaymentMethod = "pay_on_site" | "online" | "cash" | "membership";
+export type PaymentMethod = "pay_on_site" | "online" | "cash" | "membership" | "membership_with_products";
 export type PaymentChannel = "cash" | "skipcash_hosted" | "skipcash_qpay" | "membership";
 export type PaymentOptions = {
   mode: "cash" | "online";
@@ -207,6 +214,31 @@ export type CustomerMembership = {
   plan: MembershipPlan;
   payment?: PaymentState;
   payment_purchase_id?: number | null;
+};
+
+/**
+ * Server-owned choices for redeeming one membership wash. The customer picks
+ * only a covered vehicle and a returned slot; the plan owns the service and
+ * booking window.
+ */
+export type MembershipBookingOptions = {
+  membership_id: number;
+  selected_vehicle_id: number;
+  plan: {
+    name: string;
+    name_ar: string;
+    vehicle_type: MembershipPlan["vehicle_type"];
+    service_name: string;
+    window: "standard" | "midnight";
+    window_start: string | null;
+    window_end: string | null;
+  };
+  date: string;
+  duration_minutes: number;
+  duration: DurationSnapshot;
+  eligible_vehicles: Pick<Vehicle, "id" | "plate_number" | "make" | "model" | "type">[];
+  slots: Slot[];
+  dispatch_zone: DispatchZoneSnapshot;
 };
 
 export type BookingStatus =
@@ -294,6 +326,7 @@ export type CreateBookingPayload = {
   latitude?: number;
   longitude?: number;
   service_area_version: string;
+  dispatch_zone_version?: string;
   payment_method?: PaymentMethod;
   use_membership?: boolean;
   notes?: string;

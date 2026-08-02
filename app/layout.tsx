@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
 import { DM_Sans, IBM_Plex_Sans_Arabic, Space_Grotesk } from "next/font/google";
 import { cookies } from "next/headers";
 import { LanguageProvider } from "@/lib/i18n";
 import { LANG_COOKIE, type Lang } from "@/lib/locale";
 import { SessionBoundary } from "@/components/SessionBoundary";
+import { localizedMetadata } from "@/lib/localized-metadata";
 import "./globals.css";
 
 const headingFont = Space_Grotesk({
@@ -22,31 +22,7 @@ const arabicFont = IBM_Plex_Sans_Arabic({
   variable: "--font-arabic",
 });
 
-export const metadata: Metadata = {
-  title: "Bubbleit | Mobile Car Wash Booking App",
-  description:
-    "Book a professional mobile car wash in minutes with Bubbleit. Choose your service, set your time, and let the team come to you.",
-  metadataBase: new URL("https://bubbleit.qa"),
-  openGraph: {
-    title: "Bubbleit | Mobile Car Wash Booking App",
-    description:
-      "A clean, fast way to book mobile car wash services from your phone.",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Bubbleit | Mobile Car Wash Booking App",
-    description:
-      "Book a professional mobile car wash in minutes with Bubbleit.",
-  },
-  keywords: [
-    "Bubbleit",
-    "mobile car wash",
-    "car wash booking app",
-    "car cleaning service",
-    "Qatar car wash app",
-  ],
-};
+export const generateMetadata = () => localizedMetadata("root");
 
 export default async function RootLayout({
   children,

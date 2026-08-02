@@ -1,6 +1,6 @@
 # Bubble It Landing Page — CLAUDE.md
 
-## Current product and repository state (2026-07-31)
+## Current product and repository state (2026-08-01)
 
 - This is the Next.js 16 customer website for marketing, booking, memberships, store checkout,
   authenticated account management, legal pages, and the development-only mock customer API.
@@ -13,6 +13,17 @@
   filtering. Keep duplicate-safe cancellation progress and immediate card updates.
 - Service-card duration must use the selected vehicle type's backend-owned sedan or SUV duration;
   never display the sedan value for every vehicle.
+- Authenticated customers with a redeemable membership use a membership-first booking path that
+  omits service, add-on, quote, and promo selection. They choose one exactly covered vehicle,
+  location, a server-returned slot, and optional store products.
+- Regular and membership availability are geofenced by the selected coordinates. Preserve the opaque
+  `dispatch_zone.version` returned with availability through quote and booking commit, and recover a
+  stale version by returning to Location and reloading slots. The browser never resolves polygons,
+  combines capacity across zones, or performs a cross-zone fallback.
+- Keep customer dispatch messaging intentionally narrow: distinguish a location outside configured
+  coverage from a covered zone with no available time, but never reveal internal zone names, bus or
+  driver data, candidate counts, or assignment explanations. The development mock must preserve the
+  same zone isolation and opaque-version contract.
 - Customer action failures use accessible, dismissible top snackbars across booking, authentication,
   memberships, store checkout, saved locations, notifications, reviews, and account deletion.
 - Browser code uses only the same-origin `/api/customer` BFF. The bearer token remains in the
@@ -54,6 +65,10 @@ Post-service reviews open only from the backend-resolved opaque `/review/{invita
 
 - Derive the initial document language and direction on the server from the locale cookie, and persist explicit language changes immediately. Arabic pages must render with `lang="ar"` and `dir="rtl"` before hydration.
 - App-owned navigation, actions, validation, status, policy, accessibility, and recovery copy belongs in the shared localization layer. Customer names and user-created service or product names may remain exactly as authored in English or any other entered language; do not machine-translate them.
+- This includes dynamic object labels, generated defaults such as saved-location names, client-side
+  runtime errors, legal-page chrome, and server-rendered metadata. Do not hide English prose in a
+  conditional, constant, error constructor, state setter, or static `metadata` export. Add paired
+  catalog entries and keep the localization contract scanner green.
 - Format QAR and locale-sensitive values through the shared money/date helpers. Use CSS logical properties and directional semantics rather than hardcoded left/right assumptions.
 - Keep the RTL/localization contract test and Arabic browser journey as release gates, including compact layouts and increased text size. MAD-59 received owner acceptance on 2026-07-19; preserve its verified copy and authored-content policy.
 
@@ -70,7 +85,10 @@ Repository notes for agents working on the Bubble It marketing site and customer
 
 ## Booking Flow Notes
 
-- The customer booking experience is one four-step wizard: **Services → Location → Schedule → Pay & Confirm**. Do not introduce a second customer booking flow for memberships.
+- The customer booking experience is one adaptive four-step wizard. Ordinary bookings are
+  **Services → Location → Schedule → Pay & Confirm**. A redeemable membership changes the same
+  wizard to **Vehicle → Location → Schedule → Products & confirm**. Do not create a separate route or
+  ask a membership customer to choose the plan-owned service.
 - Customers do **not** select a bus.
 - Availability slots are quarter-hour starts grouped into hour pills. Each hour pill opens the connected `HourSlotPicker` popover for `:00`, `:15`, `:30`, and `:45`; keep disabled/past choices visible but unselectable.
 - The backend keeps fleet capacity occupied for the configured post-booking buffer after `scheduled_end_at`. The website should continue to display the actual service end only.
@@ -98,10 +116,23 @@ Repository notes for agents working on the Bubble It marketing site and customer
 
 ## Membership Rules
 
-- Membership redemption is automatic inside the standard `/book` wizard after authentication and server-backed quote retrieval. Customer-facing membership actions link to `/book`; `/book/membership` exists only as a legacy redirect.
-- Do not restore a membership opt-out toggle or a separate redemption wizard. If the selected wash is eligible, show the membership name, covered amount, remaining washes, and no-payment state dynamically in the standard summary.
-- Physical products remain selectable when a membership covers the wash. The membership covers only the eligible service; product lines remain payable and must still be sent in `product_lines`.
-- Final booking copy follows the payable state: **Confirm booking** when fully covered, **Pay for products** when only products are due, and **Confirm & Pay** for an ordinary paid booking.
+- Membership redemption stays inside `/book`; `/book/membership` remains only a legacy redirect.
+  After authentication, load owner-scoped memberships and switch any customer with a redeemable
+  plan to the membership-first variant. Surface an early sign-in prompt so returning members do not
+  waste time selecting a normal service before the website can identify them.
+- Do not restore a membership opt-out toggle, service selector, add-ons, quote, promo, or a separate
+  redemption wizard. The purchased plan derives the service. The customer selects one vehicle;
+  sedan plans show only sedans and SUV plans show only SUVs. New vehicles must be saved before
+  requesting membership slots so the backend can authorize the exact vehicle.
+- Membership availability comes exclusively from
+  `GET /memberships/{membership}/booking-options?date=YYYY-MM-DD&vehicle_id={id}`. Public
+  availability must not expose the midnight grid. Plans with the private window may show only
+  backend-returned quarter-hour slots from 00:00 through 04:45.
+- Ask explicitly whether store products are wanted. No products creates and confirms the prepaid
+  membership booking immediately. Selected products are sent in `product_lines`; checkout and the
+  displayed amount due cover products only, while the wash remains reserved until verified payment.
+- Final booking copy follows the payable state: **Confirm booking** when fully covered, **Pay for
+  products** when only products are due, and **Confirm & Pay** for an ordinary paid booking.
 - Selecting a membership plan must open a review dialog before any purchase request. Show wash scope, vehicle type, wash count, validity, per-wash price, and total; only the explicit confirmation action may continue to authentication/payment.
 - Membership plan grids reserve their final layout with accessible skeleton cards while plan data loads.
 

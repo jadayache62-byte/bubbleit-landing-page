@@ -12,7 +12,7 @@ import {
 } from "@/lib/legal/policies";
 
 export function LegalPolicyPage({ policy }: { policy: LegalPolicy }) {
-  const { lang } = useI18n();
+  const { lang, t } = useI18n();
   const pick = (value: { en: string; ar: string }) => value[lang];
 
   return (
@@ -22,12 +22,12 @@ export function LegalPolicyPage({ policy }: { policy: LegalPolicy }) {
         <article className="mx-auto max-w-4xl">
           <header className="rounded-[var(--radius-card)] border border-slate-800 bg-[#061a2e] p-6 text-white shadow-[0_8px_24px_rgba(38,34,98,0.12)] sm:p-10">
             <p className="text-sm font-bold uppercase tracking-[0.14em] text-white/70">
-              {lang === "ar" ? `الإصدار ${LEGAL_POLICY_VERSION}` : `Version ${LEGAL_POLICY_VERSION}`}
+              {t("Version")} {LEGAL_POLICY_VERSION}
             </p>
             <h1 className="mt-3 text-3xl font-extrabold sm:text-5xl">{pick(policy.title)}</h1>
             <p className="mt-4 max-w-3xl text-base leading-7 text-white/80 sm:text-lg">{pick(policy.summary)}</p>
             <p className="mt-5 text-sm text-white/65">
-              {lang === "ar" ? "تاريخ السريان" : "Effective date"}: <span dir="ltr">{LEGAL_POLICY_EFFECTIVE_DATE}</span>
+              {t("Effective date")}: <span dir="ltr">{LEGAL_POLICY_EFFECTIVE_DATE}</span>
             </p>
           </header>
 
@@ -49,13 +49,13 @@ export function LegalPolicyPage({ policy }: { policy: LegalPolicy }) {
 
           <aside className="mt-8 rounded-3xl border border-cyan-200 bg-cyan-50 p-5 text-sm leading-6 text-slate-700 sm:p-7">
             <strong className="text-[color:var(--navy)]">{LEGAL_ENTITY.name}</strong><br />
-            {lang === "ar" ? "السجل التجاري" : "Commercial Registration"}: <span dir="ltr">{LEGAL_ENTITY.commercialRegistration}</span><br />
+            {t("Commercial Registration")}: <span dir="ltr">{LEGAL_ENTITY.commercialRegistration}</span><br />
             {LEGAL_ENTITY.address}<br />
             <a className="font-semibold text-[color:var(--navy)] underline" href={`mailto:${LEGAL_ENTITY.privacyEmail}`}>{LEGAL_ENTITY.privacyEmail}</a>
             <div className="mt-4 flex flex-wrap gap-3">
-              <Link className="font-semibold text-[color:var(--navy)] underline" href="/privacy">{lang === "ar" ? "سياسة الخصوصية" : "Privacy Policy"}</Link>
-              <Link className="font-semibold text-[color:var(--navy)] underline" href="/terms">{lang === "ar" ? "الشروط والأحكام" : "Terms & Conditions"}</Link>
-              <Link className="font-semibold text-[color:var(--navy)] underline" href="/account-deletion">{lang === "ar" ? "حذف الحساب" : "Account deletion"}</Link>
+              <Link className="font-semibold text-[color:var(--navy)] underline" href="/privacy">{t("Privacy Policy")}</Link>
+              <Link className="font-semibold text-[color:var(--navy)] underline" href="/terms">{t("Terms & Conditions")}</Link>
+              <Link className="font-semibold text-[color:var(--navy)] underline" href="/account-deletion">{t("Account deletion")}</Link>
             </div>
           </aside>
         </article>

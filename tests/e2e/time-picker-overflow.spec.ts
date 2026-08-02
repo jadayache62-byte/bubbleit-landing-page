@@ -45,6 +45,11 @@ test("right-edge hour options remain inside the mobile viewport", async ({ page 
             available: true,
           })),
           service_area: { version: "qatar-test", eligible: true },
+          dispatch_zone: {
+            enabled: true,
+            eligible: true,
+            version: "dz-mobile-overflow-test",
+          },
         },
         errors: null,
       },

@@ -18,6 +18,9 @@ test("customer reschedule consumes versioned server availability and an idempote
 test("development contract revalidates cutoff, versions, and fleet capacity", () => {
   assert.match(mock, /RESCHEDULE_CUTOFF_PASSED/);
   assert.match(mock, /SLOT_VERSION_STALE/);
-  assert.match(mock, /hasFleetCapacity\(scheduledAt, duration\.total_minutes, booking\.id\)/);
+  assert.match(
+    mock,
+    /hasFleetCapacity\([\s\S]*scheduledAt,[\s\S]*duration\.total_minutes,[\s\S]*booking\.id,[\s\S]*bookingDispatchZones\.get\(booking\.id\)/,
+  );
   assert.match(mock, /booking\.status === "assigned"/);
 });

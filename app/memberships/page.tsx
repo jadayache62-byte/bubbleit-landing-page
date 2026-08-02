@@ -375,7 +375,7 @@ export default function MembershipsPage() {
               <span className="text-sm font-semibold text-[color:var(--navy)]"><bdi dir="ltr">{formatQar(plan.price / plan.washes_count, lang, 0)}</bdi> / {t("wash")}</span>
               {baselinePerWash > plan.price / plan.washes_count && <span className="text-xs font-semibold text-emerald-700">{t("Save")} {Math.round((1 - (plan.price / plan.washes_count) / baselinePerWash) * 100)}%</span>}
               <span className="text-xs text-[color:var(--muted-foreground)]">
-                {lang === "ar" ? `صالح لمدة ${plan.validity_days} يومًا` : `Valid for ${plan.validity_days} days`}
+                {t("Valid for")} {new Intl.NumberFormat(lang === "ar" ? "ar-QA" : "en-QA").format(plan.validity_days)} {t("days")}
               </span>
               {(lang === "ar" ? plan.description_ar ?? plan.description : plan.description) && (
                 <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
@@ -475,7 +475,7 @@ export default function MembershipsPage() {
                 : t("We'll activate it as soon as payment is confirmed — our team will contact you.")}
             </p>
             <button type="button" className="primary-button mt-6 w-full" onClick={() => setBought(false)}>
-              OK
+              {t("OK")}
             </button>
           </div>
         </div>

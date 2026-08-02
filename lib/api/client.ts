@@ -18,6 +18,7 @@ import type {
   CustomerReviewInvitation,
   Envelope,
   MembershipPlan,
+  MembershipBookingOptions,
   Paginated,
   PromoValidation,
   QuoteCar,
@@ -418,6 +419,23 @@ export function listMemberships() {
   return request<Paginated<CustomerMembership>>("/memberships").then((r) => r.data);
 }
 
+export function getMembershipBookingOptions(
+  membershipId: number,
+  date: string,
+  vehicleId: number,
+  coordinates: { latitude: number; longitude: number },
+) {
+  const params = new URLSearchParams({
+    date,
+    vehicle_id: String(vehicleId),
+    latitude: String(coordinates.latitude),
+    longitude: String(coordinates.longitude),
+  });
+  return request<MembershipBookingOptions>(
+    `/memberships/${membershipId}/booking-options?${params.toString()}`,
+  );
+}
+
 export function buyMembership(planId: number, idempotencyKey: string) {
   return request<CustomerMembership>("/memberships", {
     method: "POST",
@@ -497,6 +515,7 @@ export function getQuote(payload: {
   latitude?: number;
   longitude?: number;
   service_area_version: string;
+  dispatch_zone_version?: string;
 }) {
   return request<BookingQuote>("/bookings/quote", { method: "POST", body: payload });
 }

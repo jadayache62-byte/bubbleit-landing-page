@@ -13,7 +13,9 @@ test("all mock plan families map 24 and 48 washes to approved validity", () => {
 });
 
 test("catalog cards and purchase review render plan validity", () => {
-  assert.match(page, /Valid for \$\{plan\.validity_days\} days/);
+  assert.match(page, /t\("Valid for"\)/);
+  assert.match(page, /Intl\.NumberFormat\(lang === "ar" \? "ar-QA" : "en-QA"\)\.format\(plan\.validity_days\)/);
+  assert.match(page, /t\("days"\)/);
   assert.match(page, /buyingPlan\.validity_days/);
   assert.doesNotMatch(page, /Valid 30 days/);
 });

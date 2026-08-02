@@ -17,10 +17,20 @@ membership, authentication, localization, security, and accessibility contracts.
 
 ## Current customer behavior
 
-- Booking is one flow: Services → Location → Schedule → Pay & Confirm. Membership redemption stays
-  inside that flow.
+- Booking remains one adaptive flow. Ordinary customers use Services → Location → Schedule → Pay &
+  Confirm. An authenticated customer with a redeemable membership uses Vehicle → Location →
+  Schedule → Products & confirm; the plan owns the service and the browser never asks them to choose
+  or price it.
 - Availability, duration, price, membership coverage, inventory, service-area version, and payment
   outcome are backend-owned. Do not calculate operational or financial truth in the browser.
+- Regular and membership availability require the selected latitude/longitude and return an opaque
+  dispatch-zone version that must survive quote/confirmation. A location outside configured coverage
+  is different from a covered zone with no available time. Never expose internal zone names, buses,
+  drivers, candidate counts, or automatic-assignment details to customers.
+- Membership vehicle and slot choices come only from the owner-scoped booking-options endpoint.
+  Sedan plans accept only sedans, SUV plans accept only SUVs, and 00:00–05:00 slots remain private
+  to eligible midnight memberships. A product-free redemption confirms immediately; a redemption
+  with products checks out only those products.
 - Display the selected vehicle type's sedan/SUV duration. Customers never choose a bus or see bus,
   plate, driver, or dispatch details.
 - Booking history is booking-reference-first, newest first, with search and lifecycle filters.
@@ -36,9 +46,14 @@ membership, authentication, localization, security, and accessibility contracts.
 
 - English/Arabic, server-rendered `lang`/`dir`, RTL, 320 px reflow, increased text, keyboard access,
   visible focus, focus restoration, reduced motion, and axe WCAG A/AA coverage are release gates.
+- Every app-owned string—including dynamic option labels, generated defaults, validation/runtime
+  errors, accessible names, legal-page chrome, and page metadata—belongs in the shared English/Arabic
+  catalog. Keep customer-authored names and backend-authored catalogue content verbatim.
 - Keep `docs/contracts/public-contract-v1.schema.json` and
   `docs/contracts/duration-v1.json` byte-identical with the backend and Flutter consumers.
 - The local mock must follow production contracts but must never become a production fallback.
+- The local mock must preserve zone-specific capacity and stale-version behavior; a bus serving one
+  zone must never contribute a customer slot in another zone.
 - Tests must not contact real payment, messaging, production, or shared services.
 - Use the declared Nx targets through `npm exec nx -- <target> bubbleit-landing-page`; do not bypass
   Nx for routine lint, test, build, or end-to-end work and do not guess flags.

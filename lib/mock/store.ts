@@ -261,5 +261,5 @@ export function makeReference(id: number) {
 }
 
 export function isPayable(status: BookingStatus, method: PaymentMethod) {
-  return status === "pending_payment" && method === "online";
+  return status === "pending_payment" && ["online", "membership_with_products"].includes(method);
 }

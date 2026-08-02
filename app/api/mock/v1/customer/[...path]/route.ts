@@ -78,6 +78,8 @@ function authCustomer(req: NextRequest) {
 const FLEET_CAPACITY = 2;
 const POST_BOOKING_BUFFER_MINUTES = 30;
 const SERVICE_AREA_VERSION = "qatar-cgis-land-2026-07-14-v1";
+const DISPATCH_ZONE_REVISION = 1;
+const bookingDispatchZones = new Map<number, number>();
 const STORE_DELIVERY_FEE_MINOR = 0;
 const idempotencyResponses = new Map<string, { request: string; status: number; body: unknown }>();
 const paymentAttempts = new Map<string, {
@@ -94,6 +96,7 @@ const bookingQuotes = new Map<string, {
   expiresAt: string;
   cars: { index: number; membership_id: number | null }[];
 }>();
+const membershipBookingReservations = new Map<number, number>();
 const privacyExports = new Map<number, {
   customerId: number;
   token: string;
@@ -191,7 +194,7 @@ function serviceAreaFailure(code: "SERVICE_AREA_OUTSIDE_QATAR" | "SERVICE_AREA_S
 
 type DurationCartCar = { service_id: number; add_on_ids?: number[] };
 
-async function durationSnapshot(cars: DurationCartCar[]) {
+async function durationSnapshot(cars: DurationCartCar[], vehicleType?: string) {
   const contributions = cars.length === 0
     ? [{
         line_index: 0,
@@ -211,15 +214,18 @@ async function durationSnapshot(cars: DurationCartCar[]) {
           .filter((addOn) => selectedIds.includes(addOn.id))
           .sort((a, b) => a.id - b.id);
 
+        const serviceMinutes = vehicleType === "suv"
+          ? service.duration_suv
+          : service.duration_minutes;
         return [{
           line_index: lineIndex,
           kind: "service" as const,
           service_id: service.id,
           add_on_id: null,
           name: service.name,
-          configured_minutes: service.duration_minutes,
+          configured_minutes: serviceMinutes,
           contributes: true,
-          minutes: service.duration_minutes,
+          minutes: serviceMinutes,
         }, ...addOns.map((addOn) => ({
           line_index: lineIndex,
           kind: "add_on" as const,
@@ -270,7 +276,26 @@ function qatarMinutes(iso: string) {
   }));
 }
 
-function hasFleetCapacity(dateTime: string, durationMinutes: number, ignoredBookingId?: number) {
+function mockDispatchZone(latitude: number, longitude: number) {
+  if (!mockQatarLand(latitude, longitude)) return null;
+  const id = longitude < 51.45 ? 1 : 2;
+  const opaqueVersions: Record<number, string> = {
+    1: `dz_5f28b89d2c6a4b79a80199f0382b413a${DISPATCH_ZONE_REVISION}`,
+    2: `dz_184dc37a09284b96b30624a2a8d30e45${DISPATCH_ZONE_REVISION}`,
+  };
+  return {
+    id,
+    version: opaqueVersions[id],
+    capacity: id === 1 ? 1 : 2,
+  };
+}
+
+function hasFleetCapacity(
+  dateTime: string,
+  durationMinutes: number,
+  ignoredBookingId?: number,
+  dispatchZoneId?: number,
+) {
   const date = qatarServiceDate(dateTime);
   const start = new Date(dateTime).getTime();
   const end = start + (durationMinutes + POST_BOOKING_BUFFER_MINUTES) * 60_000;
@@ -278,11 +303,13 @@ function hasFleetCapacity(dateTime: string, durationMinutes: number, ignoredBook
     if (booking.id === ignoredBookingId) return false;
     if (booking.service_date !== date) return false;
     if (["cancelled_by_customer", "cancelled_by_admin"].includes(booking.status)) return false;
+    if (dispatchZoneId && bookingDispatchZones.get(booking.id) !== dispatchZoneId) return false;
     const bookingStart = new Date(booking.scheduled_at).getTime();
     const bookingEnd = bookingStart + ((booking.duration_minutes ?? 60) + POST_BOOKING_BUFFER_MINUTES) * 60_000;
     return bookingStart < end && bookingEnd > start;
   }).length;
-  return overlaps < FLEET_CAPACITY;
+  const capacity = dispatchZoneId === 1 ? 1 : FLEET_CAPACITY;
+  return overlaps < capacity;
 }
 
 function mockRescheduleSlotVersion(booking: Booking, date: string, start: string) {
@@ -299,6 +326,13 @@ const SCOPE_SERVICES: Record<string, number[]> = {
 
 type MockMembership = ReturnType<typeof db>["memberships"][number];
 
+function membershipCoversVehicleType(membership: MockMembership, vehicleType: string) {
+  const required = membership.plan.vehicle_type;
+  if (required === "sedan") return vehicleType === "sedan";
+  if (required === "suv") return vehicleType === "suv";
+  return ["sedan", "suv", "truck", "van", "other"].includes(vehicleType);
+}
+
 function membershipCoversCar(
   m: MockMembership,
   serviceId: number,
@@ -308,12 +342,7 @@ function membershipCoversCar(
   if (m.status !== "active" || m.washes_remaining <= 0) return false;
   if (m.expires_at && new Date(m.expires_at) < new Date()) return false;
 
-  const vt = m.plan.vehicle_type;
-  const vehicleOk =
-    vt === null ||
-    (vt === "sedan" && ["sedan", "other"].includes(vehicleType)) ||
-    (vt === "suv" && ["suv", "truck", "van"].includes(vehicleType));
-  if (!vehicleOk) return false;
+  if (!membershipCoversVehicleType(m, vehicleType)) return false;
 
   if (!(SCOPE_SERVICES[m.plan.scope] ?? []).includes(serviceId)) return false;
 
@@ -605,15 +634,24 @@ async function handle(req: NextRequest, segments: string[]) {
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return fail(422, "Validation failed.", { date: ["A valid date is required."] });
     }
+    if (req.nextUrl.searchParams.get("window") === "midnight") {
+      return fail(422, "Midnight availability requires an eligible membership.");
+    }
     const latitude = Number(req.nextUrl.searchParams.get("latitude"));
     const longitude = Number(req.nextUrl.searchParams.get("longitude"));
     if (!mockQatarLand(latitude, longitude)) {
       return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
     }
+    const dispatchZone = mockDispatchZone(latitude, longitude);
+    if (!dispatchZone) {
+      return fail(422, "We do not currently serve this location.", null, {
+        dispatch_zone: { version: null, eligible: false },
+      }, "DISPATCH_ZONE_UNCOVERED");
+    }
     const now = new Date();
     const todayStr = qatarServiceDate(now.toISOString());
     const qatarNowMinutes = qatarMinutes(now.toISOString());
-    const grid = req.nextUrl.searchParams.get("window") === "midnight" ? MIDNIGHT_SLOT_GRID : SLOT_GRID;
+    const grid = SLOT_GRID;
     // Match the live endpoint's structured cart query. Keep service_ids[] as
     // a legacy fallback for membership and older clients.
     const cartCars = Array.from(req.nextUrl.searchParams.entries()).flatMap(([key, value]) => {
@@ -634,7 +672,9 @@ async function handle(req: NextRequest, segments: string[]) {
     const duration = durationContract.total_minutes;
     const closing = toMinutes(grid[grid.length - 1]) + 15;
     const existing = store.bookings
-      .filter((b) => b.service_date === date && !["cancelled_by_customer", "cancelled_by_admin"].includes(b.status))
+      .filter((b) => b.service_date === date
+        && bookingDispatchZones.get(b.id) === dispatchZone.id
+        && !["cancelled_by_customer", "cancelled_by_admin"].includes(b.status))
       .map((b) => {
         const s = qatarMinutes(b.scheduled_at);
         return [s, s + (b.duration_minutes ?? 60) + POST_BOOKING_BUFFER_MINUTES] as const;
@@ -646,7 +686,7 @@ async function handle(req: NextRequest, segments: string[]) {
       const endHm = `${String(Math.floor(serviceEnd / 60)).padStart(2, "0")}:${String(serviceEnd % 60).padStart(2, "0")}`;
       const isPast = date < todayStr || (date === todayStr && s <= qatarNowMinutes);
       const overlaps = existing.filter(([es, ee]) => es < occupancyEnd && ee > s).length;
-      const available = !isPast && occupancyEnd <= closing && overlaps < FLEET_CAPACITY;
+      const available = !isPast && occupancyEnd <= closing && overlaps < dispatchZone.capacity;
       return { start, end: endHm, available };
     });
     return envelope({
@@ -655,6 +695,11 @@ async function handle(req: NextRequest, segments: string[]) {
       duration: durationContract,
       slots,
       service_area: { version: SERVICE_AREA_VERSION, eligible: true },
+      dispatch_zone: {
+        enabled: true,
+        eligible: true,
+        version: dispatchZone.version,
+      },
     });
   }
 
@@ -950,6 +995,97 @@ async function handle(req: NextRequest, segments: string[]) {
       .map(({ customer_id: _c, ...pub }) => pub);
     return envelope(paginated(mine));
   }
+
+  const membershipBookingOptionsMatch = path.match(/^memberships\/(\d+)\/booking-options$/);
+  if (method === "GET" && membershipBookingOptionsMatch) {
+    const date = req.nextUrl.searchParams.get("date") ?? "";
+    const vehicleId = Number(req.nextUrl.searchParams.get("vehicle_id"));
+    const latitude = Number(req.nextUrl.searchParams.get("latitude"));
+    const longitude = Number(req.nextUrl.searchParams.get("longitude"));
+    const dispatchZone = mockDispatchZone(latitude, longitude);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isInteger(vehicleId)) {
+      return fail(422, "Validation failed.", {
+        ...(/^\d{4}-\d{2}-\d{2}$/.test(date) ? {} : { date: ["A valid date is required."] }),
+        ...(Number.isInteger(vehicleId) ? {} : { vehicle_id: ["A vehicle is required."] }),
+      });
+    }
+    if (!dispatchZone) {
+      return fail(422, "We do not currently serve this location.", null, {
+        dispatch_zone: { version: null, eligible: false },
+      }, "DISPATCH_ZONE_UNCOVERED");
+    }
+    const membership = store.memberships.find(
+      (item) => item.id === Number(membershipBookingOptionsMatch[1]) && item.customer_id === customer.id,
+    );
+    if (!membership) return fail(404, "Membership not found.");
+    if (membership.status !== "active" || membership.washes_remaining <= 0) {
+      return fail(422, "This membership is not active, has expired, or has no washes remaining.");
+    }
+    const eligibleVehicles = customer.vehicles.filter(
+      (vehicle) => membershipCoversVehicleType(membership, vehicle.type),
+    );
+    const vehicle = eligibleVehicles.find((item) => item.id === vehicleId);
+    if (!vehicle) return fail(422, "The selected vehicle is not covered by this membership.");
+
+    const service = SERVICES[0];
+    const duration = await durationSnapshot([{ service_id: service.id, add_on_ids: [] }], vehicle.type);
+    const grid = membership.plan.window_start ? MIDNIGHT_SLOT_GRID : SLOT_GRID;
+    const closing = toMinutes(grid[grid.length - 1]) + 15;
+    const now = new Date();
+    const today = qatarServiceDate(now.toISOString());
+    const nowMinutes = qatarMinutes(now.toISOString());
+    const existing = store.bookings
+      .filter((booking) => booking.service_date === date
+        && bookingDispatchZones.get(booking.id) === dispatchZone.id
+        && !["cancelled_by_customer", "cancelled_by_admin"].includes(booking.status))
+      .map((booking) => {
+        const start = qatarMinutes(booking.scheduled_at);
+        return [start, start + (booking.duration_minutes ?? 60) + POST_BOOKING_BUFFER_MINUTES] as const;
+      });
+    const slots = grid.map((start) => {
+      const startMinutes = toMinutes(start);
+      const serviceEnd = startMinutes + duration.total_minutes;
+      const occupancyEnd = serviceEnd + POST_BOOKING_BUFFER_MINUTES;
+      const end = `${String(Math.floor(serviceEnd / 60)).padStart(2, "0")}:${String(serviceEnd % 60).padStart(2, "0")}`;
+      const past = date < today || (date === today && startMinutes <= nowMinutes);
+      const overlaps = existing.filter(([existingStart, existingEnd]) => existingStart < occupancyEnd && existingEnd > startMinutes).length;
+      return {
+        start,
+        end,
+        available: !past && occupancyEnd <= closing && overlaps < dispatchZone.capacity,
+      };
+    });
+
+    return envelope({
+      membership_id: membership.id,
+      selected_vehicle_id: vehicle.id,
+      plan: {
+        name: membership.plan.name,
+        name_ar: membership.plan.name_ar,
+        vehicle_type: membership.plan.vehicle_type,
+        service_name: service.name,
+        window: membership.plan.window_start ? "midnight" : "standard",
+        window_start: membership.plan.window_start,
+        window_end: membership.plan.window_end,
+      },
+      date,
+      duration_minutes: duration.total_minutes,
+      duration,
+      eligible_vehicles: eligibleVehicles.map(({ id, plate_number, make, model, type }) => ({
+        id,
+        plate_number,
+        make,
+        model,
+        type,
+      })),
+      slots,
+      dispatch_zone: {
+        enabled: true,
+        eligible: true,
+        version: dispatchZone.version,
+      },
+    });
+  }
   if (method === "POST" && path === "memberships") {
     const chosenPlan = MEMBERSHIP_PLANS.find((pl) => pl.id === Number(body.plan_id));
     if (!chosenPlan) return fail(422, "Validation failed.", { plan_id: ["Invalid plan."] });
@@ -1020,6 +1156,19 @@ async function handle(req: NextRequest, segments: string[]) {
     }
     if (!quoteAddress && !mockQatarLand(body.latitude, body.longitude)) {
       return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
+    }
+    const quoteLatitude = Number(quoteAddress?.latitude ?? body.latitude);
+    const quoteLongitude = Number(quoteAddress?.longitude ?? body.longitude);
+    const quoteDispatchZone = mockDispatchZone(quoteLatitude, quoteLongitude);
+    if (!quoteDispatchZone) {
+      return fail(422, "We do not currently serve this location.", null, {
+        dispatch_zone: { version: null, eligible: false },
+      }, "DISPATCH_ZONE_UNCOVERED");
+    }
+    if (body.dispatch_zone_version !== quoteDispatchZone.version) {
+      return fail(409, "Bus coverage changed. Refresh availability and confirm the location again.", null, {
+        dispatch_zone: { version: quoteDispatchZone.version, eligible: false },
+      }, "DISPATCH_ZONE_STALE");
     }
     if (typeof body.duration_version !== "string" || body.duration_version.length === 0) {
       return fail(422, "Validation failed.", {
@@ -1204,8 +1353,21 @@ async function handle(req: NextRequest, segments: string[]) {
     const bookingAddress = body.address_id
       ? customer.addresses.find((address) => address.id === Number(body.address_id))
       : null;
+    const bookingLatitude = Number(bookingAddress?.latitude ?? body.latitude);
+    const bookingLongitude = Number(bookingAddress?.longitude ?? body.longitude);
+    const dispatchZone = mockDispatchZone(bookingLatitude, bookingLongitude);
     if (!bookingAddress && !mockQatarLand(body.latitude, body.longitude)) {
       return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
+    }
+    if (!dispatchZone) {
+      return fail(422, "We do not currently serve this location.", null, {
+        dispatch_zone: { version: null, eligible: false },
+      }, "DISPATCH_ZONE_UNCOVERED");
+    }
+    if (body.dispatch_zone_version !== dispatchZone.version) {
+      return fail(409, "Bus coverage changed. Refresh availability and confirm the location again.", null, {
+        dispatch_zone: { version: dispatchZone.version, eligible: false },
+      }, "DISPATCH_ZONE_STALE");
     }
     if (typeof body.duration_version !== "string" || body.duration_version.length === 0) {
       return fail(422, "Validation failed.", {
@@ -1220,8 +1382,12 @@ async function handle(req: NextRequest, segments: string[]) {
       return fail(409, "This booking quote has expired or changed. Please request a new quote.");
     }
 
-    // Membership redemption: single vehicle, plan-defined service, QR 0.
+    // Membership redemption: one covered vehicle, server-defined service and
+    // slot window. Only optional physical products enter checkout.
     if (body.membership_id) {
+      if (body.quote_id || body.promo_code || (Array.isArray(body.cars) && body.cars.length > 0)) {
+        return fail(422, "Membership bookings do not accept a service cart, quote, or promo code.");
+      }
       const membership = store.memberships.find(
         (m) => m.id === Number(body.membership_id) && m.customer_id === customer.id,
       );
@@ -1230,32 +1396,67 @@ async function handle(req: NextRequest, segments: string[]) {
       if (membership.status !== "active" || membership.washes_remaining <= 0) {
         return fail(422, "This membership is not active or has no washes remaining.");
       }
-      const planService = SERVICES.find((sv) => sv.id === (membership.plan.scope === "full_wash" ? 1 : 1)) ?? SERVICES[0];
-      const membershipDuration = await durationSnapshot([{ service_id: planService.id, add_on_ids: [] }]);
+      if (!membershipCoversVehicleType(membership, vehicle.type)) {
+        return fail(422, "This membership does not cover this vehicle type.");
+      }
+      const selectedTime = scheduledAt.slice(11, 16);
+      const slotGrid = membership.plan.window_start ? MIDNIGHT_SLOT_GRID : SLOT_GRID;
+      if (!slotGrid.includes(selectedTime)
+        || (membership.plan.window_start && !(selectedTime >= membership.plan.window_start && selectedTime < (membership.plan.window_end ?? "05:00")))) {
+        return fail(422, "The selected time is not available for this membership.");
+      }
+      const planService = SERVICES[0];
+      const membershipDuration = await durationSnapshot([{ service_id: planService.id, add_on_ids: [] }], vehicle.type);
       if (String(body.duration_version ?? "") !== membershipDuration.version) {
         return staleDuration(membershipDuration);
       }
-      if (!hasFleetCapacity(scheduledAt, membershipDuration.total_minutes)) {
+      if (!hasFleetCapacity(scheduledAt, membershipDuration.total_minutes, undefined, dispatchZone.id)) {
         return fail(409, "This time slot is no longer available. Please pick another slot.");
       }
-      membership.washes_used += 1;
-      membership.washes_remaining -= 1;
-      if (membership.washes_remaining === 0) membership.status = "exhausted" as never;
+
+      const productInput = Array.isArray(body.product_lines) ? body.product_lines : [];
+      const bookingProducts: NonNullable<Booking["products"]> = [];
+      const requestedProductQuantities: Record<string, number> = {};
+      let productTotal = 0;
+      for (const input of productInput) {
+        const product = store.storeProducts.find((item) => item.id === Number(input.product_id));
+        const quantity = Number(input.quantity ?? 0);
+        const available = product ? Math.max(0, product.stock_quantity - product.reserved_quantity) : 0;
+        const requested = (requestedProductQuantities[String(product?.id)] ?? 0) + quantity;
+        if (!product || !Number.isInteger(quantity) || quantity < 1 || requested > available) {
+          return fail(422, "One or more booking products are unavailable.");
+        }
+        requestedProductQuantities[String(product.id)] = requested;
+        const lineTotal = product.price * quantity;
+        bookingProducts.push({
+          product_id: product.id,
+          sku: product.sku,
+          name: product.name,
+          quantity,
+          unit_price: product.price,
+          line_total: lineTotal,
+        });
+        productTotal += lineTotal;
+      }
+
+      const hasProducts = bookingProducts.length > 0;
       const id = store.nextId++;
       const booking: Booking & { customer_id: number } = {
         id,
         customer_id: customer.id,
         reference: makeReference(id),
-        status: "paid",
-        status_label: STATUS_LABELS.paid,
+        status: hasProducts ? "pending_payment" : "paid",
+        status_label: hasProducts ? STATUS_LABELS.pending_payment : STATUS_LABELS.paid,
         scheduled_at: new Date(scheduledAt).toISOString(),
         service_date: qatarServiceDate(scheduledAt),
         timezone: "Asia/Qatar",
         scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (membershipDuration.total_minutes * 60_000)).toISOString(),
         duration_minutes: membershipDuration.total_minutes,
         duration: { ...membershipDuration, status: "accepted", ambiguous: false },
-        payment_method: "membership",
-        total: 0,
+        membership_applied: !hasProducts,
+        payment_method: hasProducts ? "membership_with_products" : "membership",
+        total: productTotal,
+        product_total: productTotal,
         address_label: bookingAddress?.label ?? (String(body.address_label ?? "").trim() || null),
         address_area: bookingAddress?.area ?? String(body.address_area ?? "").trim(),
         address_street: bookingAddress?.details ?? (String(body.address_street ?? "").trim() || null),
@@ -1269,11 +1470,33 @@ async function handle(req: NextRequest, segments: string[]) {
           add_ons: [],
           subtotal: 0,
         }],
+        products: bookingProducts,
         created_at: new Date().toISOString(),
       };
       store.bookings.push(booking);
+      bookingDispatchZones.set(booking.id, dispatchZone.id);
+      if (hasProducts) {
+        membershipBookingReservations.set(booking.id, membership.id);
+        for (const line of bookingProducts) {
+          const product = store.storeProducts.find((item) => item.id === line.product_id);
+          if (product) product.reserved_quantity += line.quantity;
+        }
+      } else {
+        membership.washes_used += 1;
+        membership.washes_remaining -= 1;
+        if (membership.washes_remaining === 0) membership.status = "exhausted" as never;
+      }
       const { customer_id: _c, ...pub } = booking;
-      return envelope(pub, { status: 201, message: "Booking created." });
+      return envelope({
+        ...pub,
+        payment: {
+          status: hasProducts ? "ready" : "not_required",
+          captured: false,
+          checkout_url: null,
+          reconciliation_reason: null,
+          channel: hasProducts ? "skipcash_hosted" : "membership",
+        },
+      }, { status: 201, message: "Booking created." });
     }
 
     const cars = Array.isArray(body.cars) ? body.cars : [];
@@ -1338,7 +1561,7 @@ async function handle(req: NextRequest, segments: string[]) {
     }
 
     const bookingDuration = bookingDurationContract.total_minutes;
-    if (!hasFleetCapacity(scheduledAt, bookingDuration)) {
+    if (!hasFleetCapacity(scheduledAt, bookingDuration, undefined, dispatchZone.id)) {
       return fail(409, "This time slot is no longer available. Please pick another slot.");
     }
 
@@ -1418,6 +1641,7 @@ async function handle(req: NextRequest, segments: string[]) {
       created_at: new Date().toISOString(),
     };
     store.bookings.push(booking);
+    bookingDispatchZones.set(booking.id, dispatchZone.id);
     for (const line of bookingProducts) {
       const product = store.storeProducts.find((item) => item.id === line.product_id);
       if (product) product.reserved_quantity += line.quantity;
@@ -1480,7 +1704,12 @@ async function handle(req: NextRequest, segments: string[]) {
           start,
           end: endTime,
           available: new Date(scheduledAt).getTime() > Date.now()
-            && hasFleetCapacity(scheduledAt, duration.total_minutes, booking.id),
+            && hasFleetCapacity(
+              scheduledAt,
+              duration.total_minutes,
+              booking.id,
+              bookingDispatchZones.get(booking.id),
+            ),
           slot_version: mockRescheduleSlotVersion(booking, date, start),
         };
       });
@@ -1517,7 +1746,12 @@ async function handle(req: NextRequest, segments: string[]) {
       if (body.slot_version !== mockRescheduleSlotVersion(booking, date, start)) {
         return fail(409, "Availability changed. Please refresh the available times.", null, null, "SLOT_VERSION_STALE");
       }
-      if (!hasFleetCapacity(scheduledAt, duration.total_minutes, booking.id)) {
+      if (!hasFleetCapacity(
+        scheduledAt,
+        duration.total_minutes,
+        booking.id,
+        bookingDispatchZones.get(booking.id),
+      )) {
         return fail(409, "This time slot is no longer available. Please pick another slot.", null, null, "SLOT_UNAVAILABLE");
       }
       booking.scheduled_at = new Date(scheduledAt).toISOString();
@@ -1552,6 +1786,7 @@ async function handle(req: NextRequest, segments: string[]) {
         const product = store.storeProducts.find((item) => item.id === line.product_id);
         if (product) product.reserved_quantity = Math.max(0, product.reserved_quantity - line.quantity);
       }
+      membershipBookingReservations.delete(booking.id);
       const { customer_id: _c, ...pub } = booking;
       return envelope(pub, {
         message: captured
@@ -1573,7 +1808,7 @@ async function handle(req: NextRequest, segments: string[]) {
           status: "paid",
         });
       }
-      if (booking.status !== "pending_payment" || booking.payment_method !== "online") {
+      if (booking.status !== "pending_payment" || !["online", "membership_with_products"].includes(booking.payment_method)) {
         return fail(422, "This booking is not awaiting online payment.");
       }
       return envelope(mockPayment("BKG", booking.id));
@@ -1593,6 +1828,17 @@ async function handle(req: NextRequest, segments: string[]) {
         product.reserved_quantity = Math.max(0, product.reserved_quantity - line.quantity);
         product.stock_quantity -= line.quantity;
         product.sold_quantity += line.quantity;
+      }
+      const membershipId = membershipBookingReservations.get(booking.id);
+      if (membershipId !== undefined) {
+        const membership = store.memberships.find((item) => item.id === membershipId);
+        if (membership && membership.washes_remaining > 0) {
+          membership.washes_used += 1;
+          membership.washes_remaining -= 1;
+          if (membership.washes_remaining === 0) membership.status = "exhausted" as never;
+        }
+        booking.membership_applied = true;
+        membershipBookingReservations.delete(booking.id);
       }
       const { customer_id: _c, ...pub } = booking;
       return envelope(pub, { message: "Payment confirmed." });

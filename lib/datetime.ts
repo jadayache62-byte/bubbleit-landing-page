@@ -65,6 +65,7 @@ export function qatarServiceDate(iso: string): string {
  */
 export function nextQatarDays(
   count: number,
+  locale: string,
 ): { date: string; label: string; weekday: string; monthDay: string }[] {
   const qatarNow = new Date(Date.now() + QATAR_OFFSET_MS);
   const days = [];
@@ -78,7 +79,7 @@ export function nextQatarDays(
         12,
       ),
     );
-    const monthDay = d.toLocaleDateString("en", {
+    const monthDay = d.toLocaleDateString(locale, {
       month: "short",
       day: "numeric",
       timeZone: "UTC",
@@ -86,7 +87,7 @@ export function nextQatarDays(
     days.push({
       date: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`,
       label: i === 0 ? "Today" : i === 1 ? "Tomorrow" : monthDay,
-      weekday: d.toLocaleDateString("en", {
+      weekday: d.toLocaleDateString(locale, {
         weekday: "short",
         timeZone: "UTC",
       }),

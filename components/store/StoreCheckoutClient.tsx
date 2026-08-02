@@ -745,7 +745,7 @@ export function StoreCheckoutClient() {
         order.pricing.currency !== reviewedPricing.currency ||
         (reviewedPricing.version !== null && order.pricing.version !== reviewedPricing.version)
       ) {
-        throw new Error("The created order does not match the price you confirmed.");
+        throw new Error(t("The created order does not match the price you confirmed."));
       }
       const checkout = savePendingCheckout(order, attempt, customer.id);
 

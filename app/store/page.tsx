@@ -1,13 +1,9 @@
-import type { Metadata } from "next";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { StoreClient } from "@/components/store/StoreClient";
+import { localizedMetadata } from "@/lib/localized-metadata";
 
-export const metadata: Metadata = {
-  title: "Store | Bubbleit",
-  description:
-    "Shop Bubbleit car care products, microfiber towels, brushes, gloves, and accessories.",
-};
+export const generateMetadata = () => localizedMetadata("store");
 
 export default function StorePage() {
   return (

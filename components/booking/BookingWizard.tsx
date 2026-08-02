@@ -34,19 +34,24 @@ import {
   createBooking,
   createVehicle,
   getAvailability,
+  getMembershipBookingOptions,
   getPaymentOptions,
   listAddresses,
+  listMemberships,
   listVehicles,
   getQuote,
   getServices,
   initializeBookingPayment,
   listStoreProducts,
   me,
+  validateServiceArea,
   validatePromo,
 } from "@/lib/api/client";
 import type {
   Booking,
   BookingQuote,
+  CustomerMembership,
+  MembershipBookingOptions,
   DurationContribution,
   DurationSnapshot,
   Address,
@@ -132,11 +137,18 @@ function durationFor(service: Service, vtype: VehicleType) {
   return vtype === "suv" ? service.duration_suv : service.duration_minutes;
 }
 
-const STEPS = [
+const REGULAR_STEPS = [
   "Services",
   "Location",
   "Schedule",
   "Pay & Confirm",
+] as const;
+
+const MEMBERSHIP_STEPS = [
+  "Vehicle",
+  "Location",
+  "Schedule",
+  "Products & confirm",
 ] as const;
 
 const KINDS: { value: WashKind; label: string; icon: string }[] = [
@@ -200,6 +212,16 @@ function vtypeLabel(vtype: VehicleType): string {
   }
 }
 
+function membershipCoversVehicle(
+  membership: CustomerMembership,
+  type: VehicleType,
+) {
+  const required = membership.plan.vehicle_type;
+  if (required === "sedan") return type === "sedan";
+  if (required === "suv") return type === "suv";
+  return ["sedan", "suv", "truck", "van", "other"].includes(type);
+}
+
 function fmt(amount: number, lang: "en" | "ar") {
   return formatQar(amount, lang);
 }
@@ -208,8 +230,8 @@ function Skeleton({ className }: { className: string }) {
   return <span aria-hidden="true" className={`block animate-pulse rounded-xl bg-slate-200/80 ${className}`} />;
 }
 
-function next7Days(): { date: string; label: string; weekday: string }[] {
-  return nextQatarDays(7);
+function next7Days(locale: string): { date: string; label: string; weekday: string }[] {
+  return nextQatarDays(7, locale);
 }
 
 export function BookingWizard() {
@@ -266,22 +288,31 @@ export function BookingWizard() {
   );
 
   // Step 3 — schedule
-  const days = useMemo(() => next7Days(), []);
+  const days = useMemo(() => next7Days(lang), [lang]);
   const [date, setDate] = useState(days[0].date);
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [availabilityDuration, setAvailabilityDuration] = useState<DurationSnapshot | null>(null);
+  const [membershipOptions, setMembershipOptions] = useState<MembershipBookingOptions | null>(null);
   const [slot, setSlot] = useState<string | null>(null);
   const [slotSelectedAt, setSlotSelectedAt] = useState<number | null>(null);
   const [serviceAreaVersion, setServiceAreaVersion] = useState<string | null>(null);
+  const [dispatchZoneVersion, setDispatchZoneVersion] = useState<string | null>(null);
 
   // Step 4 — payment
   const [notes, setNotes] = useState("");
   const [bookingProducts, setBookingProducts] = useState<StoreProductInventory[]>([]);
   const [productQuantities, setProductQuantities] = useState<Record<string, number>>({});
   const [productPromptSeen, setProductPromptSeen] = useState(false);
+  const [membershipProductChoice, setMembershipProductChoice] = useState<"none" | "add" | null>(null);
 
   // Step 5 — identity + confirm
   const [authed, setAuthed] = useState(false);
+  const [authResolved, setAuthResolved] = useState(false);
+  const [memberships, setMemberships] = useState<CustomerMembership[]>([]);
+  const [membershipsLoading, setMembershipsLoading] = useState(false);
+  const [membershipsLoaded, setMembershipsLoaded] = useState(false);
+  const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null);
+  const [advancing, setAdvancing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Booking | null>(null);
@@ -289,6 +320,21 @@ export function BookingWizard() {
   const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
   const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>("skipcash_hosted");
   const bookingAttemptRef = useRef<string | null>(null);
+
+  const redeemableMemberships = useMemo(
+    () => memberships.filter((membership) => (
+      membership.status === "active"
+      && membership.washes_remaining > 0
+    )),
+    [memberships],
+  );
+  const membershipMode = authed && membershipsLoaded && redeemableMemberships.length > 0;
+  const selectedMembership = redeemableMemberships.find(
+    (membership) => membership.id === selectedMembershipId,
+  ) ?? redeemableMemberships[0] ?? null;
+  const steps = membershipMode ? MEMBERSHIP_STEPS : REGULAR_STEPS;
+  const effectiveMembershipProductChoice = membershipProductChoice
+    ?? (membershipMode && !productsLoading && bookingProducts.length === 0 ? "none" : null);
 
   const bookingAttemptKey = useCallback(() => {
     if (bookingAttemptRef.current) return bookingAttemptRef.current;
@@ -338,7 +384,8 @@ export function BookingWizard() {
       .finally(() => setProductsLoading(false));
     me()
       .then(() => setAuthed(true))
-      .catch(() => setAuthed(false));
+      .catch(() => setAuthed(false))
+      .finally(() => setAuthResolved(true));
   }, []);
 
   // Saved cars and locations power the quick-pick chips; refresh whenever auth flips on.
@@ -346,6 +393,12 @@ export function BookingWizard() {
   useEffect(() => {
     if (!authed) return;
     let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setMembershipsLoading(true);
+        setMembershipsLoaded(false);
+      }
+    });
     listVehicles()
       .then((vs) => {
         if (!cancelled) setMyVehicles(vs);
@@ -356,10 +409,69 @@ export function BookingWizard() {
         if (!cancelled) setMyAddresses(addresses);
       })
       .catch(() => {});
+    listMemberships()
+      .then((items) => {
+        if (!cancelled) setMemberships(items);
+      })
+      .catch(() => {
+        if (!cancelled) setMemberships([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setMembershipsLoading(false);
+          setMembershipsLoaded(true);
+        }
+      });
     return () => {
       cancelled = true;
     };
   }, [authed]);
+
+  const membershipModeRef = useRef(false);
+  useEffect(() => {
+    if (!membershipMode) {
+      membershipModeRef.current = false;
+      return;
+    }
+    if (membershipModeRef.current) return;
+    membershipModeRef.current = true;
+
+    const membership = redeemableMemberships[0];
+    queueMicrotask(() => {
+      setSelectedMembershipId(membership.id);
+      setCars([{
+        ...emptyCar(1),
+        vtype: membership.plan.vehicle_type ?? "suv",
+      }]);
+      setProductQuantities({});
+      setMembershipProductChoice(null);
+      setSlot(null);
+      setSlots(null);
+      setAvailabilityDuration(null);
+      setStep(0);
+    });
+  }, [membershipMode, redeemableMemberships]);
+
+  useEffect(() => {
+    if (!membershipMode || !selectedMembership || cars[0]?.vehicleId !== null) return;
+    const eligible = myVehicles.filter((vehicle) => membershipCoversVehicle(selectedMembership, vehicle.type));
+    if (eligible.length !== 1) return;
+    const vehicle = eligible[0];
+    queueMicrotask(() => {
+      setCars((current) => [{
+        ...(current[0] ?? emptyCar(1)),
+        vehicleId: vehicle.id,
+        kind: "car",
+        vtype: vehicle.type,
+        make: vehicle.make ?? "",
+        model: vehicle.model ?? "",
+        color: vehicle.color ?? "",
+        plate: vehicle.plate_number,
+        serviceId: null,
+        addOnIds: [],
+      }]);
+    });
+  }, [membershipMode, selectedMembership, myVehicles, cars]);
 
   // Reference "now" captured when slots load, used to hide today's past slots.
   const [nowMs, setNowMs] = useState(0);
@@ -373,20 +485,50 @@ export function BookingWizard() {
     if (!geo) {
       setSlots([]);
       setServiceAreaVersion(null);
+      setDispatchZoneVersion(null);
       setError(t("Confirm your map location before checking availability."));
       return;
     }
     setSlots(null);
     setAvailabilityDuration(null);
+    setMembershipOptions(null);
     setSlot(null);
     setSlotSelectedAt(null);
     setNowMs(Date.now());
-    getAvailability(d, "standard", { latitude: geo.lat, longitude: geo.lng }, cart)
+    const vehicleId = cars[0]?.vehicleId;
+    const request = membershipMode
+      ? selectedMembership && vehicleId
+        ? Promise.all([
+            getMembershipBookingOptions(selectedMembership.id, d, vehicleId, {
+              latitude: geo.lat,
+              longitude: geo.lng,
+            }),
+            validateServiceArea(geo.lat, geo.lng),
+          ]).then(([options, areaSnapshot]) => ({
+            slots: options.slots,
+            duration: options.duration,
+            serviceAreaVersion: areaSnapshot.version,
+            membershipOptions: options,
+            dispatchZoneVersion: options.dispatch_zone.version,
+          }))
+        : Promise.reject(new Error(t("Membership and vehicle are required.")))
+      : getAvailability(d, "standard", { latitude: geo.lat, longitude: geo.lng }, cart)
+          .then((availability) => ({
+            slots: availability.slots,
+            duration: availability.duration,
+            serviceAreaVersion: availability.service_area.version,
+            membershipOptions: null,
+            dispatchZoneVersion: availability.dispatch_zone.version,
+          }));
+
+    request
       .then((a) => {
         if (slotRequestRef.current === requestId) {
           setSlots(a.slots);
-          setServiceAreaVersion(a.service_area.version);
+          setServiceAreaVersion(a.serviceAreaVersion);
           setAvailabilityDuration(a.duration);
+          setMembershipOptions(a.membershipOptions);
+          setDispatchZoneVersion(a.dispatchZoneVersion);
           setError(null);
         }
       })
@@ -395,10 +537,18 @@ export function BookingWizard() {
           setSlots([]);
           setServiceAreaVersion(null);
           setAvailabilityDuration(null);
-          setError(caught instanceof ApiError ? caught.message : t("Could not validate this location."));
+          setMembershipOptions(null);
+          setDispatchZoneVersion(null);
+          setError(
+            caught instanceof ApiError && caught.code === "DISPATCH_ZONE_UNCOVERED"
+              ? t("We do not currently serve this location. Choose a location inside an available service area.")
+              : caught instanceof ApiError
+                ? caught.message
+                : t("Could not validate this location."),
+          );
         }
       });
-  }, [geo, t]);
+  }, [geo, t, membershipMode, selectedMembership, cars]);
 
   useEffect(() => {
     if (step !== 2) return;
@@ -523,7 +673,7 @@ export function BookingWizard() {
   );
 
   useEffect(() => {
-    if (step !== 3 || !authed || !slot || !availabilityDuration) return;
+    if (membershipMode || step !== 3 || !authed || !slot || !availabilityDuration) return;
     const choicesMatchCart = membershipCartKeyRef.current === membershipCartKey;
     if (!choicesMatchCart) {
       membershipCartKeyRef.current = membershipCartKey;
@@ -569,6 +719,9 @@ export function BookingWizard() {
         ? { address_id: selectedAddressId }
         : { latitude: geo.lat, longitude: geo.lng }),
       service_area_version: serviceAreaVersion,
+      ...(dispatchZoneVersion
+        ? { dispatch_zone_version: dispatchZoneVersion }
+        : {}),
     })
       .then((q) => {
         if (!cancelled) {
@@ -602,25 +755,29 @@ export function BookingWizard() {
     return () => {
       cancelled = true;
     };
-  }, [step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, availabilityDuration, availabilityCars, loadSlots, quoteRetryVersion, membershipChoices, membershipCartKey, productQuantities, promoActive, applied?.code, t]);
+  }, [membershipMode, step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, dispatchZoneVersion, availabilityDuration, availabilityCars, loadSlots, quoteRetryVersion, membershipChoices, membershipCartKey, productQuantities, promoActive, applied?.code, t]);
 
-  const applyMembership = quote?.cars.some((car) => car.covered) ?? false;
+  const applyMembership = membershipMode || (quote?.cars.some((car) => car.covered) ?? false);
   const membershipDiscount = applyMembership
     ? (quote?.membership_discount ?? 0)
     : 0;
   // The authoritative quote includes services, add-ons, products, membership,
   // and promo impact. No client-computed amount is submitted to payment.
-  const activeProductTotal = quote?.product_total ?? productTotal;
-  const dueTotal = quote?.total_price ?? netTotal + productTotal;
-  const washesLeftAfter = applyMembership
-    ? quote?.memberships.reduce(
-        (min, m) => Math.min(min, m.remaining_after),
-        Infinity,
-      )
-    : undefined;
+  const activeProductTotal = membershipMode ? productTotal : (quote?.product_total ?? productTotal);
+  const dueTotal = membershipMode ? productTotal : (quote?.total_price ?? netTotal + productTotal);
+  const washesLeftAfter = membershipMode
+    ? selectedMembership ? Math.max(0, selectedMembership.washes_remaining - 1) : undefined
+    : applyMembership
+      ? quote?.memberships.reduce(
+          (min, m) => Math.min(min, m.remaining_after),
+          Infinity,
+        )
+      : undefined;
   const showPromo = authed && quote !== null && !applyMembership && total > 0;
 
-  const carsValid = cars.every((c) => c.serviceId !== null && c.plate.trim());
+  const carsValid = membershipMode
+    ? selectedMembership !== null && cars.length === 1 && cars[0].plate.trim().length > 0
+    : cars.every((c) => c.serviceId !== null && c.plate.trim());
 
   const canContinue =
     (step === 0 && carsValid) ||
@@ -644,6 +801,9 @@ export function BookingWizard() {
         ? { lat: address.latitude, lng: address.longitude }
         : null,
     );
+    setSlot(null);
+    setSlots(null);
+    setDispatchZoneVersion(null);
     setGeoState("idle");
   }
 
@@ -666,6 +826,75 @@ export function BookingWizard() {
           : c,
       ),
     );
+  }
+
+  function handleAuthed() {
+    setAuthed(true);
+    setAuthResolved(true);
+    setMembershipsLoaded(false);
+  }
+
+  function chooseMembership(membershipId: number) {
+    const membership = redeemableMemberships.find((item) => item.id === membershipId);
+    if (!membership || membership.id === selectedMembership?.id) return;
+    setSelectedMembershipId(membership.id);
+    setCars([{
+      ...emptyCar(1),
+      vtype: membership.plan.vehicle_type ?? "suv",
+    }]);
+    setSlot(null);
+    setSlots(null);
+    setAvailabilityDuration(null);
+    setMembershipOptions(null);
+    setProductQuantities({});
+    setMembershipProductChoice(null);
+    setError(null);
+  }
+
+  async function continueBooking() {
+    if (step >= steps.length - 1) return;
+    if (!membershipMode || step !== 0) {
+      setStep(step + 1);
+      return;
+    }
+    if (!selectedMembership || !cars[0]?.plate.trim()) return;
+
+    setAdvancing(true);
+    setError(null);
+    try {
+      let vehicleId = cars[0].vehicleId;
+      if (vehicleId === null) {
+        const vehicle = await createVehicle({
+          make: cars[0].make.trim(),
+          model: cars[0].model.trim(),
+          year: null,
+          color: cars[0].color.trim(),
+          plate_number: cars[0].plate.trim(),
+          type: cars[0].vtype,
+        }, `${bookingAttemptKey()}:membership-vehicle`);
+        if (!membershipCoversVehicle(selectedMembership, vehicle.type)) {
+          throw new Error(t("The saved vehicle does not match this membership."));
+        }
+        vehicleId = vehicle.id;
+        setMyVehicles((current) => current.some((item) => item.id === vehicle.id)
+          ? current
+          : [vehicle, ...current]);
+        setCars((current) => [{
+          ...(current[0] ?? emptyCar(1)),
+          vehicleId: vehicle.id,
+          vtype: vehicle.type,
+          make: vehicle.make ?? "",
+          model: vehicle.model ?? "",
+          color: vehicle.color ?? "",
+          plate: vehicle.plate_number,
+        }]);
+      }
+      if (vehicleId !== null) setStep(1);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : t("We couldn't save this vehicle. Please try again."));
+    } finally {
+      setAdvancing(false);
+    }
   }
 
   // Best-effort reverse geocode to prefill the area (OpenStreetMap Nominatim).
@@ -697,6 +926,7 @@ export function BookingWizard() {
     (v: { lat: number; lng: number }) => {
       markLocationManual();
       setGeo(v);
+      setDispatchZoneVersion(null);
       setGeoState("idle");
       reverseGeocode(v.lat, v.lng);
     },
@@ -714,6 +944,7 @@ export function BookingWizard() {
         const { latitude, longitude } = pos.coords;
         markLocationManual();
         setGeo({ lat: latitude, lng: longitude });
+        setDispatchZoneVersion(null);
         setGeoState("idle");
         reverseGeocode(latitude, longitude);
       },
@@ -728,9 +959,19 @@ export function BookingWizard() {
       setStep(1);
       return;
     }
-    if (!quote?.duration.version) {
+    if (!availabilityDuration?.version) {
       setError(t("Review the authoritative service timing before confirming."));
       setStep(2);
+      return;
+    }
+    if (!membershipMode && !quote?.duration.version) {
+      setError(t("Review the authoritative service timing before confirming."));
+      setStep(2);
+      return;
+    }
+    if (membershipMode && (!selectedMembership || !cars[0]?.vehicleId || effectiveMembershipProductChoice === null)) {
+      setError(t("Choose your membership vehicle and whether you want store products."));
+      setStep(cars[0]?.vehicleId ? 3 : 0);
       return;
     }
     setSubmitting(true);
@@ -738,8 +979,8 @@ export function BookingWizard() {
     const attemptKey = bookingAttemptKey();
     try {
       const addressId = selectedAddressId ?? (await createAddress({
-        label: "Home",
-        area: area.trim() || "Qatar",
+        label: t("Home"),
+        area: area.trim() || t("Qatar"),
         details: details.trim(),
         building_number: buildingNumber.trim(),
         zone_number: zoneNumber.trim(),
@@ -748,42 +989,66 @@ export function BookingWizard() {
         longitude: geo.lng,
       }, `${attemptKey}:address`)).id;
 
-      const carPayloads = [];
-      for (const car of cars) {
-        let vehicleId = car.vehicleId;
-        if (vehicleId === null) {
-          const vehicle = await createVehicle({
-            make: car.make.trim(),
-            model: car.model.trim(),
-            year: null,
-            color: car.color.trim(),
-            plate_number: car.plate.trim(),
-            type: car.vtype,
-          }, `${attemptKey}:vehicle:${car.key}`);
-          vehicleId = vehicle.id;
-        }
-        carPayloads.push({
-          vehicle_id: vehicleId,
-          service_id: car.serviceId as number,
-          add_on_ids: car.addOnIds,
-        });
-      }
+      const productLines = Object.entries(productQuantities)
+        .filter(([, quantity]) => quantity > 0)
+        .map(([productId, quantity]) => ({ product_id: Number(productId), quantity }));
 
-      const booking = await createBooking({
-        quote_id: quote.quote_id,
-        quote_version: quote.quote_version,
-        scheduled_at: serializeQatarBookingDateTime(date, slot),
-        duration_version: quote.duration.version,
-        cars: carPayloads,
-        address_id: addressId,
-        service_area_version: serviceAreaVersion,
-        payment_method: "online",
-        notes: notes.trim() || undefined,
-        promo_code: !applyMembership && promoActive ? applied.code : undefined,
-        product_lines: Object.entries(productQuantities)
-          .filter(([, quantity]) => quantity > 0)
-          .map(([productId, quantity]) => ({ product_id: Number(productId), quantity })),
-      }, `${attemptKey}:booking`);
+      let booking: Booking;
+      if (membershipMode && selectedMembership && cars[0].vehicleId) {
+        booking = await createBooking({
+          membership_id: selectedMembership.id,
+          vehicle_id: cars[0].vehicleId,
+          scheduled_at: serializeQatarBookingDateTime(date, slot),
+          duration_version: availabilityDuration.version,
+          address_id: addressId,
+          service_area_version: serviceAreaVersion,
+          ...(dispatchZoneVersion
+            ? { dispatch_zone_version: dispatchZoneVersion }
+            : {}),
+          payment_method: "online",
+          notes: notes.trim() || undefined,
+          product_lines: effectiveMembershipProductChoice === "add" ? productLines : [],
+        }, `${attemptKey}:booking`);
+      } else {
+        if (!quote) throw new Error(t("An authoritative quote is required."));
+        const carPayloads = [];
+        for (const car of cars) {
+          let vehicleId = car.vehicleId;
+          if (vehicleId === null) {
+            const vehicle = await createVehicle({
+              make: car.make.trim(),
+              model: car.model.trim(),
+              year: null,
+              color: car.color.trim(),
+              plate_number: car.plate.trim(),
+              type: car.vtype,
+            }, `${attemptKey}:vehicle:${car.key}`);
+            vehicleId = vehicle.id;
+          }
+          carPayloads.push({
+            vehicle_id: vehicleId,
+            service_id: car.serviceId as number,
+            add_on_ids: car.addOnIds,
+          });
+        }
+
+        booking = await createBooking({
+          quote_id: quote.quote_id,
+          quote_version: quote.quote_version,
+          scheduled_at: serializeQatarBookingDateTime(date, slot),
+          duration_version: quote.duration.version,
+          cars: carPayloads,
+          address_id: addressId,
+          service_area_version: serviceAreaVersion,
+          ...(dispatchZoneVersion
+            ? { dispatch_zone_version: dispatchZoneVersion }
+            : {}),
+          payment_method: "online",
+          notes: notes.trim() || undefined,
+          promo_code: !applyMembership && promoActive ? applied.code : undefined,
+          product_lines: productLines,
+        }, `${attemptKey}:booking`);
+      }
 
       if (booking.payment?.status === "cash_due") {
         clearBookingAttempt();
@@ -805,7 +1070,7 @@ export function BookingWizard() {
           }
           const checkoutUrl = usableCheckoutUrl(payment.checkout_url);
           if (!checkoutUrl) {
-            throw new Error("Payment provider did not return a usable checkout link.");
+            throw new Error(t("Payment provider did not return a usable checkout link."));
           }
           clearBookingAttempt();
           window.location.assign(checkoutUrl);
@@ -823,9 +1088,10 @@ export function BookingWizard() {
       clearBookingAttempt();
       setConfirmed(booking);
     } catch (e) {
-      if (e instanceof ApiError && ["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR"].includes(e.code ?? "")) {
+      if (e instanceof ApiError && ["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR", "DISPATCH_ZONE_STALE", "DISPATCH_ZONE_UNCOVERED"].includes(e.code ?? "")) {
         setError(t("The Qatar service-area map changed or this saved location needs confirmation. Please reselect the location."));
         setServiceAreaVersion(null);
+        setDispatchZoneVersion(null);
         setStep(1);
         clearBookingAttempt();
       } else if (e instanceof ApiError && e.code === "DURATION_VERSION_STALE") {
@@ -835,7 +1101,14 @@ export function BookingWizard() {
         clearBookingAttempt();
         loadSlots(date, availabilityCars);
       } else if (e instanceof ApiError && e.status === 409) {
-        if (e.message.toLowerCase().includes("quote") || e.message.toLowerCase().includes("membership wash")) {
+        if (membershipMode && e.message.toLowerCase().includes("membership")) {
+          setError(t("Your membership availability changed. Choose an eligible vehicle and time again."));
+          setStep(0);
+          clearBookingAttempt();
+          listMemberships().then(setMemberships).catch(() => {});
+          return;
+        }
+        if (!membershipMode && (e.message.toLowerCase().includes("quote") || e.message.toLowerCase().includes("membership wash"))) {
           setError(t("Your price or membership availability changed. Review a fresh quote before confirming."));
           setQuote(null);
           setQuoteRetryVersion((version) => version + 1);
@@ -893,7 +1166,7 @@ export function BookingWizard() {
       }
       const checkoutUrl = usableCheckoutUrl(payment.checkout_url);
       if (!checkoutUrl) {
-        throw new Error("Payment provider did not return a usable checkout link.");
+        throw new Error(t("Payment provider did not return a usable checkout link."));
       }
       clearBookingAttempt();
       window.location.assign(checkoutUrl);
@@ -904,7 +1177,7 @@ export function BookingWizard() {
     }
   }
 
-  if (loadError) {
+  if (loadError && authResolved && (!authed || (membershipsLoaded && !membershipMode))) {
     return (
       <div className="glass-panel mx-auto max-w-lg rounded-[var(--radius-card)] p-10 text-center">
         <h2 className="text-xl font-bold">
@@ -939,7 +1212,7 @@ export function BookingWizard() {
         className="mb-7 grid grid-cols-4 gap-2"
         aria-label={t("Booking progress")}
       >
-        {STEPS.map((label, i) => (
+        {steps.map((label, i) => (
           <div key={label} className="min-w-0" aria-current={i === step ? "step" : undefined}>
             <div
               className={clsx(
@@ -963,22 +1236,56 @@ export function BookingWizard() {
 
       <div className="glass-panel rounded-[var(--radius-card)] p-4 sm:p-10">
         {step === 0 && (
-          <StepServices
-            services={services}
-            loading={servicesLoading}
-            cars={cars}
-            savedVehicles={myVehicles}
-            onUpdate={updateCar}
-            onAdd={() =>
-              setCars((prev) => [
-                ...prev,
-                emptyCar(Math.max(...prev.map((c) => c.key)) + 1),
-              ])
-            }
-            onRemove={(key) =>
-              setCars((prev) => prev.filter((c) => c.key !== key))
-            }
-          />
+          membershipsLoading ? (
+            <StepPanel
+              title={t("Checking your membership")}
+              subtitle={t("We’re loading the vehicles and booking times included with your plan.")}
+            >
+              <Skeleton className="h-28 w-full" />
+              <Skeleton className="h-40 w-full" />
+            </StepPanel>
+          ) : membershipMode && selectedMembership ? (
+            <StepMembershipVehicle
+              memberships={redeemableMemberships}
+              selectedMembership={selectedMembership}
+              vehicles={myVehicles}
+              car={cars[0] ?? emptyCar(1)}
+              onMembershipChange={chooseMembership}
+              onUpdate={(patch) => updateCar(cars[0]?.key ?? 1, patch)}
+            />
+          ) : (
+            <>
+              {!authed && authResolved && (
+                <details className="mb-5 rounded-3xl border border-sky-200 bg-sky-50/80 p-4 open:bg-white sm:p-5">
+                  <summary className="min-h-11 cursor-pointer list-none font-bold text-[color:var(--navy)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)]">
+                    {t("Already have a membership? Sign in before choosing a service.")}
+                    <span className="mt-1 block text-sm font-normal text-[color:var(--muted-foreground)]">
+                      {t("We’ll skip service selection and show only the vehicles and times your membership covers.")}
+                    </span>
+                  </summary>
+                  <div className="mt-4 border-t border-sky-100 pt-4">
+                    <AuthPanel inline onAuthed={handleAuthed} />
+                  </div>
+                </details>
+              )}
+              <StepServices
+                services={services}
+                loading={servicesLoading}
+                cars={cars}
+                savedVehicles={myVehicles}
+                onUpdate={updateCar}
+                onAdd={() =>
+                  setCars((prev) => [
+                    ...prev,
+                    emptyCar(Math.max(...prev.map((c) => c.key)) + 1),
+                  ])
+                }
+                onRemove={(key) =>
+                  setCars((prev) => prev.filter((c) => c.key !== key))
+                }
+              />
+            </>
+          )
         )}
 
         {step === 1 && (
@@ -1147,9 +1454,21 @@ export function BookingWizard() {
 
         {step === 2 && (
           <StepPanel
-            title={t("Pick your time")}
-            subtitle={t("Choose a day and an available slot.")}
+            title={t(membershipMode ? "Choose your membership time" : "Pick your time")}
+            subtitle={t(
+              membershipMode && selectedMembership?.plan.window_start
+                ? "This membership includes private booking times from 12:00 a.m. to 5:00 a.m."
+                : "Choose a day and an available slot.",
+            )}
           >
+            {membershipMode && selectedMembership?.plan.window_start && (
+              <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-950" role="status">
+                <span className="font-bold">{t("Midnight membership access")}</span>
+                <span className="mt-1 block text-indigo-800">
+                  {t("Only eligible midnight membership customers can see and book these slots.")}
+                </span>
+              </div>
+            )}
             <div className="flex gap-2 overflow-x-auto pb-2">
               {days.map((d) => (
                 <button
@@ -1176,22 +1495,34 @@ export function BookingWizard() {
                 ))}
               </div>
             ) : (
-              <HourSlotPicker
-                date={date}
-                slots={slots}
-                selectedSlot={slot}
-                nowMs={nowMs}
-                onSelect={selectSlot}
-              />
+              <>
+                <HourSlotPicker
+                  date={date}
+                  slots={slots}
+                  selectedSlot={slot}
+                  nowMs={nowMs}
+                  onSelect={selectSlot}
+                />
+                {!slots.some((candidate) => candidate.available) && (
+                  <div
+                    className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                    role="status"
+                  >
+                    {t("We serve this location, but no times are available on this day. Choose another day.")}
+                  </div>
+                )}
+              </>
             )}
           </StepPanel>
         )}
 
         {step === 3 && (
           <StepPanel
-            title={t("Pay & Confirm")}
+            title={t(membershipMode ? "Review your membership booking" : "Pay & Confirm")}
             subtitle={t(
-              paymentOptions?.mode === "cash"
+              membershipMode
+                ? "Your wash is prepaid. Add store products if you want them, then confirm."
+                : paymentOptions?.mode === "cash"
                 ? "Confirm your booking now and pay cash when the driver arrives."
                 : "Pay online and confirm your booking in one final step.",
             )}
@@ -1200,7 +1531,7 @@ export function BookingWizard() {
               <AuthPanel
                 inline
                 title={t("Sign in to confirm your booking.")}
-                onAuthed={() => setAuthed(true)}
+                onAuthed={handleAuthed}
               />
             )}
 
@@ -1270,7 +1601,7 @@ export function BookingWizard() {
               </div>
             )}
 
-            {authed && !quoteLoading && quote && dueTotal > 0 && (
+            {authed && !quoteLoading && (membershipMode || quote) && dueTotal > 0 && (
               <PaymentMethodSelector
                 options={paymentOptions}
                 value={paymentChannel}
@@ -1295,8 +1626,13 @@ export function BookingWizard() {
                 products={bookingProducts}
                 loading={productsLoading}
                 quantities={productQuantities}
-                autoOpen={!productPromptSeen}
+                autoOpen={!membershipMode && !productPromptSeen}
                 onAutoOpen={() => setProductPromptSeen(true)}
+                membershipDecision={membershipMode ? effectiveMembershipProductChoice : undefined}
+                onMembershipDecision={membershipMode ? (decision) => {
+                  setMembershipProductChoice(decision);
+                  if (decision === "none") setProductQuantities({});
+                } : undefined}
                 onChange={(id, quantity) => setProductQuantities((current) => ({
                   ...current,
                   [id]: quantity,
@@ -1312,7 +1648,20 @@ export function BookingWizard() {
               />
             </Field>
 
-            {quote && (
+            {membershipMode && selectedMembership && membershipOptions ? (
+              <MembershipSummary
+                membership={selectedMembership}
+                options={membershipOptions}
+                vehicle={cars[0]}
+                area={area}
+                details={details}
+                date={date}
+                slot={slot}
+                products={bookingProducts}
+                quantities={productQuantities}
+                productTotal={productTotal}
+              />
+            ) : quote ? (
               <Summary
                 cars={cars}
                 services={services}
@@ -1334,7 +1683,7 @@ export function BookingWizard() {
                 quotedProducts={quote.products}
                 productTotal={activeProductTotal}
               />
-            )}
+            ) : null}
           </StepPanel>
         )}
 
@@ -1346,7 +1695,17 @@ export function BookingWizard() {
           <div className="mx-auto flex w-full max-w-3xl items-center gap-3">
           <div className="min-w-0 flex-1 text-xs text-[color:var(--muted-foreground)] sm:text-sm">
             {step === 3 ? (
-              quote ? (
+              membershipMode ? (
+                <>
+                  {t("Products due")} {" "}
+                  <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
+                    {fmt(dueTotal, lang)}
+                  </span>
+                  <span className="ms-2 text-xs font-semibold text-emerald-600">
+                    ({t("wash covered by membership")})
+                  </span>
+                </>
+              ) : quote ? (
                 <>
                   {t("Total")}{" "}
                   <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
@@ -1370,7 +1729,14 @@ export function BookingWizard() {
                 </span>
               )
             ) : (
-              total > 0 && (
+              membershipMode && selectedMembership ? (
+                <>
+                  <span className="block truncate font-bold text-[color:var(--navy)]">
+                    {localized(lang, selectedMembership.plan.name, selectedMembership.plan.name_ar)}
+                  </span>
+                  <span>{selectedMembership.washes_remaining} {t("washes left")}</span>
+                </>
+              ) : total > 0 && (
                 <>
                   {t("Total")}{" "}
                   <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
@@ -1390,25 +1756,36 @@ export function BookingWizard() {
                 {t("Back")}
               </button>
             )}
-            {step < STEPS.length - 1 ? (
+            {step < steps.length - 1 ? (
               <button
                 type="button"
                 className="primary-button min-w-0 flex-1 px-5 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
-                disabled={!canContinue}
-                onClick={() => setStep(step + 1)}
+                disabled={!canContinue || advancing}
+                onClick={continueBooking}
               >
-                {t("Continue")}
+                {advancing ? t("Saving vehicle…") : t("Continue")}
               </button>
             ) : (
               <button
                 type="button"
                 className="primary-button min-w-0 flex-1 px-5 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
-                disabled={submitting || !authed || quoteLoading || !quote?.quote_id || !quote?.quote_version}
+                disabled={
+                  submitting
+                  || !authed
+                  || quoteLoading
+                  || (membershipMode
+                    ? effectiveMembershipProductChoice === null
+                      || (effectiveMembershipProductChoice === "add" && productTotal <= 0)
+                      || !availabilityDuration?.version
+                    : !quote?.quote_id || !quote?.quote_version)
+                }
                 onClick={submit}
               >
                 {submitting
                   ? t("Confirming…")
-                  : applyMembership && dueTotal <= 0
+                  : membershipMode && dueTotal > 0
+                    ? t("Pay for products")
+                    : applyMembership && dueTotal <= 0
                     ? t("Confirm booking")
                     : paymentOptions?.mode === "cash"
                       ? t("Confirm cash booking")
@@ -1465,6 +1842,238 @@ function Field({
       </span>
       {children}
     </label>
+  );
+}
+
+function StepMembershipVehicle({
+  memberships,
+  selectedMembership,
+  vehicles,
+  car,
+  onMembershipChange,
+  onUpdate,
+}: {
+  memberships: CustomerMembership[];
+  selectedMembership: CustomerMembership;
+  vehicles: Vehicle[];
+  car: CarDraft;
+  onMembershipChange: (membershipId: number) => void;
+  onUpdate: (patch: Partial<CarDraft>) => void;
+}) {
+  const { lang, t } = useI18n();
+  const eligibleVehicles = vehicles.filter((vehicle) => membershipCoversVehicle(selectedMembership, vehicle.type));
+  const [showNewVehicle, setShowNewVehicle] = useState(false);
+  const newVehicleVisible = eligibleVehicles.length === 0 || showNewVehicle;
+
+  const vehicleType = selectedMembership.plan.vehicle_type;
+  const typeDescription = vehicleType === "sedan"
+    ? t("Sedan vehicles only")
+    : vehicleType === "suv"
+      ? t("SUV vehicles only")
+      : t("Eligible car vehicles");
+
+  return (
+    <StepPanel
+      title={t("Choose your membership vehicle")}
+      subtitle={t("The service is included with your plan, so you only need to choose the car.")}
+    >
+      {memberships.length > 1 && (
+        <section aria-labelledby="membership-plan-heading">
+          <h3 id="membership-plan-heading" className="mb-2 text-sm font-bold text-[color:var(--navy)]">
+            {t("Membership to use")}
+          </h3>
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {memberships.map((membership) => {
+              const active = membership.id === selectedMembership.id;
+              return (
+                <button
+                  key={membership.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => onMembershipChange(membership.id)}
+                  className={clsx(
+                    "min-h-16 min-w-[15rem] cursor-pointer rounded-2xl border px-4 py-3 text-start transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-2",
+                    active
+                      ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                      : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
+                  )}
+                >
+                  <span className="block font-bold">
+                    {localized(lang, membership.plan.name, membership.plan.name_ar)}
+                  </span>
+                  <span className={clsx("mt-1 block text-xs", active ? "text-white/75" : "text-[color:var(--muted-foreground)]")}>
+                    {membership.washes_remaining} {t("washes left")}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5" aria-label={t("Membership booking details")}>
+        <div className="flex items-start gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-600 text-white" aria-hidden="true">
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none">
+              <path d="M5 12.5 9.2 17 19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <h3 className="font-bold text-emerald-950">
+              {localized(lang, selectedMembership.plan.name, selectedMembership.plan.name_ar)}
+            </h3>
+            <p className="mt-1 text-sm text-emerald-800">
+              {t("Service selected automatically")} · {typeDescription}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-emerald-700">
+              {selectedMembership.washes_remaining} {t("washes available")}
+              {selectedMembership.plan.window_start ? ` · ${t("Midnight access 12:00 a.m.–5:00 a.m.")}` : ""}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {eligibleVehicles.length > 0 && (
+        <section aria-labelledby="covered-vehicles-heading">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h3 id="covered-vehicles-heading" className="font-bold text-[color:var(--navy)]">
+                {t("Covered vehicles")}
+              </h3>
+              <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
+                {t("Only vehicles that match this membership are shown.")}
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {eligibleVehicles.map((vehicle) => {
+              const active = car.vehicleId === vehicle.id;
+              return (
+                <button
+                  key={vehicle.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    setShowNewVehicle(false);
+                    onUpdate({
+                      kind: "car",
+                      vehicleId: vehicle.id,
+                      vtype: vehicle.type,
+                      make: vehicle.make ?? "",
+                      model: vehicle.model ?? "",
+                      color: vehicle.color ?? "",
+                      plate: vehicle.plate_number,
+                      serviceId: null,
+                      addOnIds: [],
+                    });
+                  }}
+                  className={clsx(
+                    "flex min-h-24 cursor-pointer items-center gap-3 rounded-2xl border p-4 text-start transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-2",
+                    active
+                      ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                      : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
+                  )}
+                >
+                  <span className={clsx("grid h-11 w-11 shrink-0 place-items-center rounded-2xl", active ? "bg-white/15" : "bg-sky-50 text-[color:var(--blue)]")} aria-hidden="true">
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none">
+                      <path d="m5 15 1.4-5.2A2.5 2.5 0 0 1 8.8 8h6.4a2.5 2.5 0 0 1 2.4 1.8L19 15M4 15h16v4H4v-4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                      <circle cx="7" cy="18" r="1" fill="currentColor" /><circle cx="17" cy="18" r="1" fill="currentColor" />
+                    </svg>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-lg font-extrabold" dir="ltr">{vehicle.plate_number}</span>
+                    <span className={clsx("mt-1 block truncate text-xs", active ? "text-white/75" : "text-[color:var(--muted-foreground)]")}>
+                      {[vehicle.make, vehicle.model, t(vtypeLabel(vehicle.type))].filter(Boolean).join(" · ")}
+                    </span>
+                  </span>
+                  {active && <span className="text-sm font-bold" aria-hidden="true">✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {eligibleVehicles.length > 0 && (
+        <button
+          type="button"
+          className="secondary-button self-start"
+          onClick={() => {
+            setShowNewVehicle((current) => !current);
+            if (!newVehicleVisible) {
+              onUpdate({
+                vehicleId: null,
+                vtype: selectedMembership.plan.vehicle_type ?? "suv",
+                make: "",
+                model: "",
+                color: "",
+                plate: "",
+                serviceId: null,
+                addOnIds: [],
+              });
+            }
+          }}
+        >
+          {newVehicleVisible ? t("Choose a saved vehicle") : t("Add a different vehicle")}
+        </button>
+      )}
+
+      {newVehicleVisible && (
+        <section className="rounded-3xl border border-[color:var(--border)] bg-white p-4 sm:p-5" aria-labelledby="new-membership-vehicle-heading">
+          <h3 id="new-membership-vehicle-heading" className="font-bold text-[color:var(--navy)]">
+            {t("Add a covered vehicle")}
+          </h3>
+          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
+            {typeDescription}. {t("The plate number is required; the other details are optional.")}
+          </p>
+          {vehicleType === null && (
+            <div className="mt-4 grid grid-cols-2 gap-2" aria-label={t("Vehicle type")}>
+              {(["suv", "sedan"] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  aria-pressed={car.vtype === type}
+                  onClick={() => onUpdate({ vehicleId: null, vtype: type })}
+                  className={clsx(
+                    "min-h-11 cursor-pointer rounded-full border px-4 py-2 text-sm font-bold transition-colors",
+                    car.vtype === type
+                      ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
+                      : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
+                  )}
+                >
+                  {t(vtypeLabel(type))}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Field label={t("Plate no.")} required>
+              <input
+                className="wizard-input"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                placeholder="123456"
+                value={car.plate}
+                onChange={(event) => onUpdate({
+                  vehicleId: null,
+                  plate: event.target.value.replace(/\D/g, "").slice(0, 6),
+                })}
+              />
+            </Field>
+            <Field label={t("Make")}>
+              <input className="wizard-input" value={car.make} onChange={(event) => onUpdate({ vehicleId: null, make: event.target.value })} />
+            </Field>
+            <Field label={t("Model")}>
+              <input className="wizard-input" value={car.model} onChange={(event) => onUpdate({ vehicleId: null, model: event.target.value })} />
+            </Field>
+            <Field label={t("Color")}>
+              <input className="wizard-input" value={car.color} onChange={(event) => onUpdate({ vehicleId: null, color: event.target.value })} />
+            </Field>
+          </div>
+        </section>
+      )}
+    </StepPanel>
   );
 }
 
@@ -1827,6 +2436,8 @@ function BookingProductPicker({
   quantities,
   autoOpen,
   onAutoOpen,
+  membershipDecision,
+  onMembershipDecision,
   onChange,
 }: {
   products: StoreProductInventory[];
@@ -1834,6 +2445,8 @@ function BookingProductPicker({
   quantities: Record<string, number>;
   autoOpen: boolean;
   onAutoOpen: () => void;
+  membershipDecision?: "none" | "add" | null;
+  onMembershipDecision?: (decision: "none" | "add") => void;
   onChange: (id: string, quantity: number) => void;
 }) {
   const { lang, t } = useI18n();
@@ -1919,6 +2532,59 @@ function BookingProductPicker({
     0,
   );
 
+  if (membershipDecision === null && onMembershipDecision) {
+    return (
+      <section className="rounded-3xl border border-[color:var(--border)] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="membership-products-heading">
+        <h3 id="membership-products-heading" className="text-lg font-bold text-[color:var(--navy)]">
+          {t("Would you like any store products?")}
+        </h3>
+        <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
+          {t("Your wash is already paid. You’ll only pay for products you add.")}
+        </p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            className="secondary-button min-h-12 w-full"
+            onClick={() => onMembershipDecision("none")}
+          >
+            {t("No, confirm my wash")}
+          </button>
+          <button
+            type="button"
+            className="primary-button min-h-12 w-full"
+            onClick={() => {
+              onMembershipDecision("add");
+              setOpen(true);
+            }}
+          >
+            {t("Yes, browse products")}
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (membershipDecision === "none" && onMembershipDecision) {
+    return (
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3" role="status">
+        <div>
+          <p className="font-bold text-emerald-950">{t("No store products")}</p>
+          <p className="mt-1 text-sm text-emerald-800">{t("Your membership wash can be confirmed now with nothing to pay.")}</p>
+        </div>
+        <button
+          type="button"
+          className="min-h-11 cursor-pointer rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-bold text-emerald-900 transition-colors hover:bg-emerald-100 focus-visible:ring-2 focus-visible:ring-emerald-600"
+          onClick={() => {
+            onMembershipDecision("add");
+            setOpen(true);
+          }}
+        >
+          {t("Add products instead")}
+        </button>
+      </section>
+    );
+  }
+
   return (
     <>
       <button
@@ -1953,6 +2619,16 @@ function BookingProductPicker({
           <svg viewBox="0 0 20 20" className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" fill="none" aria-hidden="true"><path d="m7 4 6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </span>
       </button>
+
+      {membershipDecision === "add" && onMembershipDecision && (
+        <button
+          type="button"
+          className="min-h-11 cursor-pointer self-start rounded-full px-4 py-2 text-sm font-bold text-[color:var(--blue)] transition-colors hover:bg-sky-50 focus-visible:ring-2 focus-visible:ring-[color:var(--blue)]"
+          onClick={() => onMembershipDecision("none")}
+        >
+          {t("Continue without products")}
+        </button>
+      )}
 
       {open && createPortal(
         <div
@@ -2034,6 +2710,103 @@ function BookingProductPicker({
         document.body,
       )}
     </>
+  );
+}
+
+function MembershipSummary({
+  membership,
+  options,
+  vehicle,
+  area,
+  details,
+  date,
+  slot,
+  products,
+  quantities,
+  productTotal,
+}: {
+  membership: CustomerMembership;
+  options: MembershipBookingOptions;
+  vehicle: CarDraft;
+  area: string;
+  details: string;
+  date: string;
+  slot: string | null;
+  products: StoreProductInventory[];
+  quantities: Record<string, number>;
+  productTotal: number;
+}) {
+  const { lang, t } = useI18n();
+  const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(
+    lang === "ar" ? "ar-QA" : "en-QA",
+    { weekday: "long", month: "long", day: "numeric" },
+  );
+  const selectedProducts = products.filter((product) => (quantities[String(product.id)] ?? 0) > 0);
+
+  return (
+    <section className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5" aria-labelledby="membership-booking-summary-heading">
+      <h3 id="membership-booking-summary-heading" className="text-sm font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">
+        {t("Membership booking summary")}
+      </h3>
+      <dl className="mt-4 space-y-3 text-sm">
+        <div className="flex items-start justify-between gap-4">
+          <dt className="text-[color:var(--muted-foreground)]">{t("Membership")}</dt>
+          <dd className="max-w-[65%] text-end font-semibold text-[color:var(--navy)]">
+            {localized(lang, membership.plan.name, membership.plan.name_ar)}
+            <span className="mt-1 block text-xs font-normal text-[color:var(--muted-foreground)]">
+              {membership.washes_remaining} {t("washes before booking")} · {Math.max(0, membership.washes_remaining - 1)} {t("after")}
+            </span>
+          </dd>
+        </div>
+        <div className="flex items-start justify-between gap-4">
+          <dt className="text-[color:var(--muted-foreground)]">{t("Included service")}</dt>
+          <dd className="max-w-[65%] text-end font-semibold">{options.plan.service_name}</dd>
+        </div>
+        <div className="flex items-start justify-between gap-4">
+          <dt className="text-[color:var(--muted-foreground)]">{t("Vehicle")}</dt>
+          <dd className="max-w-[65%] text-end font-semibold" dir="ltr">
+            {vehicle.plate} · {[vehicle.make, vehicle.model].filter(Boolean).join(" ") || t(vtypeLabel(vehicle.vtype))}
+          </dd>
+        </div>
+        <div className="flex items-start justify-between gap-4">
+          <dt className="text-[color:var(--muted-foreground)]">{t("Location")}</dt>
+          <dd className="max-w-[65%] text-end font-semibold">
+            {area}
+            {details && <span className="mt-1 block text-xs font-normal text-[color:var(--muted-foreground)]">{details}</span>}
+          </dd>
+        </div>
+        <div className="flex items-start justify-between gap-4">
+          <dt className="text-[color:var(--muted-foreground)]">{t("When")}</dt>
+          <dd className="max-w-[65%] text-end font-semibold">
+            {dateLabel}
+            <span className="mt-1 block text-xs font-normal text-[color:var(--muted-foreground)]">
+              {slot} · {options.duration_minutes} {t("min")}
+            </span>
+          </dd>
+        </div>
+        {selectedProducts.map((product) => {
+          const quantity = quantities[String(product.id)] ?? 0;
+          return (
+            <div key={product.id} className="flex items-start justify-between gap-4 border-t border-[color:var(--border)] pt-3">
+              <dt>
+                <span className="font-semibold">{localized(lang, product.name, product.name_ar)}</span>
+                <span className="mt-1 block text-xs text-[color:var(--muted-foreground)]">{quantity} × {fmt(product.price, lang)}</span>
+              </dt>
+              <dd className="font-semibold">{fmt(product.price * quantity, lang)}</dd>
+            </div>
+          );
+        })}
+        <div className="flex items-center justify-between gap-4 border-t border-[color:var(--border)] pt-3 text-base">
+          <dt className="font-bold text-[color:var(--navy)]">{t("Amount to pay")}</dt>
+          <dd className="font-extrabold text-[color:var(--navy)]">{fmt(productTotal, lang)}</dd>
+        </div>
+      </dl>
+      <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
+        {productTotal > 0
+          ? t("The membership covers the wash. Checkout is only for the selected products.")
+          : t("The membership covers the wash. No payment is required.")}
+      </p>
+    </section>
   );
 }
 

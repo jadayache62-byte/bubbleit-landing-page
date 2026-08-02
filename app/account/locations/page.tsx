@@ -46,9 +46,9 @@ type LocationForm = {
   longitude: number | null;
 };
 
-const emptyForm: LocationForm = {
+const emptyForm = (label: string): LocationForm => ({
   id: null,
-  label: "Home",
+  label,
   area: "",
   details: "",
   building_number: "",
@@ -56,7 +56,7 @@ const emptyForm: LocationForm = {
   street_number: "",
   latitude: null,
   longitude: null,
-};
+});
 
 function formFromAddress(address: Address): LocationForm {
   return {
@@ -77,7 +77,7 @@ export default function AccountLocationsPage() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [checked, setChecked] = useState(false);
   const [locations, setLocations] = useState<Address[] | null>(null);
-  const [form, setForm] = useState<LocationForm>(emptyForm);
+  const [form, setForm] = useState<LocationForm>(() => emptyForm(t("Home")));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -149,7 +149,7 @@ export default function AccountLocationsPage() {
       if (form.id) await updateAddress(form.id, payload);
       else await createAddress(payload);
       setNotice(form.id ? t("Location updated.") : t("Location saved."));
-      setForm(emptyForm);
+      setForm(emptyForm(t("Home")));
       refresh();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("Could not save this location."));
@@ -164,7 +164,7 @@ export default function AccountLocationsPage() {
     setNotice(null);
     try {
       await deleteAddress(address.id);
-      if (form.id === address.id) setForm(emptyForm);
+      if (form.id === address.id) setForm(emptyForm(t("Home")));
       setNotice(t("Location removed."));
       refresh();
     } catch (e) {
@@ -234,7 +234,7 @@ export default function AccountLocationsPage() {
                   <p className="text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--blue)]">{form.id ? t("Edit location") : t("New location")}</p>
                   <h2 className="mt-1 text-2xl font-bold text-[color:var(--navy)]">{t("Blue plate details")}</h2>
                 </div>
-                {form.id && <button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setForm(emptyForm)}>{t("Add new")}</button>}
+                {form.id && <button type="button" className="min-h-11 text-sm font-bold text-[color:var(--blue)]" onClick={() => setForm(emptyForm(t("Home")))}>{t("Add new")}</button>}
               </div>
 
               <div className="space-y-4">

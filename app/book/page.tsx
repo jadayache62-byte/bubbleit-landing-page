@@ -1,14 +1,10 @@
-import type { Metadata } from "next";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { BookingWizard } from "@/components/booking/BookingWizard";
 import { BookingPageHeading } from "@/components/booking/BookingPageHeading";
+import { localizedMetadata } from "@/lib/localized-metadata";
 
-export const metadata: Metadata = {
-  title: "Book a Wash | Bubbleit",
-  description:
-    "Book a professional mobile car wash in minutes. Choose your service, pick a time, and Bubbleit comes to you.",
-};
+export const generateMetadata = () => localizedMetadata("book");
 
 export default function BookPage() {
   return (

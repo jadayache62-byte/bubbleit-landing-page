@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { useI18n } from "@/lib/i18n";
+import { languageSwitchLabel, useI18n } from "@/lib/i18n";
 
 // Absolute paths so the links work from /book and /account too.
 const navItems = [
@@ -65,7 +65,7 @@ export function Navbar() {
               onClick={() => setLang(lang === "en" ? "ar" : "en")}
               className="rounded-full border border-[color:var(--border)] px-3 py-1.5 text-sm font-semibold text-[color:var(--navy)] transition hover:border-[color:var(--blue)] hover:text-[color:var(--blue)]"
             >
-              {lang === "en" ? "عربي" : "EN"}
+              {languageSwitchLabel(lang, true)}
             </button>
             <Link href="/book" className="primary-button min-h-12 px-5">{t("Book a Wash")}</Link>
           </div>
@@ -129,7 +129,7 @@ export function Navbar() {
                 </Link>
               ))}
               <Link href="/book" onClick={() => setIsOpen(false)} className="primary-button mt-2 min-h-14 w-full text-base">{t("Book a Wash")}</Link>
-              <button type="button" onClick={() => setLang(lang === "en" ? "ar" : "en")} className="min-h-11 rounded-xl px-4 text-sm font-semibold text-[color:var(--muted-foreground)] transition hover:bg-[color:var(--background)]">{lang === "en" ? "العربية" : "English"}</button>
+              <button type="button" onClick={() => setLang(lang === "en" ? "ar" : "en")} className="min-h-11 rounded-xl px-4 text-sm font-semibold text-[color:var(--muted-foreground)] transition hover:bg-[color:var(--background)]">{languageSwitchLabel(lang)}</button>
             </nav>
           </div>
         </div>
