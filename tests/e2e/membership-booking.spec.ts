@@ -290,8 +290,10 @@ test("a midnight member books the covered vehicle without choosing a service", a
   await page.getByRole("button", { name: "Continue" }).click();
 
   await expect(page.getByRole("heading", { name: "Where should we come?" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Choose a location inside our service area" })).toBeVisible();
-  await expect(page.getByText("Move the pin or choose a saved location inside our service area to continue.", { exact: false })).toBeVisible();
+  const locationSnackbar = page.getByRole("status").filter({ hasText: "Choose a location inside our service area" });
+  await expect(locationSnackbar).toBeVisible();
+  await expect(locationSnackbar).toContainText("Move the pin or choose a saved location inside our service area to continue.");
+  await expect(locationSnackbar.locator("..")).toHaveClass(/fixed/);
   await expect(page.getByRole("heading", { name: "Choose your membership time" })).toHaveCount(0);
   await expect(page.locator('[role="alert"].border-red-200')).toHaveCount(0);
   expect(uncoveredAvailabilityRequests).toBe(1);

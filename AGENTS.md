@@ -25,9 +25,10 @@ membership, authentication, localization, security, and accessibility contracts.
   outcome are backend-owned. Do not calculate operational or financial truth in the browser.
 - Regular and membership availability require the selected latitude/longitude and return an opaque
   dispatch-zone version that must survive quote/confirmation. A location outside configured coverage
-  is blocked on Location with calm, actionable map guidance; a covered zone with no available time
-  advances to Schedule so the customer can choose another day. Never expose internal zone names,
-  buses, drivers, candidate counts, or automatic-assignment details to customers.
+  is blocked on Location with a fixed informational snackbar that remains visible at any scroll
+  position; a covered zone with no available time advances to Schedule so the customer can choose
+  another day. Never expose internal zone names, buses, drivers, candidate counts, or
+  automatic-assignment details to customers.
 - Membership vehicle and slot choices come only from the owner-scoped booking-options endpoint.
   Sedan plans accept only sedans, SUV plans accept only SUVs, and 00:00–05:00 slots remain private
   to eligible midnight memberships. Membership Pay & Confirm opens the same optional-product modal

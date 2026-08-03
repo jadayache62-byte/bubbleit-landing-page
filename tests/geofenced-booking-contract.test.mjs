@@ -25,6 +25,7 @@ test("customers see different messages for uncovered areas and a covered day wit
   assert.match(wizard, /if \(step === 1\)[\s\S]*await loadSlots\(date, availabilityCars\)[\s\S]*setStep\(2\)/);
   assert.match(wizard, /Choose a location inside our service area/);
   assert.match(wizard, /Move the pin or choose a saved location/);
+  assert.match(wizard, /locationIssue && \([\s\S]*<AppToast[\s\S]*tone="info"/);
   assert.doesNotMatch(wizard, /caught instanceof ApiError && caught\.code === "DISPATCH_ZONE_UNCOVERED"[\s\S]*setError/);
   assert.match(wizard, /We serve this location, but no times are available on this day/);
 });

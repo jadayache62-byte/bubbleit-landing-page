@@ -1354,35 +1354,6 @@ export function BookingWizard() {
             title={t("Where should we come?")}
             subtitle={t("Our wash bus comes to you — home, office, anywhere.")}
           >
-            {locationIssue && (
-              <section
-                className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sky-950"
-                role="status"
-                aria-live="polite"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-sky-600 text-white" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none"><path d="M12 21s6-5.7 6-11a6 6 0 1 0-12 0c0 5.3 6 11 6 11Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><circle cx="12" cy="10" r="2" fill="currentColor"/></svg>
-                  </span>
-                  <div>
-                    <h3 className="font-bold">
-                      {locationIssue === "outside"
-                        ? t("Choose a location inside our service area")
-                        : locationIssue === "missing"
-                          ? t("Pin this location on the map")
-                          : t("Please confirm this location again")}
-                    </h3>
-                    <p className="mt-1 text-sm leading-6 text-sky-900">
-                      {locationIssue === "outside"
-                        ? t("We cannot reach the selected location yet. Move the pin or choose a saved location inside our service area to continue.")
-                        : locationIssue === "missing"
-                          ? t("This saved location has no map pin. Tap the map to set the exact location before continuing.")
-                          : t("Our coverage map changed. Check the pin, then continue to refresh the available times.")}
-                    </p>
-                  </div>
-                </div>
-              </section>
-            )}
             {authed && myAddresses.length > 0 && (
               <section className="rounded-3xl border border-[color:var(--border)] bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -1772,6 +1743,23 @@ export function BookingWizard() {
           </StepPanel>
         )}
 
+        {locationIssue && (
+          <AppToast
+            tone="info"
+            title={locationIssue === "outside"
+              ? t("Choose a location inside our service area")
+              : locationIssue === "missing"
+                ? t("Pin this location on the map")
+                : t("Please confirm this location again")}
+            message={locationIssue === "outside"
+              ? t("We cannot reach the selected location yet. Move the pin or choose a saved location inside our service area to continue.")
+              : locationIssue === "missing"
+                ? t("This saved location has no map pin. Tap the map to set the exact location before continuing.")
+                : t("Our coverage map changed. Check the pin, then continue to refresh the available times.")}
+            dismissLabel={t("Dismiss message")}
+            onDismiss={() => setLocationIssue(null)}
+          />
+        )}
         {error && <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={() => setError(null)} />}
       </div>
 

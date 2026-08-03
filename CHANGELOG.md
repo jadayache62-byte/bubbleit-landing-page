@@ -7,7 +7,8 @@
 - Kept product-free membership confirmation immediate while sending any selected products through
   the existing product-only payment path.
 - Moved authoritative service-area and dispatch-zone validation into the Location step, preventing
-  unsupported locations from advancing and showing localized, actionable, non-red map guidance.
+  unsupported locations from advancing and showing a localized, actionable informational snackbar
+  that stays visible at every scroll position.
 - Kept covered locations with no free slots distinct so customers can continue to Schedule and
   choose another day.
 
