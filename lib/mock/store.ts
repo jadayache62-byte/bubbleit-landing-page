@@ -47,6 +47,7 @@ export type MockDB = {
   memberships: (CustomerMembership & { customer_id: number })[];
   tokens: Map<string, number>; // token -> customer id
   otps: Map<string, string>; // phone + purpose -> code
+  passwordResetGrants: Map<string, { customerId: number; expiresAt: number }>;
   bookings: (Booking & { customer_id: number })[];
   storeProducts: StoreProductInventory[];
   storeOrders: (StoreOrder & { customer_id: number })[];
@@ -144,6 +145,7 @@ function seed(): MockDB {
     memberships: [],
     tokens: new Map(),
     otps: new Map(),
+    passwordResetGrants: new Map(),
     bookings: [],
     storeProducts: STORE_PRODUCTS.map((product) => ({
       id: product.id,
@@ -253,6 +255,7 @@ const g = globalThis as typeof globalThis & { __bubbleitMockDb?: MockDB };
 
 export function db(): MockDB {
   g.__bubbleitMockDb ??= seed();
+  g.__bubbleitMockDb.passwordResetGrants ??= new Map();
   return g.__bubbleitMockDb;
 }
 

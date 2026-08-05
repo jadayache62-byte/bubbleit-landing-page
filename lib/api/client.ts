@@ -21,6 +21,7 @@ import type {
   MembershipPlan,
   MembershipBookingOptions,
   Paginated,
+  PasswordResetGrant,
   PromoValidation,
   QuoteCar,
   Service,
@@ -284,6 +285,28 @@ export function verifyOtp(phone: string, code: string) {
   return request<VerifyOtpResult>("/auth/verify-otp", {
     method: "POST",
     body: { phone, code, device_name: customerDeviceLabel() },
+  });
+}
+
+export function verifyPasswordResetOtp(phone: string, code: string) {
+  return request<PasswordResetGrant>("/auth/forgot-password/verify-otp", {
+    method: "POST",
+    body: { phone, code },
+  });
+}
+
+export function resetPassword(
+  resetToken: string,
+  password: string,
+  passwordConfirmation: string,
+) {
+  return request<null>("/auth/forgot-password/reset", {
+    method: "POST",
+    body: {
+      reset_token: resetToken,
+      password,
+      password_confirmation: passwordConfirmation,
+    },
   });
 }
 

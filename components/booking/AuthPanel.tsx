@@ -12,14 +12,23 @@ import {
   checkPhone,
   loginWithPassword,
   register,
+  resetPassword,
   requestOtp,
-  updateProfile,
+  verifyPasswordResetOtp,
   verifyOtp,
 } from "@/lib/api/client";
 import type { Customer } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
 
-type Stage = "phone" | "method" | "password" | "otp_login" | "register" | "register_code" | "forgot";
+type Stage =
+  | "phone"
+  | "method"
+  | "password"
+  | "otp_login"
+  | "register"
+  | "register_code"
+  | "forgot_code"
+  | "forgot_password";
 
 const OTP_RESEND_DELAY_SECONDS = 30;
 
@@ -61,6 +70,8 @@ export function AuthPanel({
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newPasswordConfirmation, setNewPasswordConfirmation] = useState("");
+  const [passwordResetToken, setPasswordResetToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -163,7 +174,10 @@ export function AuthPanel({
       await requestOtp(normalizeQatarPhone(phone), "authentication");
       beginResendCooldown();
       setCode("");
-      setStage("forgot");
+      setNewPassword("");
+      setNewPasswordConfirmation("");
+      setPasswordResetToken(null);
+      setStage("forgot_code");
     } catch (e) {
       fail(e);
     } finally {
@@ -200,21 +214,52 @@ export function AuthPanel({
     }
   }
 
-  async function submitForgot() {
+  async function verifyForgotCode() {
     setBusy(true);
     setError(null);
     try {
-      const result = await verifyOtp(normalizeQatarPhone(phone), code.trim());
-      if (newPassword.length >= 6) {
-        await updateProfile({ name: result.customer.name || "-", password: newPassword });
+      const grant = await verifyPasswordResetOtp(normalizeQatarPhone(phone), code.trim());
+      setPasswordResetToken(grant.reset_token);
+      setCode("");
+      resetResendCooldown();
+      setStage("forgot_password");
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 422) {
+        setError(t("The verification code is invalid or expired, or password recovery is unavailable for this number."));
+      } else {
+        fail(e);
       }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitForgotPassword() {
+    if (!passwordResetToken) {
+      setStage("forgot_code");
+      setError(t("Your password reset has expired. Request a new verification code."));
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      await resetPassword(passwordResetToken, newPassword, newPasswordConfirmation);
       setPassword("");
       setNewPassword("");
-      setCode("");
+      setNewPasswordConfirmation("");
+      setPasswordResetToken(null);
       setNotice(t("Your password was reset. Sign in again on this device."));
       setStage("password");
     } catch (e) {
-      fail(e);
+      if (e instanceof ApiError && e.status === 422) {
+        setPasswordResetToken(null);
+        setStage("forgot_code");
+        resetResendCooldown();
+        setError(t("Your password reset has expired. Request a new verification code."));
+      } else {
+        fail(e);
+      }
     } finally {
       setBusy(false);
     }
@@ -264,6 +309,9 @@ export function AuthPanel({
           setPhone(localQatarDigits(phone));
           setPassword("");
           setCode("");
+          setNewPassword("");
+          setNewPasswordConfirmation("");
+          setPasswordResetToken(null);
           setError(null);
           resetResendCooldown();
         }}
@@ -473,38 +521,91 @@ export function AuthPanel({
           </>
         )}
 
-        {stage === "forgot" && (
+        {stage === "forgot_code" && (
           <>
             {phoneChip}
             <p className="text-sm text-[color:var(--muted-foreground)]">
-              {t("We sent a 6-digit verification code to your phone. Enter it and choose a new password.")}
+              {t("We sent a 6-digit verification code to your phone. Enter it to verify your identity.")}
             </p>
             <input
               className="wizard-input tracking-[0.4em]"
+              aria-label={t("Verification code")}
               placeholder="••••••"
               inputMode="numeric"
+              autoComplete="one-time-code"
               dir="ltr"
               maxLength={6}
               value={code}
               autoFocus
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-            />
-            <input
-              className="wizard-input"
-              type="password"
-              placeholder={t("New password")}
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && code.length === 6 && verifyForgotCode()}
             />
             <button
               type="button"
               className="primary-button disabled:opacity-40"
-              disabled={busy || code.length !== 6 || newPassword.length < 6}
-              onClick={submitForgot}
+              disabled={busy || code.length !== 6}
+              onClick={verifyForgotCode}
             >
-              {busy ? t("Verifying…") : t("Sign in")}
+              {busy ? t("Verifying…") : t("Verify phone")}
             </button>
             {resendControl(startForgot)}
+          </>
+        )}
+
+        {stage === "forgot_password" && (
+          <>
+            {phoneChip}
+            <p className="text-sm font-semibold text-emerald-700">
+              {t("Phone verified. Choose a new password.")}
+            </p>
+            <input
+              className="wizard-input"
+              type="password"
+              autoComplete="new-password"
+              placeholder={t("New password")}
+              value={newPassword}
+              autoFocus
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+            <input
+              className="wizard-input"
+              type="password"
+              autoComplete="new-password"
+              placeholder={t("Confirm new password")}
+              value={newPasswordConfirmation}
+              onChange={(e) => setNewPasswordConfirmation(e.target.value)}
+              onKeyDown={(e) => {
+                if (
+                  e.key === "Enter" &&
+                  newPassword.length >= 6 &&
+                  newPassword === newPasswordConfirmation
+                ) {
+                  submitForgotPassword();
+                }
+              }}
+            />
+            {newPassword.length > 0 && newPassword.length < 6 && (
+              <p className="text-xs text-[color:var(--muted-foreground)]">
+                {t("Password must be at least 6 characters.")}
+              </p>
+            )}
+            {newPasswordConfirmation.length > 0 && newPassword !== newPasswordConfirmation && (
+              <p className="text-xs font-medium text-rose-700">
+                {t("Passwords do not match.")}
+              </p>
+            )}
+            <button
+              type="button"
+              className="primary-button disabled:opacity-40"
+              disabled={
+                busy ||
+                newPassword.length < 6 ||
+                newPassword !== newPasswordConfirmation
+              }
+              onClick={submitForgotPassword}
+            >
+              {busy ? t("Resetting…") : t("Reset password")}
+            </button>
           </>
         )}
 

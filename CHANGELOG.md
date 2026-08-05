@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-05 — OTP-verified forgot password
+
+- Split password recovery into an OTP identity-verification step followed by a separate new-password
+  step with confirmation and accessible validation feedback.
+- Replaced the temporary full customer login used by recovery with a one-time reset grant held only in
+  component memory; the customer signs in normally after the password changes.
+- Updated the development mock, same-origin session verification, Arabic localization, and auth
+  regression contracts to mirror the backend recovery lifecycle.
+
 ## 2026-08-02 — Unified membership checkout and early coverage guidance
 
 - Replaced the membership-only yes/no product question with the same automatically opened,

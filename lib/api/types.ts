@@ -316,6 +316,11 @@ export type VerifyOtpResult = {
   };
 };
 
+export type PasswordResetGrant = {
+  reset_token: string;
+  expires_at: string;
+};
+
 export type CreateBookingPayload = {
   quote_id?: string;
   quote_version?: string;

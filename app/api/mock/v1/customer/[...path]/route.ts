@@ -798,6 +798,68 @@ async function handle(req: NextRequest, segments: string[]) {
     return envelope({ token, customer: publicCustomer, is_new: isNew });
   }
 
+  if (method === "POST" && path === "auth/forgot-password/verify-otp") {
+    const phone = String(body.phone ?? "").trim();
+    const code = String(body.code ?? "").trim();
+    const key = otpKey(phone, "authentication");
+    if (store.otps.get(key) !== code) {
+      return fail(422, "The verification code is invalid or has expired.");
+    }
+    store.otps.delete(key);
+
+    const customer = store.customers.find((candidate) => candidate.phone === phone);
+    if (!customer) {
+      return fail(422, "Password recovery is unavailable for this phone number.");
+    }
+
+    for (const [token, grant] of store.passwordResetGrants.entries()) {
+      if (grant.customerId === customer.id) store.passwordResetGrants.delete(token);
+    }
+
+    const resetToken = Array.from(
+      crypto.getRandomValues(new Uint8Array(32)),
+      (value) => value.toString(16).padStart(2, "0"),
+    ).join("");
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+    store.passwordResetGrants.set(resetToken, { customerId: customer.id, expiresAt });
+
+    return envelope({
+      reset_token: resetToken,
+      expires_at: new Date(expiresAt).toISOString(),
+    }, { message: "Phone verified. Choose a new password." });
+  }
+
+  if (method === "POST" && path === "auth/forgot-password/reset") {
+    const resetToken = String(body.reset_token ?? "");
+    const password = String(body.password ?? "");
+    const confirmation = String(body.password_confirmation ?? "");
+    if (password.length < 6 || password !== confirmation) {
+      return fail(422, "Validation failed.", {
+        password: ["The password confirmation does not match."],
+      });
+    }
+
+    const grant = store.passwordResetGrants.get(resetToken);
+    store.passwordResetGrants.delete(resetToken);
+    if (!grant || grant.expiresAt <= Date.now()) {
+      return fail(422, "This password reset has expired. Request a new verification code.");
+    }
+
+    const customer = store.customers.find((candidate) => candidate.id === grant.customerId);
+    if (!customer) {
+      return fail(422, "This password reset has expired. Request a new verification code.");
+    }
+
+    customer.password = password;
+    for (const [token, customerId] of store.tokens.entries()) {
+      if (customerId === customer.id) store.tokens.delete(token);
+    }
+
+    const response = envelope(null, { message: "Password reset successfully." });
+    response.headers.set("X-Reauthentication-Required", "true");
+    return response;
+  }
+
   // Everything below requires auth.
   const customer = authCustomer(req);
   if (!customer) return fail(401, "Unauthenticated.");

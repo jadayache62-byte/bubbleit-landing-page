@@ -477,7 +477,19 @@ const AR: Record<string, string> = {
   "Create account": "إنشاء الحساب",
   "We sent a 6-digit verification code to your phone. Enter it and choose a new password.":
     "أرسلنا رمز تحقق من 6 أرقام إلى هاتفك. أدخله واختر كلمة مرور جديدة.",
+  "We sent a 6-digit verification code to your phone. Enter it to verify your identity.":
+    "أرسلنا رمز تحقق من 6 أرقام إلى هاتفك. أدخله للتحقق من هويتك.",
+  "Verify phone": "تحقق من الهاتف",
+  "Phone verified. Choose a new password.": "تم التحقق من الهاتف. اختر كلمة مرور جديدة.",
   "New password": "كلمة مرور جديدة",
+  "Confirm new password": "تأكيد كلمة المرور الجديدة",
+  "Passwords do not match.": "كلمتا المرور غير متطابقتين.",
+  "Reset password": "إعادة تعيين كلمة المرور",
+  "Resetting…": "جارٍ إعادة التعيين…",
+  "Your password reset has expired. Request a new verification code.":
+    "انتهت صلاحية إعادة تعيين كلمة المرور. اطلب رمز تحقق جديداً.",
+  "The verification code is invalid or expired, or password recovery is unavailable for this number.":
+    "رمز التحقق غير صالح أو منتهي الصلاحية، أو لا تتوفر استعادة كلمة المرور لهذا الرقم.",
   "Sign in to confirm your booking.": "سجّل الدخول لتأكيد حجزك.",
   "Redirecting to secure payment…": "جاري التحويل إلى الدفع الآمن…",
   "Payment received — your membership is active!": "تم الدفع — اشتراكك فعّال الآن!",
