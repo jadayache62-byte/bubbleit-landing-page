@@ -112,6 +112,10 @@ Repository notes for agents working on the Bubble It marketing site and customer
   registration/account claim, or recovery. Keep the local mock response and no-store behavior aligned.
 - OTP requests must include `purpose=registration` for signup/account claim and
   `purpose=authentication` for credential recovery. The local mock must reject cross-purpose reuse.
+- Forgot-password recovery verifies its authentication-purpose OTP through the dedicated recovery
+  endpoint before rendering the new-password fields. Keep the one-time reset grant only in React
+  component memory; never establish an auth cookie, persist the grant, or place it in a URL. A completed
+  reset revokes existing sessions and returns the customer to ordinary password sign-in.
 - Returning customers may sign in directly with a code from the configured OTP transport. That flow requests
   `purpose=authentication`, calls `verify-otp`, and must not require or change a password.
   Registration/account claim remains isolated under `purpose=registration`.

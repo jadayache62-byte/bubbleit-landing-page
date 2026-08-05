@@ -82,14 +82,26 @@ try {
   });
   assert.equal(me.status, 200);
 
-  const reset = await fetch(`${origin}/api/customer/profile`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: origin,
-      Cookie: cookie,
-    },
-    body: JSON.stringify({ name: "MAD-54 BFF", password: "newpass123" }),
+  const recoveryOtp = await post("auth/request-otp", {
+    phone,
+    purpose: "authentication",
+  });
+  assert.equal(recoveryOtp.status, 200);
+
+  const verification = await post("auth/forgot-password/verify-otp", {
+    phone,
+    code: "123456",
+  });
+  assert.equal(verification.status, 200);
+  assert.equal(verification.headers.get("set-cookie"), null);
+  const verificationBody = await verification.json();
+  assert.equal(typeof verificationBody.data.reset_token, "string");
+  assert.equal(Object.hasOwn(verificationBody.data, "token"), false);
+
+  const reset = await post("auth/forgot-password/reset", {
+    reset_token: verificationBody.data.reset_token,
+    password: "newpass123",
+    password_confirmation: "newpass123",
   });
   assert.equal(reset.status, 200);
   assert.match(reset.headers.get("set-cookie") ?? "", /Max-Age=0/i);

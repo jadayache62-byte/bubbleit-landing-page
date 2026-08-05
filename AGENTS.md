@@ -14,6 +14,9 @@ membership, authentication, localization, security, and accessibility contracts.
   browser authorization header, localStorage token, or script-readable auth cookie.
 - Customer contracts expose customer-relevant payment/refund/fulfillment state only. Never expose
   journal, revenue-recognition, accounting, reconciliation, provider, or internal fingerprint data.
+- Forgot-password recovery is a two-step OTP flow. OTP verification returns a short-lived reset grant
+  held only in component memory; it must not establish the HttpOnly customer session. Choosing the new
+  password consumes the grant once and returns the customer to normal password sign-in.
 
 ## Current customer behavior
 
