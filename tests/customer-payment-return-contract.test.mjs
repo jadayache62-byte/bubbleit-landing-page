@@ -10,7 +10,7 @@ const demoCheckout = readFileSync(new URL("../app/book/checkout/page.tsx", impor
 test("account owns authenticated store order history", () => {
   assert.match(api, /export function listStoreOrders\(\)/);
   assert.match(api, /export function getStoreOrder\(orderId: number\)/);
-  assert.match(account, /\["overview", "bookings", "orders", "memberships", "vehicles", "notifications"\]/);
+  assert.match(account, /\["overview", "rewards", "bookings", "orders", "memberships", "vehicles", "notifications"\]/);
   assert.match(account, /tab === "orders"/);
   assert.match(account, /<StoreOrderCard/);
   assert.match(mock, /method === "GET" && path === "store\/orders"/);

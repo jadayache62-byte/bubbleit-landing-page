@@ -314,6 +314,14 @@ export function me() {
   return request<Customer>("/auth/me");
 }
 
+export function getLoyaltyProgram() {
+  return request<import("./types").LoyaltyProgram>("/loyalty-program");
+}
+
+export function getCustomerLoyalty() {
+  return request<import("./types").CustomerLoyalty>("/loyalty");
+}
+
 export async function logout() {
   await request<null>("/auth/logout", { method: "POST" });
 }
@@ -533,6 +541,7 @@ export function getQuote(payload: {
   duration_version: string;
   use_membership?: boolean;
   preselect_memberships?: boolean;
+  preselect_loyalty?: boolean;
   product_lines?: { product_id: number; quantity: number }[];
   promo_code?: string;
   address_id?: number;

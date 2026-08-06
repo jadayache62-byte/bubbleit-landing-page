@@ -10,6 +10,7 @@ import { AppToast } from "@/components/AppToast";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import { HourSlotPicker } from "@/components/booking/HourSlotPicker";
 import { PaymentMethodSelector } from "@/components/payments/PaymentMethodSelector";
+import { LoyaltyModal } from "@/components/loyalty/LoyaltyModal";
 import { localized, useI18n } from "@/lib/i18n";
 import { formatQar } from "@/lib/money";
 
@@ -705,6 +706,7 @@ export function BookingWizard() {
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteRetryVersion, setQuoteRetryVersion] = useState(0);
   const [membershipChoices, setMembershipChoices] = useState<Record<number, number | null> | null>(null);
+  const [loyaltyChoices, setLoyaltyChoices] = useState<Record<number, boolean> | null>(null);
   const membershipCartKeyRef = useRef<string | null>(null);
   const membershipCartKey = useMemo(
     () => JSON.stringify(cars.map((car) => [car.vtype, car.serviceId, [...car.addOnIds].sort()])),
@@ -717,11 +719,14 @@ export function BookingWizard() {
     if (!choicesMatchCart) {
       membershipCartKeyRef.current = membershipCartKey;
       setMembershipChoices(null);
+      setLoyaltyChoices(null);
     }
     const explicitChoices = choicesMatchCart ? membershipChoices : null;
+    const explicitLoyaltyChoices = choicesMatchCart ? loyaltyChoices : null;
     const hasSelectedMembershipChoice = Object.values(explicitChoices ?? {}).some(
       (membershipId) => membershipId !== null,
     );
+    const hasSelectedLoyaltyChoice = Object.values(explicitLoyaltyChoices ?? {}).some(Boolean);
     const quoteCars = cars
       .filter((c) => c.serviceId !== null)
       .map((c, index) => ({
@@ -729,6 +734,7 @@ export function BookingWizard() {
         service_id: c.serviceId as number,
         add_on_ids: c.addOnIds,
         ...(explicitChoices !== null ? { membership_id: explicitChoices[index] ?? null } : {}),
+        ...(explicitLoyaltyChoices !== null ? { use_loyalty: explicitLoyaltyChoices[index] ?? false } : {}),
       }));
     if (quoteCars.length === 0 || !serviceAreaVersion || !geo) return;
 
@@ -748,10 +754,11 @@ export function BookingWizard() {
       duration_version: availabilityDuration.version,
       use_membership: true,
       preselect_memberships: explicitChoices === null,
+      preselect_loyalty: explicitLoyaltyChoices === null,
       product_lines: Object.entries(productQuantities)
         .filter(([, quantity]) => quantity > 0)
         .map(([productId, quantity]) => ({ product_id: Number(productId), quantity })),
-      ...(!hasSelectedMembershipChoice && promoActive && applied?.code
+      ...(!hasSelectedMembershipChoice && !hasSelectedLoyaltyChoice && promoActive && applied?.code
         ? { promo_code: applied.code }
         : {}),
       ...(selectedAddressId !== null
@@ -768,6 +775,9 @@ export function BookingWizard() {
           setQuoteError(null);
           setMembershipChoices((current) => current ?? Object.fromEntries(
             q.cars.map((car) => [car.index, car.membership_id]),
+          ));
+          setLoyaltyChoices((current) => current ?? Object.fromEntries(
+            q.cars.map((car) => [car.index, car.loyalty_applied]),
           ));
         }
       })
@@ -797,12 +807,14 @@ export function BookingWizard() {
     return () => {
       cancelled = true;
     };
-  }, [membershipMode, step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, dispatchZoneVersion, availabilityDuration, availabilityCars, loadSlots, quoteRetryVersion, membershipChoices, membershipCartKey, productQuantities, promoActive, applied?.code, t]);
+  }, [membershipMode, step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, dispatchZoneVersion, availabilityDuration, availabilityCars, loadSlots, quoteRetryVersion, membershipChoices, loyaltyChoices, membershipCartKey, productQuantities, promoActive, applied?.code, t]);
 
   const applyMembership = membershipMode || (quote?.cars.some((car) => car.covered) ?? false);
   const membershipDiscount = applyMembership
     ? (quote?.membership_discount ?? 0)
     : 0;
+  const loyaltyApplied = quote?.cars.some((car) => car.loyalty_applied) ?? false;
+  const loyaltyDiscount = quote?.loyalty_discount ?? 0;
   // The authoritative quote includes services, add-ons, products, membership,
   // and promo impact. No client-computed amount is submitted to payment.
   const activeProductTotal = membershipMode ? productTotal : (quote?.product_total ?? productTotal);
@@ -815,7 +827,7 @@ export function BookingWizard() {
           Infinity,
         )
       : undefined;
-  const showPromo = authed && quote !== null && !applyMembership && total > 0;
+  const showPromo = authed && quote !== null && !applyMembership && !loyaltyApplied && total > 0;
 
   const carsValid = membershipMode
     ? selectedMembership !== null && cars.length === 1 && cars[0].plate.trim().length > 0
@@ -1316,6 +1328,12 @@ export function BookingWizard() {
             />
           ) : (
             <>
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <LoyaltyModal placement="booking" />
+                <p className="max-w-sm text-xs leading-5 text-[color:var(--muted-foreground)]">
+                  {authed ? t("Your exact progress and matching rewards will be applied at checkout.") : t("Sign in at checkout to see your exact free-wash progress.")}
+                </p>
+              </div>
               {!authed && authResolved && (
                 <details className="mb-5 rounded-3xl border border-sky-200 bg-sky-50/80 p-4 open:bg-white sm:p-5">
                   <summary className="min-h-11 cursor-pointer list-none font-bold text-[color:var(--navy)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)]">
@@ -1662,6 +1680,35 @@ export function BookingWizard() {
               </div>
             )}
 
+            {authed && !membershipMode && !quoteLoading && quote && quote.cars.some((car) => car.loyalty_progress) && (
+              <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-5">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[color:var(--navy)] text-white" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none"><path d="M4 10h16v10H4zM12 10v10M3 7h18v3H3zM12 7c-1-4-6-3-5 0M12 7c1-4 6-3 5 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </span>
+                  <div><h3 className="font-bold text-[color:var(--navy)]">{t("Bubbleit Rewards")}</h3><p className="mt-1 text-sm leading-6 text-slate-700">{t("Matching rewards are selected automatically. The free reward covers the base wash; add-ons and products stay payable.")}</p></div>
+                </div>
+                <div className="mt-4 space-y-3 border-t border-cyan-200 pt-4">
+                  {quote.cars.map((quotedCar) => {
+                    const progress = quotedCar.loyalty_progress;
+                    const hasReward = quotedCar.loyalty_applied || progress.available_rewards > 0;
+                    const membershipSelected = quotedCar.membership_id !== null;
+                    return (
+                      <div key={quotedCar.index} className="rounded-xl bg-white/80 p-3 text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <div><span className="font-semibold text-[color:var(--navy)]">{t("Car")} {quotedCar.index + 1}</span><span className="ms-2 text-xs text-slate-600">{lang === "ar" ? progress.service_name_ar : progress.service_name} · {t(progress.vehicle_class.toUpperCase())}</span></div>
+                          {hasReward ? <label className={clsx("inline-flex min-h-11 items-center gap-2 font-bold", membershipSelected ? "cursor-not-allowed opacity-50" : "cursor-pointer")}><span>{t("Free base wash")}</span><input type="checkbox" checked={quotedCar.loyalty_applied} disabled={membershipSelected} onChange={(event) => { if (event.target.checked) { clearPromo(); setMembershipChoices((current) => ({ ...(current ?? {}), [quotedCar.index]: null })); } setLoyaltyChoices((current) => ({ ...(current ?? {}), [quotedCar.index]: event.target.checked })); }} className="h-5 w-5 accent-[color:var(--navy)]" /></label> : <span className="text-xs font-semibold text-slate-600">{progress.completed}/{progress.required}</span>}
+                        </div>
+                        {!hasReward && <><LoyaltyMeterInline completed={progress.completed} required={progress.required} /><p className="mt-2 text-xs text-slate-600">{progress.remaining} {t("more matching washes to your reward")}</p></>}
+                        {quotedCar.loyalty_applied && <p className="mt-2 font-bold text-emerald-700">{t("Free base wash")} · − {fmt(quotedCar.loyalty_discount, lang)}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+                {loyaltyApplied && <p className="mt-4 text-xs font-semibold text-[color:var(--navy)]">{t("Promo codes cannot be combined with a free-wash reward.")}</p>}
+              </div>
+            )}
+
             {authed && !quoteLoading && (membershipMode || quote) && dueTotal > 0 && (
               <PaymentMethodSelector
                 options={paymentOptions}
@@ -1730,6 +1777,8 @@ export function BookingWizard() {
                 promoCode={quote.promo_discount > 0 ? (applied?.code ?? null) : null}
                 membershipApplied={applyMembership}
                 membershipDiscount={membershipDiscount}
+                loyaltyApplied={loyaltyApplied}
+                loyaltyDiscount={loyaltyDiscount}
                 dueTotal={dueTotal}
                 washesLeftAfter={washesLeftAfter}
                 timeRangeLabel={quote.time_range_label ?? null}
@@ -2807,6 +2856,10 @@ function MembershipSummary({
   );
 }
 
+function LoyaltyMeterInline({ completed, required }: { completed: number; required: number }) {
+  return <div className="mt-2 flex gap-1.5" role="progressbar" aria-valuemin={0} aria-valuemax={required} aria-valuenow={Math.min(completed, required)}>{Array.from({ length: required }, (_, index) => <span key={index} aria-hidden="true" className={clsx("h-2 flex-1 rounded-full", index < completed ? "bg-[color:var(--cyan)]" : "bg-slate-200")} />)}</div>;
+}
+
 function Summary({
   cars,
   services,
@@ -2819,6 +2872,8 @@ function Summary({
   promoCode,
   membershipApplied,
   membershipDiscount,
+  loyaltyApplied,
+  loyaltyDiscount,
   dueTotal,
   washesLeftAfter,
   timeRangeLabel,
@@ -2839,6 +2894,8 @@ function Summary({
   promoCode: string | null;
   membershipApplied: boolean;
   membershipDiscount: number;
+  loyaltyApplied: boolean;
+  loyaltyDiscount: number;
   dueTotal: number;
   washesLeftAfter?: number;
   timeRangeLabel: string | null;
@@ -2959,6 +3016,10 @@ function Summary({
               ? dueTotal > 0
                 ? t("Membership applied + online payment for remaining total")
                 : t("Membership — no payment required")
+              : loyaltyApplied
+                ? dueTotal > 0
+                  ? t("Free base wash + payment for extras")
+                  : t("Loyalty reward — no payment required")
               : t("Pay online (SkipCash)")}
           </span>
         </li>
@@ -2980,7 +3041,13 @@ function Summary({
             </li>
           </>
         )}
-        {!membershipApplied && discount > 0 && (
+        {loyaltyApplied && loyaltyDiscount > 0 && (
+          <>
+            <li className="flex justify-between border-t border-[color:var(--border)] pt-2"><span className="text-[color:var(--muted-foreground)]">{t("Subtotal")}</span><span className="font-medium">{fmt(total, lang)}</span></li>
+            <li className="flex justify-between text-emerald-700"><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold">{t("Free base wash")}</span><span className="font-semibold">− {fmt(loyaltyDiscount, lang)}</span></li>
+          </>
+        )}
+        {!membershipApplied && !loyaltyApplied && discount > 0 && (
           <>
             <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
               <span className="text-[color:var(--muted-foreground)]">

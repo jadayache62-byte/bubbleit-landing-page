@@ -403,6 +403,18 @@ async function handle(req: NextRequest, segments: string[]) {
   if (method === "GET" && path === "service-categories") {
     return envelope(paginated([...new Set(SERVICES.map((s) => s.category))].map((name, i) => ({ id: i + 1, name }))));
   }
+  if (method === "GET" && path === "loyalty-program") {
+    return envelope({
+      enabled: true,
+      policy_version: "loyalty-5-plus-1-v1",
+      qualifying_washes: 5,
+      reward_washes: 1,
+      first_activated_at: "2026-08-05T09:00:00Z",
+      last_activated_at: "2026-08-05T09:00:00Z",
+      paused_at: null,
+      reward_expires: false,
+    });
+  }
   if (method === "POST" && path === "service-area/validate") {
     if (!mockQatarLand(body.latitude, body.longitude)) {
       return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
@@ -869,6 +881,36 @@ async function handle(req: NextRequest, segments: string[]) {
     return envelope(publicCustomer);
   }
 
+  if (method === "GET" && path === "loyalty") {
+    const service = SERVICES[0];
+    return envelope({
+      program: {
+        enabled: true,
+        policy_version: "loyalty-5-plus-1-v1",
+        qualifying_washes: 5,
+        reward_washes: 1,
+        first_activated_at: "2026-08-05T09:00:00Z",
+        last_activated_at: "2026-08-05T09:00:00Z",
+        paused_at: null,
+        reward_expires: false,
+      },
+      totals: { qualifying_washes: 4, rewards_earned: 0, available_rewards: 0, rewards_redeemed: 0 },
+      buckets: [{
+        service_id: service.id,
+        service_name: service.name,
+        service_name_ar: service.name_ar,
+        vehicle_class: "sedan",
+        completed: 4,
+        required: 5,
+        remaining: 1,
+        available_rewards: 0,
+        rewards_earned: 0,
+        rewards_redeemed: 0,
+      }],
+      history: [],
+    });
+  }
+
   if (method === "POST" && path === "auth/logout") {
     const header = req.headers.get("authorization") ?? "";
     const token = header.replace(/^Bearer\s+/i, "");
@@ -1254,12 +1296,14 @@ async function handle(req: NextRequest, segments: string[]) {
       add_on_ids: number[];
       membership_id?: number | null;
       has_membership_choice: boolean;
-    }[] = quoteCars.map((c: { service_id: number; vehicle_type: string; add_on_ids?: number[]; membership_id?: number | null }) => ({
+      use_loyalty: boolean;
+    }[] = quoteCars.map((c: { service_id: number; vehicle_type: string; add_on_ids?: number[]; membership_id?: number | null; use_loyalty?: boolean }) => ({
       service_id: Number(c.service_id),
       type: String(c.vehicle_type ?? "sedan"),
       add_on_ids: Array.isArray(c.add_on_ids) ? c.add_on_ids.map(Number) : [],
       membership_id: c.membership_id,
       has_membership_choice: Object.prototype.hasOwnProperty.call(c, "membership_id"),
+      use_loyalty: c.use_loyalty === true,
     }));
     const preselected = allocateMemberships(mine, norm, scheduledAt);
     const alloc = norm.map((car, index) => {
@@ -1303,6 +1347,18 @@ async function handle(req: NextRequest, segments: string[]) {
         membership_id: m?.id ?? null,
         membership_name: m?.plan.name ?? null,
         membership_discount: m ? base : 0,
+        loyalty_applied: false,
+        loyalty_discount: 0,
+        loyalty_progress: {
+          service_id: c.service_id,
+          service_name: service?.name ?? "Service",
+          service_name_ar: service?.name_ar ?? "الخدمة",
+          vehicle_class: (["suv", "truck", "van"].includes(c.type) ? "suv" : c.type === "other" ? "sedan" : c.type),
+          completed: c.service_id === SERVICES[0]?.id && ["sedan", "other"].includes(c.type) ? 4 : 0,
+          required: 5,
+          remaining: c.service_id === SERVICES[0]?.id && ["sedan", "other"].includes(c.type) ? 1 : 5,
+          available_rewards: 0,
+        },
         remaining_before: m?.washes_remaining ?? null,
         remaining_after: m ? Math.max(0, m.washes_remaining - 1) : null,
         eligible_memberships: eligibleMemberships,
@@ -1376,6 +1432,7 @@ async function handle(req: NextRequest, segments: string[]) {
       service_total: serviceTotal,
       membership_eligible: membershipDiscount > 0,
       membership_discount: membershipDiscount,
+      loyalty_discount: 0,
       promo_discount: promoDiscount,
       product_total: productTotal,
       total_price: total,

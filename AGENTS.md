@@ -1,7 +1,7 @@
 # Bubble It Customer Web — Agent Instructions
 
 Read `CLAUDE.md` before changing customer behavior; it contains the detailed booking, store,
-membership, authentication, localization, security, and accessibility contracts.
+membership, loyalty, authentication, localization, security, and accessibility contracts.
 
 ## Current architecture
 
@@ -26,6 +26,13 @@ membership, authentication, localization, security, and accessibility contracts.
   or price it.
 - Availability, duration, price, membership coverage, inventory, service-area version, and payment
   outcome are backend-owned. Do not calculate operational or financial truth in the browser.
+- Loyalty promotion is shown only from the public active-status endpoint. Authenticated progress and
+  matching rewards are backend-owned per booking line; keep reward identifiers inside quote snapshots,
+  disable promo entry while a reward is selected, and show base-wash coverage separately from payable
+  add-ons/products. Paused balances remain visible in the account but cannot be claimed.
+- Present loyalty marketing through the shared bilingual modal: it may auto-prompt only once per
+  session after homepage Services engagement, while booking/account entry points stay click-triggered.
+  Keep authoritative progress, reward selection, pricing, history, and paused states inline.
 - Regular and membership availability require the selected latitude/longitude and return an opaque
   dispatch-zone version that must survive quote/confirmation. A location outside configured coverage
   is blocked on Location with a fixed informational snackbar that remains visible at any scroll

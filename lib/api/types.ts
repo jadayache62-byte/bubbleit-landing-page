@@ -149,7 +149,50 @@ export type Address = {
   service_area: ServiceAreaSnapshot & { stale: boolean };
 };
 
-export type PaymentMethod = "pay_on_site" | "online" | "cash" | "membership" | "membership_with_products";
+export type PaymentMethod = "pay_on_site" | "online" | "cash" | "membership" | "membership_with_products" | "loyalty";
+
+export type LoyaltyProgram = {
+  enabled: boolean;
+  policy_version: string;
+  qualifying_washes: number;
+  reward_washes: number;
+  first_activated_at: string | null;
+  last_activated_at: string | null;
+  paused_at: string | null;
+  reward_expires: false;
+};
+
+export type LoyaltyProgress = {
+  service_id: number;
+  service_name: string;
+  service_name_ar: string;
+  vehicle_class: "sedan" | "suv" | "caravan" | "jet_ski" | "jet_boat";
+  completed: number;
+  required: number;
+  remaining: number;
+  available_rewards: number;
+  rewards_earned?: number;
+  rewards_redeemed?: number;
+};
+
+export type CustomerLoyalty = {
+  program: LoyaltyProgram;
+  totals: {
+    qualifying_washes: number;
+    rewards_earned: number;
+    available_rewards: number;
+    rewards_redeemed: number;
+  };
+  buckets: LoyaltyProgress[];
+  history: {
+    id: number;
+    service_name: string;
+    service_name_ar: string;
+    vehicle_class: LoyaltyProgress["vehicle_class"];
+    status: "issued" | "reserved" | "redeemed";
+    issued_at: string | null;
+  }[];
+};
 export type PaymentChannel = "cash" | "skipcash_hosted" | "skipcash_qpay" | "membership";
 export type PaymentOptions = {
   mode: "cash" | "online";
@@ -262,6 +305,7 @@ export type BookingCar = {
   service: Pick<Service, "id" | "name" | "price">;
   add_ons: AddOn[];
   subtotal: number;
+  loyalty?: { applied: boolean; status: "reserved" | "redeemed"; discount: number } | null;
 };
 
 export type Booking = {
@@ -278,6 +322,7 @@ export type Booking = {
   duration?: DurationSnapshot;
   time_range_label?: string | null;
   membership_applied?: boolean;
+  loyalty_applied?: boolean;
   payment_method: PaymentMethod;
   payment_purchase_id?: number | null;
   total: number;
@@ -326,7 +371,7 @@ export type CreateBookingPayload = {
   quote_version?: string;
   scheduled_at: string;
   duration_version: string;
-  cars?: { vehicle_id: number; service_id: number; add_on_ids: number[] }[];
+  cars?: { vehicle_id: number; service_id: number; add_on_ids: number[]; use_loyalty?: boolean }[];
   membership_id?: number;
   vehicle_id?: number;
   address_id?: number;
@@ -360,6 +405,7 @@ export type QuoteCar = {
   service_id: number;
   add_on_ids: number[];
   membership_id?: number | null;
+  use_loyalty?: boolean;
 };
 
 export type BookingQuote = {
@@ -386,6 +432,7 @@ export type BookingQuote = {
   service_total: number;
   membership_eligible: boolean;
   membership_discount: number;
+  loyalty_discount: number;
   promo_discount: number;
   product_total: number;
   total_price: number;
@@ -399,6 +446,9 @@ export type BookingQuote = {
     membership_id: number | null;
     membership_name: string | null;
     membership_discount: number;
+    loyalty_applied: boolean;
+    loyalty_discount: number;
+    loyalty_progress: LoyaltyProgress;
     remaining_before: number | null;
     remaining_after: number | null;
     eligible_memberships: {
@@ -558,7 +608,8 @@ export type CustomerNotificationType =
   | "refund_status_changed"
   | "membership_status_changed"
   | "store_order_status_changed"
-  | "review_requested";
+  | "review_requested"
+  | "loyalty_reward_earned";
 
 export type CustomerReviewInvitation = {
   id: string;

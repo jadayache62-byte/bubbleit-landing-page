@@ -71,6 +71,7 @@
         "cancelled",
         "timed_out",
         "pending",
+        "cash_due",
         "paid",
         "partially_refunded",
         "refunded",
@@ -96,7 +97,7 @@
     },
     "PaymentMethod": {
       "type": "string",
-      "enum": ["pay_on_site", "online", "membership", "membership_with_products"]
+      "enum": ["pay_on_site", "online", "cash", "membership", "membership_with_products", "loyalty"]
     },
     "CustomerNotificationType": {
       "type": "string",
@@ -110,7 +111,8 @@
         "refund_status_changed",
         "membership_status_changed",
         "store_order_status_changed",
-        "review_requested"
+        "review_requested",
+        "loyalty_reward_earned"
       ]
     },
     "ErrorCode": {
@@ -156,13 +158,18 @@
         "status",
         "captured",
         "reconciliation_reason",
-        "checkout_url"
+        "checkout_url",
+        "channel"
       ],
       "properties": {
         "status": { "$ref": "#/$defs/PaymentStateStatus" },
         "captured": { "type": "boolean" },
         "reconciliation_reason": { "type": ["string", "null"] },
-        "checkout_url": { "type": ["string", "null"] }
+        "checkout_url": { "type": ["string", "null"] },
+        "channel": {
+          "type": ["string", "null"],
+          "enum": ["cash", "skipcash_hosted", "skipcash_qpay", "membership", null]
+        }
       },
       "additionalProperties": false
     },
@@ -299,6 +306,7 @@
         "payment",
         "membership_applied",
         "membership_reserved",
+        "loyalty_applied",
         "total",
         "product_total",
         "address_label",
@@ -327,6 +335,7 @@
         "duration": { "type": "object" },
         "time_range_label": { "type": ["string", "null"] },
         "payment_method": { "$ref": "#/$defs/PaymentMethod" },
+        "payment_purchase_id": { "type": ["integer", "null"] },
         "payment": { "$ref": "#/$defs/PaymentState" },
         "refund": {
           "oneOf": [
@@ -336,6 +345,7 @@
         },
         "membership_applied": { "type": "boolean" },
         "membership_reserved": { "type": "boolean" },
+        "loyalty_applied": { "type": "boolean" },
         "total": { "type": "number", "minimum": 0 },
         "product_total": { "type": "number", "minimum": 0 },
         "address_label": { "type": ["string", "null"] },
@@ -424,6 +434,7 @@
         "payment_status": { "$ref": "#/$defs/StorePaymentStatus" },
         "payment_status_label": { "type": "string" },
         "payment_method": { "type": "string" },
+        "payment_purchase_id": { "type": ["integer", "null"] },
         "payment": { "$ref": "#/$defs/PaymentState" },
         "refund": {
           "oneOf": [

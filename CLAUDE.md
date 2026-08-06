@@ -4,6 +4,12 @@
 
 - This is the Next.js 16 customer website for marketing, booking, memberships, store checkout,
   authenticated account management, legal pages, and the development-only mock customer API.
+- The 5+1 loyalty UI is driven entirely by backend program/progress/quote contracts. Marketing is hidden
+  while paused; account balances remain visible, and booking reward identifiers never leave the signed
+  quote snapshot. A reward covers only the base wash and cannot coexist with a promo.
+- The shared loyalty marketing modal replaces standalone promotional cards. It uses a once-per-session,
+  engagement-triggered prompt in homepage Services and voluntary triggers in booking/account; functional
+  progress, reward choices, pricing, history, and paused-state information remain inline.
 - It is an Nx workspace. Use the declared Nx targets for lint, unit/contract tests, Playwright,
   security checks, and production builds.
 - Store checkout requires an authenticated or OTP-verified customer before review and order creation.

@@ -1,6 +1,7 @@
 "use client";
 
 import { SectionHeader } from "@/components/ui";
+import { LoyaltyModal } from "@/components/loyalty/LoyaltyModal";
 import { useI18n } from "@/lib/i18n";
 import { formatQar } from "@/lib/money";
 
@@ -62,7 +63,11 @@ export function Services() {
           titleId="services-title"
         />
 
-        <div className="card-grid mt-12 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-7 flex justify-start sm:justify-end">
+          <LoyaltyModal placement="services" autoPrompt />
+        </div>
+
+        <div className="card-grid mt-8 md:grid-cols-2 xl:grid-cols-3">
           {services.map((service) => (
             <article
               key={service.title}

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-08-06 — Conversion-focused loyalty modal
+
+- Replaced the standalone homepage loyalty card and booking promotion banner with a shared bilingual
+  reward modal anchored to Services, booking, and the customer Rewards tab.
+- Added a once-per-session Services engagement trigger plus voluntary booking/account triggers, with
+  clear same-service/class rules, base-wash scope, non-expiring progress, and outcome-focused CTAs.
+- Preserved inline account progress, reward history, checkout selection, payable extras, paused states,
+  keyboard focus trapping/restoration, mobile reflow, RTL, and reduced-motion behavior.
+
+## 2026-08-05 — 5+1 wash loyalty experience
+
+- Added an active-only bilingual landing conversion section, accessible five-wash meter, and booking CTA.
+- Added account Rewards navigation, overview status, per-service/class progress, available balances,
+  paused messaging, history, and matching booking actions.
+- Added per-car checkout progress and automatic reward selection with opt-out, promo exclusion, and clear
+  base-wash versus add-on/product pricing, plus same-origin mock and public-contract parity.
+
 ## 2026-08-05 — OTP-verified forgot password
 
 - Split password recovery into an OTP identity-verification step followed by a separate new-password
