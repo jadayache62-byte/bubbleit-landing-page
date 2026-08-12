@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
+import { ServicePopularBadge } from "@/components/ServicePopularBadge";
 import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -2360,15 +2361,19 @@ function StepServices({
                         "relative flex min-h-40 cursor-pointer flex-col items-start rounded-2xl border p-3 text-start transition duration-200 sm:min-h-44 sm:p-4",
                         car.serviceId === service.id
                           ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
-                          : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
+                          : isPopular
+                            ? "border-[color:var(--cyan)] bg-linear-to-br from-white to-cyan-50 ring-2 ring-[color:var(--cyan)]/35 shadow-[0_10px_24px_rgba(20,137,222,0.16)] hover:border-[color:var(--blue)]"
+                            : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
                       )}
                     >
                       {isPopular && (
-                        <span className="absolute end-2 top-2 rounded-full bg-[color:var(--cyan)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--navy)]">
-                          {t("Popular")}
-                        </span>
+                        <ServicePopularBadge
+                          label={t("Popular")}
+                          selected={car.serviceId === service.id}
+                          className="mb-2"
+                        />
                       )}
-                      <span className={clsx("text-sm font-bold leading-5 sm:text-base", isPopular && "pe-12")}>
+                      <span className="text-sm font-bold leading-5 sm:text-base">
                         {localized(lang, service.name, service.name_ar)}
                       </span>
                       <span

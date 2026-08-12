@@ -19,6 +19,9 @@
   filtering. Keep duplicate-safe cancellation progress and immediate card updates.
 - Service-card duration must use the selected vehicle type's backend-owned sedan or SUV duration;
   never display the sedan value for every vehicle.
+- The global header exposes the compact language switcher directly at every viewport, including beside
+  the mobile menu control; it does not belong inside the navigation drawer. Deep Bubble uses the shared
+  high-contrast Popular badge and cyan card emphasis on both home and booking service surfaces.
 - Authenticated customers with a redeemable membership use a membership-first booking path that
   omits service, add-on, quote, and promo selection. They choose one exactly covered vehicle,
   location, a server-returned slot, and optional store products.

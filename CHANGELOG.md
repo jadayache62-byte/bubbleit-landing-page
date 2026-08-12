@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-12 — Direct language switching and featured popular service
+
+### Changed
+
+- Moved the mobile language switcher out of the navigation drawer and into the global header so
+  customers can switch English and Arabic without opening a menu.
+- Strengthened Deep Bubble's Popular treatment with a shared high-contrast badge and cyan card
+  emphasis across the homepage and booking service selector.
+
 ## 2026-08-06 — Conversion-focused loyalty modal
 
 - Replaced the standalone homepage loyalty card and booking promotion banner with a shared bilingual

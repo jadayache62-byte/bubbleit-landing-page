@@ -39,8 +39,17 @@ test("Arabic is server-rendered in RTL before release-critical content", async (
     page.getByRole("heading", { name: "المتجر غير متاح مؤقتاً" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "إعادة تحميل المتجر" })).toBeVisible();
+  const languageSwitcher = page.getByRole("button", { name: "EN", exact: true });
+  await expect(languageSwitcher).toBeVisible();
+  await expect(
+    page.locator("#mobile-menu").getByRole("button", { name: "EN", exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "فتح قائمة التنقل" })).toBeVisible();
   await expectNoHorizontalOverflow(page);
+
+  await languageSwitcher.click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
 });
 
 test("Arabic booking and home layouts preserve semantic order and localized numerals", async ({ page }) => {

@@ -57,6 +57,9 @@ membership, loyalty, authentication, localization, security, and accessibility c
 - A provider return is not proof of payment. Reconcile through the backend and preserve processing,
   failed, cancelled, review, refund, and payment-recovery states.
 - Use the shared accessible, dismissible top snackbar for customer action errors.
+- Keep the compact language switcher directly visible in the global header at every viewport; do not
+  hide the mobile control inside the navigation drawer. Deep Bubble's shared Popular badge and cyan
+  card emphasis must remain prominent in both homepage services and booking service selection.
 
 ## Quality and safety
 
