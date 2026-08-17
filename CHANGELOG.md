@@ -1,5 +1,73 @@
 # Changelog
 
+## 2026-08-17 — Service-zone pricing at location and checkout
+
+### Changed
+
+- Added bilingual, accessible notices on booking and store Location steps when the selected pin has an
+  additional service-zone charge.
+- Added a separate service-zone line to ordinary, membership, loyalty, and store checkout totals; the
+  charge remains payable outside membership, loyalty, and promotional coverage.
+- Upgraded booking quotes, store pricing, public types/schema, and the development mock to immutable
+  pricing v2 with stale-price reconfirmation and separate product/base-delivery/zone components.
+
+## 2026-08-12 — Direct language switching and featured popular service
+
+### Changed
+
+- Moved the mobile language switcher out of the navigation drawer and into the global header so
+  customers can switch English and Arabic without opening a menu.
+- Strengthened Deep Bubble's Popular treatment with a shared high-contrast badge and cyan card
+  emphasis across the homepage and booking service selector.
+
+## 2026-08-06 — Conversion-focused loyalty modal
+
+- Replaced the standalone homepage loyalty card and booking promotion banner with a shared bilingual
+  reward modal anchored to Services, booking, and the customer Rewards tab.
+- Added a once-per-session Services engagement trigger plus voluntary booking/account triggers, with
+  clear same-service/class rules, base-wash scope, non-expiring progress, and outcome-focused CTAs.
+- Preserved inline account progress, reward history, checkout selection, payable extras, paused states,
+  keyboard focus trapping/restoration, mobile reflow, RTL, and reduced-motion behavior.
+
+## 2026-08-05 — 5+1 wash loyalty experience
+
+- Added an active-only bilingual landing conversion section, accessible five-wash meter, and booking CTA.
+- Added account Rewards navigation, overview status, per-service/class progress, available balances,
+  paused messaging, history, and matching booking actions.
+- Added per-car checkout progress and automatic reward selection with opt-out, promo exclusion, and clear
+  base-wash versus add-on/product pricing, plus same-origin mock and public-contract parity.
+
+## 2026-08-05 — OTP-verified forgot password
+
+- Split password recovery into an OTP identity-verification step followed by a separate new-password
+  step with confirmation and accessible validation feedback.
+- Replaced the temporary full customer login used by recovery with a one-time reset grant held only in
+  component memory; the customer signs in normally after the password changes.
+- Updated the development mock, same-origin session verification, Arabic localization, and auth
+  regression contracts to mirror the backend recovery lifecycle.
+
+## 2026-08-02 — Unified membership checkout and early coverage guidance
+
+- Replaced the membership-only yes/no product question with the same automatically opened,
+  dismissible product modal used by ordinary booking checkout.
+- Kept product-free membership confirmation immediate while sending any selected products through
+  the existing product-only payment path.
+- Moved authoritative service-area and dispatch-zone validation into the Location step, preventing
+  unsupported locations from advancing and showing a localized, actionable informational snackbar
+  that stays visible at every scroll position.
+- Kept covered locations with no free slots distinct so customers can continue to Schedule and
+  choose another day.
+
+## 2026-08-02 — Membership vehicle entry fix
+
+- Reduced new membership vehicle entry to the plate number; the membership still supplies the
+  eligible sedan/SUV type automatically.
+- Replaced the reused booking-level vehicle idempotency key with an internal payload-scoped key, so
+  retries remain duplicate-safe while a different plate creates a distinct vehicle command.
+- Prevented the single-saved-vehicle auto-selection from overriding an explicit “Add a different
+  vehicle” choice.
+- Added unit and browser regression coverage for plate-only requests and consecutive vehicle saves.
+
 ## 2026-08-02 — English/Arabic localization hardening
 
 - Moved account deletion, legal chrome, membership validity/actions, generated location labels,

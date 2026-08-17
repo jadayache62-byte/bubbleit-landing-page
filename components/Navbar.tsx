@@ -70,36 +70,45 @@ export function Navbar() {
             <Link href="/book" className="primary-button min-h-12 px-5">{t("Book a Wash")}</Link>
           </div>
 
-          <button
-            type="button"
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[color:var(--border)] text-[color:var(--navy)] transition hover:border-[color:var(--blue)] hover:text-[color:var(--blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)] lg:hidden"
-            aria-expanded={isOpen}
-            aria-controls="mobile-menu"
-            aria-label={t(isOpen ? "Close navigation menu" : "Open navigation menu")}
-            onClick={() => setIsOpen((current) => !current)}
-          >
-            <span className="sr-only">{t("Menu")}</span>
-            <div className="flex flex-col gap-1.5">
-              <span
-                className={clsx(
-                  "block h-0.5 w-5 rounded-full bg-current transition",
-                  isOpen && "translate-y-2 rotate-45",
-                )}
-              />
-              <span
-                className={clsx(
-                  "block h-0.5 w-5 rounded-full bg-current transition",
-                  isOpen && "opacity-0",
-                )}
-              />
-              <span
-                className={clsx(
-                  "block h-0.5 w-5 rounded-full bg-current transition",
-                  isOpen && "-translate-y-2 -rotate-45",
-                )}
-              />
-            </div>
-          </button>
+          <div className="flex shrink-0 items-center gap-2 lg:hidden">
+            <button
+              type="button"
+              onClick={() => setLang(lang === "en" ? "ar" : "en")}
+              className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-full border border-[color:var(--border)] bg-white px-3 text-sm font-bold text-[color:var(--navy)] transition-colors duration-200 hover:border-[color:var(--blue)] hover:text-[color:var(--blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)]"
+            >
+              {languageSwitchLabel(lang, true)}
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-[color:var(--border)] text-[color:var(--navy)] transition hover:border-[color:var(--blue)] hover:text-[color:var(--blue)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--blue)]"
+              aria-expanded={isOpen}
+              aria-controls="mobile-menu"
+              aria-label={t(isOpen ? "Close navigation menu" : "Open navigation menu")}
+              onClick={() => setIsOpen((current) => !current)}
+            >
+              <span className="sr-only">{t("Menu")}</span>
+              <div className="flex flex-col gap-1.5">
+                <span
+                  className={clsx(
+                    "block h-0.5 w-5 rounded-full bg-current transition",
+                    isOpen && "translate-y-2 rotate-45",
+                  )}
+                />
+                <span
+                  className={clsx(
+                    "block h-0.5 w-5 rounded-full bg-current transition",
+                    isOpen && "opacity-0",
+                  )}
+                />
+                <span
+                  className={clsx(
+                    "block h-0.5 w-5 rounded-full bg-current transition",
+                    isOpen && "-translate-y-2 -rotate-45",
+                  )}
+                />
+              </div>
+            </button>
+          </div>
         </div>
 
         <div
@@ -129,7 +138,6 @@ export function Navbar() {
                 </Link>
               ))}
               <Link href="/book" onClick={() => setIsOpen(false)} className="primary-button mt-2 min-h-14 w-full text-base">{t("Book a Wash")}</Link>
-              <button type="button" onClick={() => setLang(lang === "en" ? "ar" : "en")} className="min-h-11 rounded-xl px-4 text-sm font-semibold text-[color:var(--muted-foreground)] transition hover:bg-[color:var(--background)]">{languageSwitchLabel(lang)}</button>
             </nav>
           </div>
         </div>

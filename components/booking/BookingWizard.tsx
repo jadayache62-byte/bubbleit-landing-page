@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
+import { ServicePopularBadge } from "@/components/ServicePopularBadge";
+import { ServiceZoneChargeNotice } from "@/components/ServiceZoneChargeNotice";
 import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -10,6 +12,7 @@ import { AppToast } from "@/components/AppToast";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import { HourSlotPicker } from "@/components/booking/HourSlotPicker";
 import { PaymentMethodSelector } from "@/components/payments/PaymentMethodSelector";
+import { LoyaltyModal } from "@/components/loyalty/LoyaltyModal";
 import { localized, useI18n } from "@/lib/i18n";
 import { formatQar } from "@/lib/money";
 
@@ -51,6 +54,7 @@ import type {
   Booking,
   BookingQuote,
   CustomerMembership,
+  CreateVehiclePayload,
   MembershipBookingOptions,
   DurationContribution,
   DurationSnapshot,
@@ -73,8 +77,23 @@ import {
   canRetryBookingPayment,
   usableCheckoutUrl,
 } from "@/lib/booking/payment-flow";
+import {
+  vehicleIdempotencyKey,
+  type VehicleIdempotencyEntry,
+} from "@/lib/booking/vehicle-idempotency";
 const STALE_SLOT_MS = 15 * 60 * 1000;
 const BOOKING_ATTEMPT_KEY = "bubbleit.booking.idempotency";
+type LocationCoverageIssue = "outside" | "stale" | "missing";
+
+function locationCoverageIssue(error: ApiError): LocationCoverageIssue | null {
+  if (["SERVICE_AREA_OUTSIDE_QATAR", "DISPATCH_ZONE_UNCOVERED"].includes(error.code ?? "")) {
+    return "outside";
+  }
+  if (["SERVICE_AREA_STALE", "DISPATCH_ZONE_STALE"].includes(error.code ?? "")) {
+    return "stale";
+  }
+  return null;
+}
 
 // The three vehicle cards. Jet ski & jet boat share one "Jet" card with a
 // sub-toggle; each vehicle in a booking can independently be any kind.
@@ -148,7 +167,7 @@ const MEMBERSHIP_STEPS = [
   "Vehicle",
   "Location",
   "Schedule",
-  "Products & confirm",
+  "Pay & Confirm",
 ] as const;
 
 const KINDS: { value: WashKind; label: string; icon: string }[] = [
@@ -286,6 +305,7 @@ export function BookingWizard() {
   const [geoState, setGeoState] = useState<"idle" | "locating" | "error">(
     "idle",
   );
+  const [locationIssue, setLocationIssue] = useState<LocationCoverageIssue | null>(null);
 
   // Step 3 — schedule
   const days = useMemo(() => next7Days(lang), [lang]);
@@ -297,13 +317,13 @@ export function BookingWizard() {
   const [slotSelectedAt, setSlotSelectedAt] = useState<number | null>(null);
   const [serviceAreaVersion, setServiceAreaVersion] = useState<string | null>(null);
   const [dispatchZoneVersion, setDispatchZoneVersion] = useState<string | null>(null);
+  const [serviceZoneRate, setServiceZoneRate] = useState<number | null>(null);
 
   // Step 4 — payment
   const [notes, setNotes] = useState("");
   const [bookingProducts, setBookingProducts] = useState<StoreProductInventory[]>([]);
   const [productQuantities, setProductQuantities] = useState<Record<string, number>>({});
   const [productPromptSeen, setProductPromptSeen] = useState(false);
-  const [membershipProductChoice, setMembershipProductChoice] = useState<"none" | "add" | null>(null);
 
   // Step 5 — identity + confirm
   const [authed, setAuthed] = useState(false);
@@ -312,6 +332,7 @@ export function BookingWizard() {
   const [membershipsLoading, setMembershipsLoading] = useState(false);
   const [membershipsLoaded, setMembershipsLoaded] = useState(false);
   const [selectedMembershipId, setSelectedMembershipId] = useState<number | null>(null);
+  const [addingMembershipVehicle, setAddingMembershipVehicle] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -320,6 +341,7 @@ export function BookingWizard() {
   const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
   const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>("skipcash_hosted");
   const bookingAttemptRef = useRef<string | null>(null);
+  const vehicleIdempotencyEntriesRef = useRef(new Map<string, VehicleIdempotencyEntry>());
 
   const redeemableMemberships = useMemo(
     () => memberships.filter((membership) => (
@@ -333,8 +355,6 @@ export function BookingWizard() {
     (membership) => membership.id === selectedMembershipId,
   ) ?? redeemableMemberships[0] ?? null;
   const steps = membershipMode ? MEMBERSHIP_STEPS : REGULAR_STEPS;
-  const effectiveMembershipProductChoice = membershipProductChoice
-    ?? (membershipMode && !productsLoading && bookingProducts.length === 0 ? "none" : null);
 
   const bookingAttemptKey = useCallback(() => {
     if (bookingAttemptRef.current) return bookingAttemptRef.current;
@@ -345,8 +365,18 @@ export function BookingWizard() {
     return key;
   }, []);
 
+  const vehicleCommandKey = useCallback((scope: string, payload: CreateVehiclePayload) => (
+    vehicleIdempotencyKey(
+      vehicleIdempotencyEntriesRef.current,
+      scope,
+      payload,
+      () => window.crypto.randomUUID(),
+    )
+  ), []);
+
   const clearBookingAttempt = useCallback(() => {
     bookingAttemptRef.current = null;
+    vehicleIdempotencyEntriesRef.current.clear();
     window.sessionStorage.removeItem(BOOKING_ATTEMPT_KEY);
   }, []);
 
@@ -439,12 +469,13 @@ export function BookingWizard() {
     const membership = redeemableMemberships[0];
     queueMicrotask(() => {
       setSelectedMembershipId(membership.id);
+      setAddingMembershipVehicle(false);
       setCars([{
         ...emptyCar(1),
         vtype: membership.plan.vehicle_type ?? "suv",
       }]);
       setProductQuantities({});
-      setMembershipProductChoice(null);
+      setProductPromptSeen(false);
       setSlot(null);
       setSlots(null);
       setAvailabilityDuration(null);
@@ -453,7 +484,12 @@ export function BookingWizard() {
   }, [membershipMode, redeemableMemberships]);
 
   useEffect(() => {
-    if (!membershipMode || !selectedMembership || cars[0]?.vehicleId !== null) return;
+    if (
+      !membershipMode
+      || !selectedMembership
+      || addingMembershipVehicle
+      || cars[0]?.vehicleId !== null
+    ) return;
     const eligible = myVehicles.filter((vehicle) => membershipCoversVehicle(selectedMembership, vehicle.type));
     if (eligible.length !== 1) return;
     const vehicle = eligible[0];
@@ -471,23 +507,52 @@ export function BookingWizard() {
         addOnIds: [],
       }]);
     });
-  }, [membershipMode, selectedMembership, myVehicles, cars]);
+  }, [membershipMode, selectedMembership, myVehicles, cars, addingMembershipVehicle]);
 
   // Reference "now" captured when slots load, used to hide today's past slots.
   const [nowMs, setNowMs] = useState(0);
   const slotRequestRef = useRef(0);
+  const skipNextAvailabilityLoadRef = useRef(false);
 
-  const loadSlots = useCallback((
+  useEffect(() => {
+    if (!geo) return;
+    if (step !== 1) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      validateServiceArea(geo.lat, geo.lng)
+        .then((snapshot) => {
+          if (!cancelled) {
+            setServiceZoneRate(
+              snapshot.dispatch_zone.rate_applied
+                ? snapshot.dispatch_zone.service_rate
+                : 0,
+            );
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setServiceZoneRate(null);
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [geo, step]);
+
+  const loadSlots = useCallback(async (
     d: string,
     cart: { service_id: number; add_on_ids: number[] }[] = [],
     requestId = ++slotRequestRef.current,
-  ) => {
+  ): Promise<boolean> => {
     if (!geo) {
       setSlots([]);
       setServiceAreaVersion(null);
       setDispatchZoneVersion(null);
-      setError(t("Confirm your map location before checking availability."));
-      return;
+      setLocationIssue("missing");
+      setError(null);
+      return false;
     }
     setSlots(null);
     setAvailabilityDuration(null);
@@ -510,6 +575,9 @@ export function BookingWizard() {
             serviceAreaVersion: areaSnapshot.version,
             membershipOptions: options,
             dispatchZoneVersion: options.dispatch_zone.version,
+            serviceZoneRate: options.dispatch_zone.rate_applied
+              ? (options.dispatch_zone.service_rate ?? 0)
+              : 0,
           }))
         : Promise.reject(new Error(t("Membership and vehicle are required.")))
       : getAvailability(d, "standard", { latitude: geo.lat, longitude: geo.lng }, cart)
@@ -519,39 +587,49 @@ export function BookingWizard() {
             serviceAreaVersion: availability.service_area.version,
             membershipOptions: null,
             dispatchZoneVersion: availability.dispatch_zone.version,
+            serviceZoneRate: availability.dispatch_zone.rate_applied
+              ? (availability.dispatch_zone.service_rate ?? 0)
+              : 0,
           }));
 
-    request
-      .then((a) => {
-        if (slotRequestRef.current === requestId) {
-          setSlots(a.slots);
-          setServiceAreaVersion(a.serviceAreaVersion);
-          setAvailabilityDuration(a.duration);
-          setMembershipOptions(a.membershipOptions);
-          setDispatchZoneVersion(a.dispatchZoneVersion);
-          setError(null);
-        }
-      })
-      .catch((caught) => {
-        if (slotRequestRef.current === requestId) {
-          setSlots([]);
-          setServiceAreaVersion(null);
-          setAvailabilityDuration(null);
-          setMembershipOptions(null);
-          setDispatchZoneVersion(null);
-          setError(
-            caught instanceof ApiError && caught.code === "DISPATCH_ZONE_UNCOVERED"
-              ? t("We do not currently serve this location. Choose a location inside an available service area.")
-              : caught instanceof ApiError
-                ? caught.message
-                : t("Could not validate this location."),
-          );
-        }
-      });
+    try {
+      const availability = await request;
+      if (slotRequestRef.current !== requestId) return false;
+      setSlots(availability.slots);
+      setServiceAreaVersion(availability.serviceAreaVersion);
+      setAvailabilityDuration(availability.duration);
+      setMembershipOptions(availability.membershipOptions);
+      setDispatchZoneVersion(availability.dispatchZoneVersion);
+      setServiceZoneRate(availability.serviceZoneRate);
+      setLocationIssue(null);
+      setError(null);
+      return true;
+    } catch (caught) {
+      if (slotRequestRef.current !== requestId) return false;
+      setSlots([]);
+      setServiceAreaVersion(null);
+      setAvailabilityDuration(null);
+      setMembershipOptions(null);
+      setDispatchZoneVersion(null);
+      setServiceZoneRate(null);
+      const coverageIssue = caught instanceof ApiError ? locationCoverageIssue(caught) : null;
+      if (coverageIssue) {
+        setLocationIssue(coverageIssue);
+        setError(null);
+        setStep(1);
+      } else {
+        setError(caught instanceof ApiError ? caught.message : t("Could not validate this location."));
+      }
+      return false;
+    }
   }, [geo, t, membershipMode, selectedMembership, cars]);
 
   useEffect(() => {
     if (step !== 2) return;
+    if (skipNextAvailabilityLoadRef.current) {
+      skipNextAvailabilityLoadRef.current = false;
+      return;
+    }
     // Pass the selected cart so slots reflect its full service and add-on duration.
     const requestId = ++slotRequestRef.current;
     queueMicrotask(() => {
@@ -666,6 +744,7 @@ export function BookingWizard() {
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteRetryVersion, setQuoteRetryVersion] = useState(0);
   const [membershipChoices, setMembershipChoices] = useState<Record<number, number | null> | null>(null);
+  const [loyaltyChoices, setLoyaltyChoices] = useState<Record<number, boolean> | null>(null);
   const membershipCartKeyRef = useRef<string | null>(null);
   const membershipCartKey = useMemo(
     () => JSON.stringify(cars.map((car) => [car.vtype, car.serviceId, [...car.addOnIds].sort()])),
@@ -678,11 +757,14 @@ export function BookingWizard() {
     if (!choicesMatchCart) {
       membershipCartKeyRef.current = membershipCartKey;
       setMembershipChoices(null);
+      setLoyaltyChoices(null);
     }
     const explicitChoices = choicesMatchCart ? membershipChoices : null;
+    const explicitLoyaltyChoices = choicesMatchCart ? loyaltyChoices : null;
     const hasSelectedMembershipChoice = Object.values(explicitChoices ?? {}).some(
       (membershipId) => membershipId !== null,
     );
+    const hasSelectedLoyaltyChoice = Object.values(explicitLoyaltyChoices ?? {}).some(Boolean);
     const quoteCars = cars
       .filter((c) => c.serviceId !== null)
       .map((c, index) => ({
@@ -690,6 +772,7 @@ export function BookingWizard() {
         service_id: c.serviceId as number,
         add_on_ids: c.addOnIds,
         ...(explicitChoices !== null ? { membership_id: explicitChoices[index] ?? null } : {}),
+        ...(explicitLoyaltyChoices !== null ? { use_loyalty: explicitLoyaltyChoices[index] ?? false } : {}),
       }));
     if (quoteCars.length === 0 || !serviceAreaVersion || !geo) return;
 
@@ -709,10 +792,11 @@ export function BookingWizard() {
       duration_version: availabilityDuration.version,
       use_membership: true,
       preselect_memberships: explicitChoices === null,
+      preselect_loyalty: explicitLoyaltyChoices === null,
       product_lines: Object.entries(productQuantities)
         .filter(([, quantity]) => quantity > 0)
         .map(([productId, quantity]) => ({ product_id: Number(productId), quantity })),
-      ...(!hasSelectedMembershipChoice && promoActive && applied?.code
+      ...(!hasSelectedMembershipChoice && !hasSelectedLoyaltyChoice && promoActive && applied?.code
         ? { promo_code: applied.code }
         : {}),
       ...(selectedAddressId !== null
@@ -730,14 +814,20 @@ export function BookingWizard() {
           setMembershipChoices((current) => current ?? Object.fromEntries(
             q.cars.map((car) => [car.index, car.membership_id]),
           ));
+          setLoyaltyChoices((current) => current ?? Object.fromEntries(
+            q.cars.map((car) => [car.index, car.loyalty_applied]),
+          ));
         }
       })
       .catch((caught) => {
         if (cancelled) return;
         setQuote(null);
-        if (caught instanceof ApiError && ["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR"].includes(caught.code ?? "")) {
-          setError(caught.message);
+        const coverageIssue = caught instanceof ApiError ? locationCoverageIssue(caught) : null;
+        if (coverageIssue) {
+          setLocationIssue(coverageIssue);
+          setError(null);
           setServiceAreaVersion(null);
+          setDispatchZoneVersion(null);
           setStep(1);
         } else if (caught instanceof ApiError && caught.code === "DURATION_VERSION_STALE") {
           setError(t("Service timing changed. Please choose your time again."));
@@ -755,16 +845,23 @@ export function BookingWizard() {
     return () => {
       cancelled = true;
     };
-  }, [membershipMode, step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, dispatchZoneVersion, availabilityDuration, availabilityCars, loadSlots, quoteRetryVersion, membershipChoices, membershipCartKey, productQuantities, promoActive, applied?.code, t]);
+  }, [membershipMode, step, authed, slot, date, cars, geo, selectedAddressId, serviceAreaVersion, dispatchZoneVersion, availabilityDuration, availabilityCars, loadSlots, quoteRetryVersion, membershipChoices, loyaltyChoices, membershipCartKey, productQuantities, promoActive, applied?.code, t]);
 
   const applyMembership = membershipMode || (quote?.cars.some((car) => car.covered) ?? false);
   const membershipDiscount = applyMembership
     ? (quote?.membership_discount ?? 0)
     : 0;
+  const loyaltyApplied = quote?.cars.some((car) => car.loyalty_applied) ?? false;
+  const loyaltyDiscount = quote?.loyalty_discount ?? 0;
   // The authoritative quote includes services, add-ons, products, membership,
   // and promo impact. No client-computed amount is submitted to payment.
   const activeProductTotal = membershipMode ? productTotal : (quote?.product_total ?? productTotal);
-  const dueTotal = membershipMode ? productTotal : (quote?.total_price ?? netTotal + productTotal);
+  const checkoutZoneRate = membershipMode
+    ? (serviceZoneRate ?? 0)
+    : (quote?.service_zone_rate ?? 0);
+  const dueTotal = membershipMode
+    ? productTotal + checkoutZoneRate
+    : (quote?.total_price ?? netTotal + productTotal);
   const washesLeftAfter = membershipMode
     ? selectedMembership ? Math.max(0, selectedMembership.washes_remaining - 1) : undefined
     : applyMembership
@@ -773,7 +870,7 @@ export function BookingWizard() {
           Infinity,
         )
       : undefined;
-  const showPromo = authed && quote !== null && !applyMembership && total > 0;
+  const showPromo = authed && quote !== null && !applyMembership && !loyaltyApplied && total > 0;
 
   const carsValid = membershipMode
     ? selectedMembership !== null && cars.length === 1 && cars[0].plate.trim().length > 0
@@ -781,7 +878,7 @@ export function BookingWizard() {
 
   const canContinue =
     (step === 0 && carsValid) ||
-    (step === 1 && (selectedAddressId !== null || (geo !== null && buildingNumber.trim().length > 0))) ||
+    (step === 1 && geo !== null && (selectedAddressId !== null || buildingNumber.trim().length > 0)) ||
     (step === 2 && slot !== null);
 
   function selectSlot(nextSlot: string | null) {
@@ -790,20 +887,21 @@ export function BookingWizard() {
   }
 
   function applySavedAddress(address: Address) {
+    const savedGeo = typeof address.latitude === "number" && typeof address.longitude === "number"
+      ? { lat: address.latitude, lng: address.longitude }
+      : null;
     setSelectedAddressId(address.id);
     setArea(address.area ?? "");
     setBuildingNumber(address.building_number ?? "");
     setZoneNumber(address.zone_number ?? "");
     setStreetNumber(address.street_number ?? "");
     setDetails(address.details ?? "");
-    setGeo(
-      typeof address.latitude === "number" && typeof address.longitude === "number"
-        ? { lat: address.latitude, lng: address.longitude }
-        : null,
-    );
+    setGeo(savedGeo);
     setSlot(null);
     setSlots(null);
     setDispatchZoneVersion(null);
+    setServiceZoneRate(null);
+    setLocationIssue(savedGeo ? null : "missing");
     setGeoState("idle");
   }
 
@@ -838,6 +936,7 @@ export function BookingWizard() {
     const membership = redeemableMemberships.find((item) => item.id === membershipId);
     if (!membership || membership.id === selectedMembership?.id) return;
     setSelectedMembershipId(membership.id);
+    setAddingMembershipVehicle(false);
     setCars([{
       ...emptyCar(1),
       vtype: membership.plan.vehicle_type ?? "suv",
@@ -847,12 +946,23 @@ export function BookingWizard() {
     setAvailabilityDuration(null);
     setMembershipOptions(null);
     setProductQuantities({});
-    setMembershipProductChoice(null);
+    setProductPromptSeen(false);
     setError(null);
   }
 
   async function continueBooking() {
     if (step >= steps.length - 1) return;
+    if (step === 1) {
+      setAdvancing(true);
+      setError(null);
+      const locationAccepted = await loadSlots(date, availabilityCars);
+      if (locationAccepted) {
+        skipNextAvailabilityLoadRef.current = true;
+        setStep(2);
+      }
+      setAdvancing(false);
+      return;
+    }
     if (!membershipMode || step !== 0) {
       setStep(step + 1);
       return;
@@ -864,14 +974,14 @@ export function BookingWizard() {
     try {
       let vehicleId = cars[0].vehicleId;
       if (vehicleId === null) {
-        const vehicle = await createVehicle({
-          make: cars[0].make.trim(),
-          model: cars[0].model.trim(),
-          year: null,
-          color: cars[0].color.trim(),
+        const vehiclePayload: CreateVehiclePayload = {
           plate_number: cars[0].plate.trim(),
           type: cars[0].vtype,
-        }, `${bookingAttemptKey()}:membership-vehicle`);
+        };
+        const vehicle = await createVehicle(
+          vehiclePayload,
+          vehicleCommandKey("membership", vehiclePayload),
+        );
         if (!membershipCoversVehicle(selectedMembership, vehicle.type)) {
           throw new Error(t("The saved vehicle does not match this membership."));
         }
@@ -927,6 +1037,8 @@ export function BookingWizard() {
       markLocationManual();
       setGeo(v);
       setDispatchZoneVersion(null);
+      setServiceZoneRate(null);
+      setLocationIssue(null);
       setGeoState("idle");
       reverseGeocode(v.lat, v.lng);
     },
@@ -945,6 +1057,8 @@ export function BookingWizard() {
         markLocationManual();
         setGeo({ lat: latitude, lng: longitude });
         setDispatchZoneVersion(null);
+        setServiceZoneRate(null);
+        setLocationIssue(null);
         setGeoState("idle");
         reverseGeocode(latitude, longitude);
       },
@@ -955,7 +1069,8 @@ export function BookingWizard() {
 
   async function submit() {
     if (!slot || !geo || !serviceAreaVersion) {
-      setError(t("Confirm an eligible Qatar location and refresh availability."));
+      setLocationIssue(geo ? "stale" : "missing");
+      setError(null);
       setStep(1);
       return;
     }
@@ -969,9 +1084,9 @@ export function BookingWizard() {
       setStep(2);
       return;
     }
-    if (membershipMode && (!selectedMembership || !cars[0]?.vehicleId || effectiveMembershipProductChoice === null)) {
-      setError(t("Choose your membership vehicle and whether you want store products."));
-      setStep(cars[0]?.vehicleId ? 3 : 0);
+    if (membershipMode && (!selectedMembership || !cars[0]?.vehicleId)) {
+      setError(t("Choose your membership vehicle."));
+      setStep(0);
       return;
     }
     setSubmitting(true);
@@ -1007,7 +1122,7 @@ export function BookingWizard() {
             : {}),
           payment_method: "online",
           notes: notes.trim() || undefined,
-          product_lines: effectiveMembershipProductChoice === "add" ? productLines : [],
+          product_lines: productLines,
         }, `${attemptKey}:booking`);
       } else {
         if (!quote) throw new Error(t("An authoritative quote is required."));
@@ -1015,14 +1130,14 @@ export function BookingWizard() {
         for (const car of cars) {
           let vehicleId = car.vehicleId;
           if (vehicleId === null) {
-            const vehicle = await createVehicle({
-              make: car.make.trim(),
-              model: car.model.trim(),
-              year: null,
-              color: car.color.trim(),
+            const vehiclePayload: CreateVehiclePayload = {
               plate_number: car.plate.trim(),
               type: car.vtype,
-            }, `${attemptKey}:vehicle:${car.key}`);
+            };
+            const vehicle = await createVehicle(
+              vehiclePayload,
+              vehicleCommandKey(`booking:${car.key}`, vehiclePayload),
+            );
             vehicleId = vehicle.id;
           }
           carPayloads.push({
@@ -1088,8 +1203,10 @@ export function BookingWizard() {
       clearBookingAttempt();
       setConfirmed(booking);
     } catch (e) {
-      if (e instanceof ApiError && ["SERVICE_AREA_STALE", "SERVICE_AREA_OUTSIDE_QATAR", "DISPATCH_ZONE_STALE", "DISPATCH_ZONE_UNCOVERED"].includes(e.code ?? "")) {
-        setError(t("The Qatar service-area map changed or this saved location needs confirmation. Please reselect the location."));
+      const coverageIssue = e instanceof ApiError ? locationCoverageIssue(e) : null;
+      if (coverageIssue) {
+        setLocationIssue(coverageIssue);
+        setError(null);
         setServiceAreaVersion(null);
         setDispatchZoneVersion(null);
         setStep(1);
@@ -1250,11 +1367,19 @@ export function BookingWizard() {
               selectedMembership={selectedMembership}
               vehicles={myVehicles}
               car={cars[0] ?? emptyCar(1)}
+              addingNewVehicle={addingMembershipVehicle}
               onMembershipChange={chooseMembership}
+              onAddingNewVehicleChange={setAddingMembershipVehicle}
               onUpdate={(patch) => updateCar(cars[0]?.key ?? 1, patch)}
             />
           ) : (
             <>
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <LoyaltyModal placement="booking" />
+                <p className="max-w-sm text-xs leading-5 text-[color:var(--muted-foreground)]">
+                  {authed ? t("Your exact progress and matching rewards will be applied at checkout.") : t("Sign in at checkout to see your exact free-wash progress.")}
+                </p>
+              </div>
               {!authed && authResolved && (
                 <details className="mb-5 rounded-3xl border border-sky-200 bg-sky-50/80 p-4 open:bg-white sm:p-5">
                   <summary className="min-h-11 cursor-pointer list-none font-bold text-[color:var(--navy)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)]">
@@ -1379,6 +1504,7 @@ export function BookingWizard() {
                 )}
               </p>
             </div>
+            <ServiceZoneChargeNotice rate={serviceZoneRate} />
             <div className="rounded-3xl border border-[color:var(--border)] bg-white p-3 shadow-sm sm:p-4">
               <p className="mb-3 text-sm font-bold text-[color:var(--navy)]">{t("Blue plate")}</p>
               <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-center text-white">
@@ -1601,6 +1727,35 @@ export function BookingWizard() {
               </div>
             )}
 
+            {authed && !membershipMode && !quoteLoading && quote && quote.cars.some((car) => car.loyalty_progress) && (
+              <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-5">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[color:var(--navy)] text-white" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none"><path d="M4 10h16v10H4zM12 10v10M3 7h18v3H3zM12 7c-1-4-6-3-5 0M12 7c1-4 6-3 5 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </span>
+                  <div><h3 className="font-bold text-[color:var(--navy)]">{t("Bubbleit Rewards")}</h3><p className="mt-1 text-sm leading-6 text-slate-700">{t("Matching rewards are selected automatically. The free reward covers the base wash; add-ons and products stay payable.")}</p></div>
+                </div>
+                <div className="mt-4 space-y-3 border-t border-cyan-200 pt-4">
+                  {quote.cars.map((quotedCar) => {
+                    const progress = quotedCar.loyalty_progress;
+                    const hasReward = quotedCar.loyalty_applied || progress.available_rewards > 0;
+                    const membershipSelected = quotedCar.membership_id !== null;
+                    return (
+                      <div key={quotedCar.index} className="rounded-xl bg-white/80 p-3 text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <div><span className="font-semibold text-[color:var(--navy)]">{t("Car")} {quotedCar.index + 1}</span><span className="ms-2 text-xs text-slate-600">{lang === "ar" ? progress.service_name_ar : progress.service_name} · {t(progress.vehicle_class.toUpperCase())}</span></div>
+                          {hasReward ? <label className={clsx("inline-flex min-h-11 items-center gap-2 font-bold", membershipSelected ? "cursor-not-allowed opacity-50" : "cursor-pointer")}><span>{t("Free base wash")}</span><input type="checkbox" checked={quotedCar.loyalty_applied} disabled={membershipSelected} onChange={(event) => { if (event.target.checked) { clearPromo(); setMembershipChoices((current) => ({ ...(current ?? {}), [quotedCar.index]: null })); } setLoyaltyChoices((current) => ({ ...(current ?? {}), [quotedCar.index]: event.target.checked })); }} className="h-5 w-5 accent-[color:var(--navy)]" /></label> : <span className="text-xs font-semibold text-slate-600">{progress.completed}/{progress.required}</span>}
+                        </div>
+                        {!hasReward && <><LoyaltyMeterInline completed={progress.completed} required={progress.required} /><p className="mt-2 text-xs text-slate-600">{progress.remaining} {t("more matching washes to your reward")}</p></>}
+                        {quotedCar.loyalty_applied && <p className="mt-2 font-bold text-emerald-700">{t("Free base wash")} · − {fmt(quotedCar.loyalty_discount, lang)}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+                {loyaltyApplied && <p className="mt-4 text-xs font-semibold text-[color:var(--navy)]">{t("Promo codes cannot be combined with a free-wash reward.")}</p>}
+              </div>
+            )}
+
             {authed && !quoteLoading && (membershipMode || quote) && dueTotal > 0 && (
               <PaymentMethodSelector
                 options={paymentOptions}
@@ -1626,13 +1781,8 @@ export function BookingWizard() {
                 products={bookingProducts}
                 loading={productsLoading}
                 quantities={productQuantities}
-                autoOpen={!membershipMode && !productPromptSeen}
+                autoOpen={!productPromptSeen}
                 onAutoOpen={() => setProductPromptSeen(true)}
-                membershipDecision={membershipMode ? effectiveMembershipProductChoice : undefined}
-                onMembershipDecision={membershipMode ? (decision) => {
-                  setMembershipProductChoice(decision);
-                  if (decision === "none") setProductQuantities({});
-                } : undefined}
                 onChange={(id, quantity) => setProductQuantities((current) => ({
                   ...current,
                   [id]: quantity,
@@ -1660,6 +1810,7 @@ export function BookingWizard() {
                 products={bookingProducts}
                 quantities={productQuantities}
                 productTotal={productTotal}
+                serviceZoneRate={checkoutZoneRate}
               />
             ) : quote ? (
               <Summary
@@ -1674,6 +1825,8 @@ export function BookingWizard() {
                 promoCode={quote.promo_discount > 0 ? (applied?.code ?? null) : null}
                 membershipApplied={applyMembership}
                 membershipDiscount={membershipDiscount}
+                loyaltyApplied={loyaltyApplied}
+                loyaltyDiscount={loyaltyDiscount}
                 dueTotal={dueTotal}
                 washesLeftAfter={washesLeftAfter}
                 timeRangeLabel={quote.time_range_label ?? null}
@@ -1682,11 +1835,29 @@ export function BookingWizard() {
                 quoteCars={quote.cars}
                 quotedProducts={quote.products}
                 productTotal={activeProductTotal}
+                serviceZoneRate={checkoutZoneRate}
               />
             ) : null}
           </StepPanel>
         )}
 
+        {locationIssue && (
+          <AppToast
+            tone="info"
+            title={locationIssue === "outside"
+              ? t("Choose a location inside our service area")
+              : locationIssue === "missing"
+                ? t("Pin this location on the map")
+                : t("Please confirm this location again")}
+            message={locationIssue === "outside"
+              ? t("We cannot reach the selected location yet. Move the pin or choose a saved location inside our service area to continue.")
+              : locationIssue === "missing"
+                ? t("This saved location has no map pin. Tap the map to set the exact location before continuing.")
+                : t("Our coverage map changed. Check the pin, then continue to refresh the available times.")}
+            dismissLabel={t("Dismiss message")}
+            onDismiss={() => setLocationIssue(null)}
+          />
+        )}
         {error && <AppToast message={error} dismissLabel={t("Dismiss message")} onDismiss={() => setError(null)} />}
       </div>
 
@@ -1697,7 +1868,7 @@ export function BookingWizard() {
             {step === 3 ? (
               membershipMode ? (
                 <>
-                  {t("Products due")} {" "}
+                  {t("Amount due")} {" "}
                   <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
                     {fmt(dueTotal, lang)}
                   </span>
@@ -1763,7 +1934,7 @@ export function BookingWizard() {
                 disabled={!canContinue || advancing}
                 onClick={continueBooking}
               >
-                {advancing ? t("Saving vehicle…") : t("Continue")}
+                {advancing ? t(step === 1 ? "Checking location…" : "Saving vehicle…") : t("Continue")}
               </button>
             ) : (
               <button
@@ -1774,9 +1945,7 @@ export function BookingWizard() {
                   || !authed
                   || quoteLoading
                   || (membershipMode
-                    ? effectiveMembershipProductChoice === null
-                      || (effectiveMembershipProductChoice === "add" && productTotal <= 0)
-                      || !availabilityDuration?.version
+                    ? !availabilityDuration?.version
                     : !quote?.quote_id || !quote?.quote_version)
                 }
                 onClick={submit}
@@ -1784,7 +1953,9 @@ export function BookingWizard() {
                 {submitting
                   ? t("Confirming…")
                   : membershipMode && dueTotal > 0
-                    ? t("Pay for products")
+                    ? productTotal > 0 && checkoutZoneRate <= 0
+                      ? t("Pay for products")
+                      : t("Confirm & Pay")
                     : applyMembership && dueTotal <= 0
                     ? t("Confirm booking")
                     : paymentOptions?.mode === "cash"
@@ -1850,20 +2021,23 @@ function StepMembershipVehicle({
   selectedMembership,
   vehicles,
   car,
+  addingNewVehicle,
   onMembershipChange,
+  onAddingNewVehicleChange,
   onUpdate,
 }: {
   memberships: CustomerMembership[];
   selectedMembership: CustomerMembership;
   vehicles: Vehicle[];
   car: CarDraft;
+  addingNewVehicle: boolean;
   onMembershipChange: (membershipId: number) => void;
+  onAddingNewVehicleChange: (adding: boolean) => void;
   onUpdate: (patch: Partial<CarDraft>) => void;
 }) {
   const { lang, t } = useI18n();
   const eligibleVehicles = vehicles.filter((vehicle) => membershipCoversVehicle(selectedMembership, vehicle.type));
-  const [showNewVehicle, setShowNewVehicle] = useState(false);
-  const newVehicleVisible = eligibleVehicles.length === 0 || showNewVehicle;
+  const newVehicleVisible = eligibleVehicles.length === 0 || addingNewVehicle;
 
   const vehicleType = selectedMembership.plan.vehicle_type;
   const typeDescription = vehicleType === "sedan"
@@ -1954,7 +2128,7 @@ function StepMembershipVehicle({
                   type="button"
                   aria-pressed={active}
                   onClick={() => {
-                    setShowNewVehicle(false);
+                    onAddingNewVehicleChange(false);
                     onUpdate({
                       kind: "car",
                       vehicleId: vehicle.id,
@@ -1983,7 +2157,7 @@ function StepMembershipVehicle({
                   <span className="min-w-0 flex-1">
                     <span className="block text-lg font-extrabold" dir="ltr">{vehicle.plate_number}</span>
                     <span className={clsx("mt-1 block truncate text-xs", active ? "text-white/75" : "text-[color:var(--muted-foreground)]")}>
-                      {[vehicle.make, vehicle.model, t(vtypeLabel(vehicle.type))].filter(Boolean).join(" · ")}
+                      {t(vtypeLabel(vehicle.type))}
                     </span>
                   </span>
                   {active && <span className="text-sm font-bold" aria-hidden="true">✓</span>}
@@ -1999,19 +2173,18 @@ function StepMembershipVehicle({
           type="button"
           className="secondary-button self-start"
           onClick={() => {
-            setShowNewVehicle((current) => !current);
-            if (!newVehicleVisible) {
-              onUpdate({
-                vehicleId: null,
-                vtype: selectedMembership.plan.vehicle_type ?? "suv",
-                make: "",
-                model: "",
-                color: "",
-                plate: "",
-                serviceId: null,
-                addOnIds: [],
-              });
-            }
+            const addNewVehicle = !newVehicleVisible;
+            onAddingNewVehicleChange(addNewVehicle);
+            onUpdate({
+              vehicleId: null,
+              vtype: selectedMembership.plan.vehicle_type ?? "suv",
+              make: "",
+              model: "",
+              color: "",
+              plate: "",
+              serviceId: null,
+              addOnIds: [],
+            });
           }}
         >
           {newVehicleVisible ? t("Choose a saved vehicle") : t("Add a different vehicle")}
@@ -2024,7 +2197,7 @@ function StepMembershipVehicle({
             {t("Add a covered vehicle")}
           </h3>
           <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-            {typeDescription}. {t("The plate number is required; the other details are optional.")}
+            {typeDescription}. {t("Enter the plate number to save this vehicle.")}
           </p>
           {vehicleType === null && (
             <div className="mt-4 grid grid-cols-2 gap-2" aria-label={t("Vehicle type")}>
@@ -2046,7 +2219,7 @@ function StepMembershipVehicle({
               ))}
             </div>
           )}
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 max-w-md">
             <Field label={t("Plate no.")} required>
               <input
                 className="wizard-input"
@@ -2060,15 +2233,6 @@ function StepMembershipVehicle({
                   plate: event.target.value.replace(/\D/g, "").slice(0, 6),
                 })}
               />
-            </Field>
-            <Field label={t("Make")}>
-              <input className="wizard-input" value={car.make} onChange={(event) => onUpdate({ vehicleId: null, make: event.target.value })} />
-            </Field>
-            <Field label={t("Model")}>
-              <input className="wizard-input" value={car.model} onChange={(event) => onUpdate({ vehicleId: null, model: event.target.value })} />
-            </Field>
-            <Field label={t("Color")}>
-              <input className="wizard-input" value={car.color} onChange={(event) => onUpdate({ vehicleId: null, color: event.target.value })} />
             </Field>
           </div>
         </section>
@@ -2247,15 +2411,19 @@ function StepServices({
                         "relative flex min-h-40 cursor-pointer flex-col items-start rounded-2xl border p-3 text-start transition duration-200 sm:min-h-44 sm:p-4",
                         car.serviceId === service.id
                           ? "border-[color:var(--navy)] bg-[color:var(--navy)] text-white"
-                          : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
+                          : isPopular
+                            ? "border-[color:var(--cyan)] bg-linear-to-br from-white to-cyan-50 ring-2 ring-[color:var(--cyan)]/35 shadow-[0_10px_24px_rgba(20,137,222,0.16)] hover:border-[color:var(--blue)]"
+                            : "border-[color:var(--border)] bg-white hover:border-[color:var(--blue)]",
                       )}
                     >
                       {isPopular && (
-                        <span className="absolute end-2 top-2 rounded-full bg-[color:var(--cyan)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--navy)]">
-                          {t("Popular")}
-                        </span>
+                        <ServicePopularBadge
+                          label={t("Popular")}
+                          selected={car.serviceId === service.id}
+                          className="mb-2"
+                        />
                       )}
-                      <span className={clsx("text-sm font-bold leading-5 sm:text-base", isPopular && "pe-12")}>
+                      <span className="text-sm font-bold leading-5 sm:text-base">
                         {localized(lang, service.name, service.name_ar)}
                       </span>
                       <span
@@ -2436,8 +2604,6 @@ function BookingProductPicker({
   quantities,
   autoOpen,
   onAutoOpen,
-  membershipDecision,
-  onMembershipDecision,
   onChange,
 }: {
   products: StoreProductInventory[];
@@ -2445,8 +2611,6 @@ function BookingProductPicker({
   quantities: Record<string, number>;
   autoOpen: boolean;
   onAutoOpen: () => void;
-  membershipDecision?: "none" | "add" | null;
-  onMembershipDecision?: (decision: "none" | "add") => void;
   onChange: (id: string, quantity: number) => void;
 }) {
   const { lang, t } = useI18n();
@@ -2532,59 +2696,6 @@ function BookingProductPicker({
     0,
   );
 
-  if (membershipDecision === null && onMembershipDecision) {
-    return (
-      <section className="rounded-3xl border border-[color:var(--border)] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="membership-products-heading">
-        <h3 id="membership-products-heading" className="text-lg font-bold text-[color:var(--navy)]">
-          {t("Would you like any store products?")}
-        </h3>
-        <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-          {t("Your wash is already paid. You’ll only pay for products you add.")}
-        </p>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            className="secondary-button min-h-12 w-full"
-            onClick={() => onMembershipDecision("none")}
-          >
-            {t("No, confirm my wash")}
-          </button>
-          <button
-            type="button"
-            className="primary-button min-h-12 w-full"
-            onClick={() => {
-              onMembershipDecision("add");
-              setOpen(true);
-            }}
-          >
-            {t("Yes, browse products")}
-          </button>
-        </div>
-      </section>
-    );
-  }
-
-  if (membershipDecision === "none" && onMembershipDecision) {
-    return (
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3" role="status">
-        <div>
-          <p className="font-bold text-emerald-950">{t("No store products")}</p>
-          <p className="mt-1 text-sm text-emerald-800">{t("Your membership wash can be confirmed now with nothing to pay.")}</p>
-        </div>
-        <button
-          type="button"
-          className="min-h-11 cursor-pointer rounded-full border border-emerald-300 bg-white px-4 py-2 text-sm font-bold text-emerald-900 transition-colors hover:bg-emerald-100 focus-visible:ring-2 focus-visible:ring-emerald-600"
-          onClick={() => {
-            onMembershipDecision("add");
-            setOpen(true);
-          }}
-        >
-          {t("Add products instead")}
-        </button>
-      </section>
-    );
-  }
-
   return (
     <>
       <button
@@ -2619,16 +2730,6 @@ function BookingProductPicker({
           <svg viewBox="0 0 20 20" className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" fill="none" aria-hidden="true"><path d="m7 4 6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </span>
       </button>
-
-      {membershipDecision === "add" && onMembershipDecision && (
-        <button
-          type="button"
-          className="min-h-11 cursor-pointer self-start rounded-full px-4 py-2 text-sm font-bold text-[color:var(--blue)] transition-colors hover:bg-sky-50 focus-visible:ring-2 focus-visible:ring-[color:var(--blue)]"
-          onClick={() => onMembershipDecision("none")}
-        >
-          {t("Continue without products")}
-        </button>
-      )}
 
       {open && createPortal(
         <div
@@ -2724,6 +2825,7 @@ function MembershipSummary({
   products,
   quantities,
   productTotal,
+  serviceZoneRate,
 }: {
   membership: CustomerMembership;
   options: MembershipBookingOptions;
@@ -2735,6 +2837,7 @@ function MembershipSummary({
   products: StoreProductInventory[];
   quantities: Record<string, number>;
   productTotal: number;
+  serviceZoneRate: number;
 }) {
   const { lang, t } = useI18n();
   const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(
@@ -2796,18 +2899,37 @@ function MembershipSummary({
             </div>
           );
         })}
+        {serviceZoneRate > 0 && (
+          <div className="flex items-start justify-between gap-4 border-t border-[color:var(--border)] pt-3">
+            <dt>
+              <span className="font-semibold">{t("Additional service-zone charge")}</span>
+              <span className="mt-1 block text-xs text-[color:var(--muted-foreground)]">
+                {t("This location has a separate service charge that is not covered by the membership.")}
+              </span>
+            </dt>
+            <dd className="font-semibold">{fmt(serviceZoneRate, lang)}</dd>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-4 border-t border-[color:var(--border)] pt-3 text-base">
           <dt className="font-bold text-[color:var(--navy)]">{t("Amount to pay")}</dt>
-          <dd className="font-extrabold text-[color:var(--navy)]">{fmt(productTotal, lang)}</dd>
+          <dd className="font-extrabold text-[color:var(--navy)]">{fmt(productTotal + serviceZoneRate, lang)}</dd>
         </div>
       </dl>
       <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
-        {productTotal > 0
-          ? t("The membership covers the wash. Checkout is only for the selected products.")
-          : t("The membership covers the wash. No payment is required.")}
+        {productTotal > 0 && serviceZoneRate > 0
+          ? t("The membership covers the wash. Products and the service-zone charge remain payable.")
+          : serviceZoneRate > 0
+            ? t("The membership covers the wash. The service-zone charge remains payable.")
+            : productTotal > 0
+              ? t("The membership covers the wash. Checkout is only for the selected products.")
+              : t("The membership covers the wash. No payment is required.")}
       </p>
     </section>
   );
+}
+
+function LoyaltyMeterInline({ completed, required }: { completed: number; required: number }) {
+  return <div className="mt-2 flex gap-1.5" role="progressbar" aria-valuemin={0} aria-valuemax={required} aria-valuenow={Math.min(completed, required)}>{Array.from({ length: required }, (_, index) => <span key={index} aria-hidden="true" className={clsx("h-2 flex-1 rounded-full", index < completed ? "bg-[color:var(--cyan)]" : "bg-slate-200")} />)}</div>;
 }
 
 function Summary({
@@ -2822,6 +2944,8 @@ function Summary({
   promoCode,
   membershipApplied,
   membershipDiscount,
+  loyaltyApplied,
+  loyaltyDiscount,
   dueTotal,
   washesLeftAfter,
   timeRangeLabel,
@@ -2830,6 +2954,7 @@ function Summary({
   quoteCars,
   quotedProducts,
   productTotal,
+  serviceZoneRate,
 }: {
   cars: CarDraft[];
   services: Service[];
@@ -2842,6 +2967,8 @@ function Summary({
   promoCode: string | null;
   membershipApplied: boolean;
   membershipDiscount: number;
+  loyaltyApplied: boolean;
+  loyaltyDiscount: number;
   dueTotal: number;
   washesLeftAfter?: number;
   timeRangeLabel: string | null;
@@ -2850,6 +2977,7 @@ function Summary({
   quoteCars: BookingQuote["cars"];
   quotedProducts: BookingQuote["products"];
   productTotal: number;
+  serviceZoneRate: number;
 }) {
   const { lang, t } = useI18n();
   const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(
@@ -2962,6 +3090,10 @@ function Summary({
               ? dueTotal > 0
                 ? t("Membership applied + online payment for remaining total")
                 : t("Membership — no payment required")
+              : loyaltyApplied
+                ? dueTotal > 0
+                  ? t("Free base wash + payment for extras")
+                  : t("Loyalty reward — no payment required")
               : t("Pay online (SkipCash)")}
           </span>
         </li>
@@ -2983,7 +3115,13 @@ function Summary({
             </li>
           </>
         )}
-        {!membershipApplied && discount > 0 && (
+        {loyaltyApplied && loyaltyDiscount > 0 && (
+          <>
+            <li className="flex justify-between border-t border-[color:var(--border)] pt-2"><span className="text-[color:var(--muted-foreground)]">{t("Subtotal")}</span><span className="font-medium">{fmt(total, lang)}</span></li>
+            <li className="flex justify-between text-emerald-700"><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold">{t("Free base wash")}</span><span className="font-semibold">− {fmt(loyaltyDiscount, lang)}</span></li>
+          </>
+        )}
+        {!membershipApplied && !loyaltyApplied && discount > 0 && (
           <>
             <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
               <span className="text-[color:var(--muted-foreground)]">
@@ -3006,6 +3144,12 @@ function Summary({
           <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
             <span className="text-[color:var(--muted-foreground)]">{t("Booking products")}</span>
             <span className="font-medium">{fmt(productTotal, lang)}</span>
+          </li>
+        )}
+        {serviceZoneRate > 0 && (
+          <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
+            <span className="text-[color:var(--muted-foreground)]">{t("Additional service-zone charge")}</span>
+            <span className="font-medium">{fmt(serviceZoneRate, lang)}</span>
           </li>
         )}
         <li className="flex justify-between border-t border-[color:var(--border)] pt-2 text-base font-bold">

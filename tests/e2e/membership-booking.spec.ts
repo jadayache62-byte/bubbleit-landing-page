@@ -22,6 +22,7 @@ test("a midnight member books the covered vehicle without choosing a service", a
   let bookingPayload: Record<string, unknown> | null = null;
   let publicAvailabilityRequests = 0;
   let paymentInitializationRequests = 0;
+  let uncoveredAvailabilityRequests = 0;
 
   await page.route("**/api/customer/**", async (route) => {
     const request = route.request();
@@ -130,18 +131,32 @@ test("a midnight member books the covered vehicle without choosing a service", a
     }
 
     if (path === "/addresses") {
-      return route.fulfill({ json: envelope(paginated([{
-        id: 21,
-        label: "Home",
-        area: "West Bay",
-        details: "Tower entrance",
-        building_number: "24",
-        zone_number: "66",
-        street_number: "810",
-        latitude: 25.329,
-        longitude: 51.531,
-        service_area: { version: "qatar-area-v1", eligible: true, stale: false },
-      }])) });
+      return route.fulfill({ json: envelope(paginated([
+        {
+          id: 22,
+          label: "Outside office",
+          area: "Unsupported area",
+          details: "Outside current coverage",
+          building_number: "10",
+          zone_number: "1",
+          street_number: "1",
+          latitude: 25,
+          longitude: 50,
+          service_area: { version: "qatar-area-v1", eligible: true, stale: false },
+        },
+        {
+          id: 21,
+          label: "Home",
+          area: "West Bay",
+          details: "Tower entrance",
+          building_number: "24",
+          zone_number: "66",
+          street_number: "810",
+          latitude: 25.329,
+          longitude: 51.531,
+          service_area: { version: "qatar-area-v1", eligible: true, stale: false },
+        },
+      ])) });
     }
 
     if (path === "/service-area/validate") {
@@ -149,6 +164,19 @@ test("a midnight member books the covered vehicle without choosing a service", a
     }
 
     if (/^\/memberships\/7\/booking-options$/.test(path)) {
+      if (url.searchParams.get("latitude") === "25") {
+        uncoveredAvailabilityRequests += 1;
+        return route.fulfill({
+          status: 422,
+          json: {
+            success: false,
+            message: "We do not currently serve this location.",
+            data: { dispatch_zone: { version: null, eligible: false } },
+            errors: null,
+            code: "DISPATCH_ZONE_UNCOVERED",
+          },
+        });
+      }
       bookingOptionsUrl = url;
       const date = url.searchParams.get("date");
       return route.fulfill({ json: envelope({
@@ -258,6 +286,18 @@ test("a midnight member books the covered vehicle without choosing a service", a
   await expect(page.getByText("Standard Bubble")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: /Outside office/ }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(page.getByRole("heading", { name: "Where should we come?" })).toBeVisible();
+  const locationSnackbar = page.getByRole("status").filter({ hasText: "Choose a location inside our service area" });
+  await expect(locationSnackbar).toBeVisible();
+  await expect(locationSnackbar).toContainText("Move the pin or choose a saved location inside our service area to continue.");
+  await expect(locationSnackbar.locator("..")).toHaveClass(/fixed/);
+  await expect(page.getByRole("heading", { name: "Choose your membership time" })).toHaveCount(0);
+  await expect(page.locator('[role="alert"].border-red-200')).toHaveCount(0);
+  expect(uncoveredAvailabilityRequests).toBe(1);
+
   await page.getByRole("button", { name: /Home/ }).click();
   await page.getByRole("button", { name: "Continue" }).click();
 
@@ -272,13 +312,14 @@ test("a midnight member books the covered vehicle without choosing a service", a
   await page.getByRole("option", { name: "00:00", exact: true }).click();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  await expect(page.getByRole("heading", { name: "Would you like any store products?" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "No, confirm my wash" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Yes, browse products" })).toBeVisible();
+  const productsDialog = page.getByRole("dialog", { name: "Complete your wash" });
+  await expect(productsDialog).toBeVisible();
+  await expect(productsDialog.getByText("Microfiber cloth")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Would you like any store products?" })).toHaveCount(0);
   await expect(page.getByText("Service selected automatically")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "No, confirm my wash" }).click();
-  await expect(page.getByText("No store products")).toBeVisible();
+  await productsDialog.getByRole("button", { name: "Close" }).click();
+  await expect(productsDialog).toBeHidden();
   await page.getByRole("button", { name: "Confirm booking" }).click();
 
   await expect(page.getByRole("heading", { name: "Booking confirmed — membership covered" })).toBeVisible();
@@ -296,4 +337,125 @@ test("a midnight member books the covered vehicle without choosing a service", a
   expect(bookingPayload).not.toHaveProperty("cars");
   expect(bookingPayload).not.toHaveProperty("quote_id");
   expect(paymentInitializationRequests).toBe(0);
+});
+
+test("changing a new membership vehicle uses a new internal key and plate-only payload", async ({ page }) => {
+  const vehicleRequests: Array<{
+    body: Record<string, unknown>;
+    idempotencyKey: string | null;
+  }> = [];
+
+  await page.route("**/api/customer/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname.replace(/^\/api\/customer/, "");
+
+    if (path === "/auth/me") {
+      return route.fulfill({ json: envelope({
+        id: 1,
+        name: "Membership Customer",
+        phone: "+97450000000",
+        email: null,
+      }) });
+    }
+
+    if (path === "/services" || path === "/store/products") {
+      return route.fulfill({ json: envelope(paginated([])) });
+    }
+
+    if (path === "/payment-options") {
+      return route.fulfill({ json: envelope({
+        mode: "online",
+        methods: [{ channel: "skipcash_hosted", label: "Card or Apple Pay" }],
+      }) });
+    }
+
+    if (path === "/memberships") {
+      return route.fulfill({ json: envelope(paginated([{
+        id: 7,
+        status: "active",
+        washes_used: 0,
+        washes_remaining: 8,
+        price_paid: 400,
+        activated_at: "2026-07-01T00:00:00+03:00",
+        expires_at: "2027-07-01T00:00:00+03:00",
+        plan: {
+          id: 4,
+          name: "SUV Membership",
+          name_ar: "اشتراك الدفع الرباعي",
+          description: "SUV washes.",
+          description_ar: "غسيل الدفع الرباعي.",
+          scope: "standard",
+          vehicle_type: "suv",
+          washes_count: 8,
+          price: 400,
+          validity_days: 365,
+          window_start: null,
+          window_end: null,
+        },
+      }])) });
+    }
+
+    if (path === "/vehicles" && request.method() === "GET") {
+      return route.fulfill({ json: envelope(paginated([])) });
+    }
+
+    if (path === "/vehicles" && request.method() === "POST") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      vehicleRequests.push({
+        body,
+        idempotencyKey: await request.headerValue("idempotency-key"),
+      });
+      return route.fulfill({
+        status: 201,
+        json: envelope({
+          id: 100 + vehicleRequests.length,
+          make: "",
+          model: "",
+          year: null,
+          color: "",
+          plate_number: body.plate_number,
+          type: body.type,
+        }),
+      });
+    }
+
+    if (path === "/addresses") {
+      return route.fulfill({ json: envelope(paginated([])) });
+    }
+
+    return route.fulfill({
+      status: 404,
+      json: {
+        success: false,
+        message: `Unexpected customer API request: ${request.method()} ${path}`,
+        data: null,
+        errors: null,
+      },
+    });
+  });
+
+  await page.goto("/book");
+
+  await expect(page.getByRole("heading", { name: "Add a covered vehicle" })).toBeVisible();
+  await expect(page.getByLabel("Make", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Color", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("textbox", { name: /Plate no\./ }).fill("123456");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Where should we come?" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("button", { name: "Add a different vehicle" }).click();
+  await page.getByRole("textbox", { name: /Plate no\./ }).fill("654321");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Where should we come?" })).toBeVisible();
+
+  expect(vehicleRequests).toHaveLength(2);
+  expect(vehicleRequests[0].body).toEqual({ plate_number: "123456", type: "suv" });
+  expect(vehicleRequests[1].body).toEqual({ plate_number: "654321", type: "suv" });
+  expect(vehicleRequests[0].idempotencyKey).toBeTruthy();
+  expect(vehicleRequests[1].idempotencyKey).toBeTruthy();
+  expect(vehicleRequests[1].idempotencyKey).not.toBe(vehicleRequests[0].idempotencyKey);
 });

@@ -4,14 +4,18 @@ import test from "node:test";
 
 const client = readFileSync(new URL("../lib/api/client.ts", import.meta.url), "utf8");
 const wizard = readFileSync(new URL("../components/booking/BookingWizard.tsx", import.meta.url), "utf8");
+const vehicleKeys = readFileSync(new URL("../lib/booking/vehicle-idempotency.ts", import.meta.url), "utf8");
 const mock = readFileSync(new URL("../app/api/mock/v1/customer/[...path]/route.ts", import.meta.url), "utf8");
 
-test("one persisted attempt key is derived for every booking command", () => {
+test("booking commands keep one persisted attempt while vehicle payloads have scoped keys", () => {
   assert.match(wizard, /BOOKING_ATTEMPT_KEY/);
   assert.match(wizard, /attemptKey}:address/);
-  assert.match(wizard, /attemptKey}:vehicle:\$\{car\.key\}/);
+  assert.match(wizard, /vehicleCommandKey\(`booking:\$\{car\.key\}`/);
+  assert.match(wizard, /vehicleCommandKey\("membership"/);
   assert.match(wizard, /attemptKey}:booking/);
   assert.match(wizard, /attemptKey}:payment/);
+  assert.match(vehicleKeys, /existing\?\.payload === signature/);
+  assert.match(vehicleKeys, /const key = `vehicle\.\$\{generate\(\)\}`/);
 });
 
 test("booking persistence and payment initialization are separate API commands", () => {

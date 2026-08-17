@@ -1,7 +1,7 @@
 # Bubble It Customer Web — Agent Instructions
 
 Read `CLAUDE.md` before changing customer behavior; it contains the detailed booking, store,
-membership, authentication, localization, security, and accessibility contracts.
+membership, loyalty, authentication, localization, security, and accessibility contracts.
 
 ## Current architecture
 
@@ -14,23 +14,44 @@ membership, authentication, localization, security, and accessibility contracts.
   browser authorization header, localStorage token, or script-readable auth cookie.
 - Customer contracts expose customer-relevant payment/refund/fulfillment state only. Never expose
   journal, revenue-recognition, accounting, reconciliation, provider, or internal fingerprint data.
+- Forgot-password recovery is a two-step OTP flow. OTP verification returns a short-lived reset grant
+  held only in component memory; it must not establish the HttpOnly customer session. Choosing the new
+  password consumes the grant once and returns the customer to normal password sign-in.
 
 ## Current customer behavior
 
 - Booking remains one adaptive flow. Ordinary customers use Services → Location → Schedule → Pay &
   Confirm. An authenticated customer with a redeemable membership uses Vehicle → Location →
-  Schedule → Products & confirm; the plan owns the service and the browser never asks them to choose
+  Schedule → Pay & Confirm; the plan owns the service and the browser never asks them to choose
   or price it.
 - Availability, duration, price, membership coverage, inventory, service-area version, and payment
   outcome are backend-owned. Do not calculate operational or financial truth in the browser.
+- Service-zone pricing is backend-owned and forward-only. Resolve the selected pin through the customer
+  API, show the exact additional charge on Location and Pay & Confirm, and keep it separate from products,
+  base delivery, promotions, membership coverage, and loyalty coverage. Booking quotes and store pricing
+  v2 are immutable; stale pricing must return the customer to review before payment.
+- Loyalty promotion is shown only from the public active-status endpoint. Authenticated progress and
+  matching rewards are backend-owned per booking line; keep reward identifiers inside quote snapshots,
+  disable promo entry while a reward is selected, and show base-wash coverage separately from payable
+  add-ons/products. Paused balances remain visible in the account but cannot be claimed.
+- Present loyalty marketing through the shared bilingual modal: it may auto-prompt only once per
+  session after homepage Services engagement, while booking/account entry points stay click-triggered.
+  Keep authoritative progress, reward selection, pricing, history, and paused states inline.
 - Regular and membership availability require the selected latitude/longitude and return an opaque
   dispatch-zone version that must survive quote/confirmation. A location outside configured coverage
-  is different from a covered zone with no available time. Never expose internal zone names, buses,
-  drivers, candidate counts, or automatic-assignment details to customers.
+  is blocked on Location with a fixed informational snackbar that remains visible at any scroll
+  position; a covered zone with no available time advances to Schedule so the customer can choose
+  another day. Never expose internal zone names, buses, drivers, candidate counts, or
+  automatic-assignment details to customers.
 - Membership vehicle and slot choices come only from the owner-scoped booking-options endpoint.
   Sedan plans accept only sedans, SUV plans accept only SUVs, and 00:00–05:00 slots remain private
-  to eligible midnight memberships. A product-free redemption confirms immediately; a redemption
-  with products checks out only those products.
+  to eligible midnight memberships. Membership Pay & Confirm opens the same optional-product modal
+  as an ordinary booking. The plan covers its wash only; selected products and any immutable
+  service-zone charge remain payable, while a product-free redemption confirms without payment only
+  when the selected zone has no charge.
+- Adding a membership vehicle asks only for its plate number. Keep the internally generated
+  vehicle-create idempotency key stable for an identical retry and rotate it when plate/type changes.
+  Do not let automatic saved-vehicle selection override “Add a different vehicle.”
 - Display the selected vehicle type's sedan/SUV duration. Customers never choose a bus or see bus,
   plate, driver, or dispatch details.
 - Booking history is booking-reference-first, newest first, with search and lifecycle filters.
@@ -41,6 +62,9 @@ membership, authentication, localization, security, and accessibility contracts.
 - A provider return is not proof of payment. Reconcile through the backend and preserve processing,
   failed, cancelled, review, refund, and payment-recovery states.
 - Use the shared accessible, dismissible top snackbar for customer action errors.
+- Keep the compact language switcher directly visible in the global header at every viewport; do not
+  hide the mobile control inside the navigation drawer. Deep Bubble's shared Popular badge and cyan
+  card emphasis must remain prominent in both homepage services and booking service selection.
 
 ## Quality and safety
 

@@ -1,6 +1,9 @@
 "use client";
 
+import clsx from "clsx";
 import { SectionHeader } from "@/components/ui";
+import { LoyaltyModal } from "@/components/loyalty/LoyaltyModal";
+import { ServicePopularBadge } from "@/components/ServicePopularBadge";
 import { useI18n } from "@/lib/i18n";
 import { formatQar } from "@/lib/money";
 
@@ -62,52 +65,61 @@ export function Services() {
           titleId="services-title"
         />
 
-        <div className="card-grid mt-12 md:grid-cols-2 xl:grid-cols-3">
-          {services.map((service) => (
-            <article
-              key={service.title}
-              className="glass-panel group flex flex-col rounded-[var(--radius-card)] p-6 transition duration-200 hover:-translate-y-1 hover:shadow-[0_24px_50px_rgba(20,137,222,0.18)]"
-            >
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-[color:var(--cyan)]/25 to-[color:var(--blue)]/20 text-sm font-bold text-[color:var(--deep-blue)]">
-                {service.icon}
-              </div>
-              <h3 className="mt-5 flex items-center gap-2 text-xl font-bold text-[color:var(--foreground)]">
-                {t(service.title)}
-                {service.title === "Deep Bubble" && (
-                  <span className="rounded-full bg-[color:var(--cyan)]/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--navy)]">
-                    {t("Popular")}
-                  </span>
+        <div className="mt-7 flex justify-start sm:justify-end">
+          <LoyaltyModal placement="services" autoPrompt />
+        </div>
+
+        <div className="card-grid mt-8 md:grid-cols-2 xl:grid-cols-3">
+          {services.map((service) => {
+            const isPopular = service.title === "Deep Bubble";
+            return (
+              <article
+                key={service.title}
+                className={clsx(
+                  "glass-panel group flex flex-col rounded-[var(--radius-card)] p-6 transition duration-200 hover:-translate-y-1 hover:shadow-[0_24px_50px_rgba(20,137,222,0.18)]",
+                  isPopular &&
+                    "border-[color:var(--cyan)] bg-linear-to-br from-white via-white to-cyan-50/80 ring-2 ring-[color:var(--cyan)]/35 shadow-[0_20px_48px_rgba(20,137,222,0.2)]",
                 )}
-              </h3>
-              <p className="mt-3 flex-1 text-base leading-7 text-[color:var(--muted-foreground)]">
-                {t(service.description)}
-              </p>
-              <div className="mt-5 flex items-center gap-4 border-t border-[color:var(--border)] pt-4 text-sm">
-                <span>
-                  <span className="block text-xs font-medium text-[color:var(--muted-foreground)]">
-                    {t("Salon")}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-[color:var(--cyan)]/25 to-[color:var(--blue)]/20 text-sm font-bold text-[color:var(--deep-blue)]">
+                    {service.icon}
+                  </div>
+                  {isPopular && <ServicePopularBadge label={t("Popular")} />}
+                </div>
+                <h3 className="mt-5 text-xl font-bold text-[color:var(--foreground)]">
+                  {t(service.title)}
+                </h3>
+                <p className="mt-3 flex-1 text-base leading-7 text-[color:var(--muted-foreground)]">
+                  {t(service.description)}
+                </p>
+                <div className="mt-5 flex items-center gap-4 border-t border-[color:var(--border)] pt-4 text-sm">
+                  <span>
+                    <span className="block text-xs font-medium text-[color:var(--muted-foreground)]">
+                      {t("Salon")}
+                    </span>
+                    <span className="font-bold text-[color:var(--blue)]" dir="ltr">
+                      {formatQar(service.salon, lang)}
+                    </span>
                   </span>
-                  <span className="font-bold text-[color:var(--blue)]" dir="ltr">
-                    {formatQar(service.salon, lang)}
+                  <span>
+                    <span className="block text-xs font-medium text-[color:var(--muted-foreground)]">
+                      {t("SUV")}
+                    </span>
+                    <span className="font-bold text-[color:var(--blue)]" dir="ltr">
+                      {formatQar(service.suv, lang)}
+                    </span>
                   </span>
-                </span>
-                <span>
-                  <span className="block text-xs font-medium text-[color:var(--muted-foreground)]">
-                    {t("SUV")}
-                  </span>
-                  <span className="font-bold text-[color:var(--blue)]" dir="ltr">
-                    {formatQar(service.suv, lang)}
-                  </span>
-                </span>
-                <a
-                  href="/book"
-                  className="ml-auto text-sm font-semibold text-[color:var(--navy)] transition hover:text-[color:var(--blue)]"
-                >
-                  {t("Book →")}
-                </a>
-              </div>
-            </article>
-          ))}
+                  <a
+                    href="/book"
+                    className="ml-auto text-sm font-semibold text-[color:var(--navy)] transition hover:text-[color:var(--blue)]"
+                  >
+                    {t("Book →")}
+                  </a>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </div>
     </section>

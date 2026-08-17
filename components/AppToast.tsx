@@ -12,11 +12,13 @@ const TONE_STYLES: Record<AppToastTone, string> = {
 };
 
 export function AppToast({
+  title,
   message,
   tone = "danger",
   dismissLabel,
   onDismiss,
 }: {
+  title?: string;
   message: string;
   tone?: AppToastTone;
   dismissLabel: string;
@@ -42,7 +44,10 @@ export function AppToast({
             </>
           )}
         </svg>
-        <span className="min-w-0 flex-1 leading-6">{message}</span>
+        <span className="min-w-0 flex-1 leading-6">
+          {title && <span className="block font-extrabold">{title}</span>}
+          <span className={clsx("block", title && "mt-0.5 font-medium")}>{message}</span>
+        </span>
         {onDismiss && (
           <button
             type="button"

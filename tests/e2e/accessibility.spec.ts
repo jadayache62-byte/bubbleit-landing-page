@@ -50,3 +50,57 @@ for (const path of ["/", "/store", "/book", "/memberships"]) {
     expect(results.violations).toEqual([]);
   });
 }
+
+test("loyalty modal is accessible, dismissible, and mobile-safe", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.addInitScript(() => {
+    window.sessionStorage.setItem("bubbleit.loyalty.spotlight.seen.v1", "1");
+  });
+  await page.route("**/api/customer/loyalty-program", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      success: true,
+      message: "",
+      data: {
+        enabled: true,
+        policy_version: "loyalty-5-plus-1-v1",
+        qualifying_washes: 5,
+        reward_washes: 1,
+        first_activated_at: "2026-08-05T09:00:00Z",
+        last_activated_at: "2026-08-05T09:00:00Z",
+        paused_at: null,
+        reward_expires: false,
+      },
+      errors: null,
+    }),
+  }));
+
+  await page.goto("/#services");
+  const trigger = page.getByRole("button", { name: /Your 6th wash is on us/i });
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+
+  const dialog = page.getByRole("dialog", { name: /Five matching washes/i });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByRole("button", { name: /Close rewards details/i })).toBeFocused();
+
+  const overflow = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    document: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+  }));
+  expect(overflow.document).toBeLessThanOrEqual(overflow.viewport + 1);
+  expect(overflow.body).toBeLessThanOrEqual(overflow.viewport + 1);
+
+  const results = await new AxeBuilder({ page })
+    .include('[role="dialog"]')
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(results.violations).toEqual([]);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+});

@@ -16,14 +16,16 @@ import type {
   CustomerNotificationDevice,
   CustomerNotificationPreference,
   CustomerReviewInvitation,
+  CreateVehiclePayload,
   Envelope,
   MembershipPlan,
   MembershipBookingOptions,
   Paginated,
+  PasswordResetGrant,
   PromoValidation,
   QuoteCar,
   Service,
-  ServiceAreaSnapshot,
+  ServiceAreaValidation,
   StoreOrder,
   StoreOrderPayment,
   StoreProductInventory,
@@ -174,7 +176,7 @@ export function getAvailability(
 }
 
 export function validateServiceArea(latitude: number, longitude: number) {
-  return request<ServiceAreaSnapshot>("/service-area/validate", {
+  return request<ServiceAreaValidation>("/service-area/validate", {
     method: "POST",
     body: { latitude, longitude },
   });
@@ -286,8 +288,38 @@ export function verifyOtp(phone: string, code: string) {
   });
 }
 
+export function verifyPasswordResetOtp(phone: string, code: string) {
+  return request<PasswordResetGrant>("/auth/forgot-password/verify-otp", {
+    method: "POST",
+    body: { phone, code },
+  });
+}
+
+export function resetPassword(
+  resetToken: string,
+  password: string,
+  passwordConfirmation: string,
+) {
+  return request<null>("/auth/forgot-password/reset", {
+    method: "POST",
+    body: {
+      reset_token: resetToken,
+      password,
+      password_confirmation: passwordConfirmation,
+    },
+  });
+}
+
 export function me() {
   return request<Customer>("/auth/me");
+}
+
+export function getLoyaltyProgram() {
+  return request<import("./types").LoyaltyProgram>("/loyalty-program");
+}
+
+export function getCustomerLoyalty() {
+  return request<import("./types").CustomerLoyalty>("/loyalty");
 }
 
 export async function logout() {
@@ -376,7 +408,7 @@ export function listVehicles() {
   return request<Paginated<Vehicle>>("/vehicles").then((r) => r.data);
 }
 
-export function createVehicle(payload: Omit<Vehicle, "id">, idempotencyKey?: string) {
+export function createVehicle(payload: CreateVehiclePayload, idempotencyKey?: string) {
   return request<Vehicle>("/vehicles", {
     method: "POST",
     body: payload,
@@ -509,6 +541,7 @@ export function getQuote(payload: {
   duration_version: string;
   use_membership?: boolean;
   preselect_memberships?: boolean;
+  preselect_loyalty?: boolean;
   product_lines?: { product_id: number; quantity: number }[];
   promo_code?: string;
   address_id?: number;

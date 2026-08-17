@@ -32,6 +32,21 @@ export type DispatchZoneSnapshot = {
   version: string | null;
   eligible: boolean;
   enabled: boolean;
+  name_en?: string | null;
+  name_ar?: string | null;
+  service_rate?: number;
+  rate_applied?: boolean;
+};
+
+export type ServiceAreaValidation = ServiceAreaSnapshot & {
+  dispatch_zone: {
+    id: number;
+    name_en: string | null;
+    name_ar: string | null;
+    version: string;
+    service_rate: number;
+    rate_applied: boolean;
+  };
 };
 
 export type DurationContribution = {
@@ -133,6 +148,9 @@ export type Vehicle = {
   type: VehicleType;
 };
 
+export type CreateVehiclePayload = Pick<Vehicle, "plate_number" | "type"> &
+  Partial<Pick<Vehicle, "make" | "model" | "year" | "color">>;
+
 export type Address = {
   id: number;
   label: string;
@@ -146,7 +164,50 @@ export type Address = {
   service_area: ServiceAreaSnapshot & { stale: boolean };
 };
 
-export type PaymentMethod = "pay_on_site" | "online" | "cash" | "membership" | "membership_with_products";
+export type PaymentMethod = "pay_on_site" | "online" | "cash" | "membership" | "membership_with_products" | "membership_with_balance" | "loyalty";
+
+export type LoyaltyProgram = {
+  enabled: boolean;
+  policy_version: string;
+  qualifying_washes: number;
+  reward_washes: number;
+  first_activated_at: string | null;
+  last_activated_at: string | null;
+  paused_at: string | null;
+  reward_expires: false;
+};
+
+export type LoyaltyProgress = {
+  service_id: number;
+  service_name: string;
+  service_name_ar: string;
+  vehicle_class: "sedan" | "suv" | "caravan" | "jet_ski" | "jet_boat";
+  completed: number;
+  required: number;
+  remaining: number;
+  available_rewards: number;
+  rewards_earned?: number;
+  rewards_redeemed?: number;
+};
+
+export type CustomerLoyalty = {
+  program: LoyaltyProgram;
+  totals: {
+    qualifying_washes: number;
+    rewards_earned: number;
+    available_rewards: number;
+    rewards_redeemed: number;
+  };
+  buckets: LoyaltyProgress[];
+  history: {
+    id: number;
+    service_name: string;
+    service_name_ar: string;
+    vehicle_class: LoyaltyProgress["vehicle_class"];
+    status: "issued" | "reserved" | "redeemed";
+    issued_at: string | null;
+  }[];
+};
 export type PaymentChannel = "cash" | "skipcash_hosted" | "skipcash_qpay" | "membership";
 export type PaymentOptions = {
   mode: "cash" | "online";
@@ -259,6 +320,7 @@ export type BookingCar = {
   service: Pick<Service, "id" | "name" | "price">;
   add_ons: AddOn[];
   subtotal: number;
+  loyalty?: { applied: boolean; status: "reserved" | "redeemed"; discount: number } | null;
 };
 
 export type Booking = {
@@ -275,10 +337,21 @@ export type Booking = {
   duration?: DurationSnapshot;
   time_range_label?: string | null;
   membership_applied?: boolean;
+  loyalty_applied?: boolean;
   payment_method: PaymentMethod;
   payment_purchase_id?: number | null;
   total: number;
   product_total?: number;
+  service_zone_rate?: number;
+  payable_total?: number;
+  dispatch_zone?: {
+    id: number;
+    name_en: string;
+    name_ar: string;
+    version: number | null;
+    service_rate: number;
+    rate_applied: boolean;
+  } | null;
   products?: {
     product_id: number;
     sku: string;
@@ -313,12 +386,17 @@ export type VerifyOtpResult = {
   };
 };
 
+export type PasswordResetGrant = {
+  reset_token: string;
+  expires_at: string;
+};
+
 export type CreateBookingPayload = {
   quote_id?: string;
   quote_version?: string;
   scheduled_at: string;
   duration_version: string;
-  cars?: { vehicle_id: number; service_id: number; add_on_ids: number[] }[];
+  cars?: { vehicle_id: number; service_id: number; add_on_ids: number[]; use_loyalty?: boolean }[];
   membership_id?: number;
   vehicle_id?: number;
   address_id?: number;
@@ -352,12 +430,13 @@ export type QuoteCar = {
   service_id: number;
   add_on_ids: number[];
   membership_id?: number | null;
+  use_loyalty?: boolean;
 };
 
 export type BookingQuote = {
   quote_id: string;
   quote_version: string;
-  pricing_schema: "booking-cart-pricing:v1";
+  pricing_schema: "booking-cart-pricing:v2";
   currency: "QAR";
   expires_at: string;
   service: {
@@ -378,8 +457,18 @@ export type BookingQuote = {
   service_total: number;
   membership_eligible: boolean;
   membership_discount: number;
+  loyalty_discount: number;
   promo_discount: number;
   product_total: number;
+  service_zone_rate: number;
+  service_zone: {
+    id: number;
+    name_en: string | null;
+    name_ar: string | null;
+    version: string;
+    rate: number;
+    rate_applied: boolean;
+  };
   total_price: number;
   payment_required: boolean;
   payment_method: PaymentMethod;
@@ -391,6 +480,9 @@ export type BookingQuote = {
     membership_id: number | null;
     membership_name: string | null;
     membership_discount: number;
+    loyalty_applied: boolean;
+    loyalty_discount: number;
+    loyalty_progress: LoyaltyProgress;
     remaining_before: number | null;
     remaining_after: number | null;
     eligible_memberships: {
@@ -469,12 +561,19 @@ export type StorePricingLine = {
 };
 
 export type StorePricingConfirmation = {
-  schema: "store-cart-pricing:v1";
+  schema: "store-cart-pricing:v1" | "store-cart-pricing:v2";
   version: string | null;
   currency: "QAR";
   lines: StorePricingLine[];
   subtotal_minor: number;
   delivery_fee_minor: number;
+  product_subtotal_minor?: number;
+  base_delivery_fee_minor?: number;
+  service_zone_rate_minor?: number;
+  combined_delivery_minor?: number;
+  dispatch_zone_id?: number;
+  dispatch_zone_version?: number;
+  dispatch_zone_token?: string;
   total_minor: number;
 };
 
@@ -506,6 +605,16 @@ export type StoreOrder = {
   latitude: number | null;
   longitude: number | null;
   service_area: ServiceAreaSnapshot;
+  dispatch_zone?: {
+    id: number;
+    name_en: string;
+    name_ar: string;
+    version: number | null;
+    service_rate: number;
+    rate_applied: boolean;
+  } | null;
+  base_delivery_fee?: number | null;
+  service_zone_rate?: number | null;
   subtotal: number;
   delivery_fee: number;
   discount_total: number;
@@ -525,6 +634,7 @@ export type CreateStoreOrderPayload = {
   latitude: number;
   longitude: number;
   service_area_version: string;
+  dispatch_zone_version?: string;
   notes?: string;
   pricing_confirmation: StorePricingConfirmation;
   lines: { product_id: number; inventory_item_id?: number; quantity: number }[];
@@ -550,7 +660,8 @@ export type CustomerNotificationType =
   | "refund_status_changed"
   | "membership_status_changed"
   | "store_order_status_changed"
-  | "review_requested";
+  | "review_requested"
+  | "loyalty_reward_earned";
 
 export type CustomerReviewInvitation = {
   id: string;

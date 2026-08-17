@@ -22,7 +22,9 @@ test("membership booking skips service quote and submits only plan, vehicle, slo
   assert.match(wizard, /membership_id: selectedMembership\.id/);
   assert.match(wizard, /vehicle_id: cars\[0\]\.vehicleId/);
   assert.match(wizard, /duration_version: availabilityDuration\.version/);
-  assert.match(wizard, /product_lines: effectiveMembershipProductChoice === "add" \? productLines : \[\]/);
+  assert.match(wizard, /product_lines: productLines/);
+  assert.match(wizard, /autoOpen=\{!productPromptSeen\}/);
+  assert.doesNotMatch(wizard, /membershipProductChoice|Would you like any store products/);
   assert.match(wizard, /The service is included with your plan/);
   assert.match(mock, /membershipBookingOptionsMatch/);
   assert.match(mock, /Midnight availability requires an eligible membership/);
@@ -32,7 +34,7 @@ test("membership booking skips service quote and submits only plan, vehicle, slo
 
 test("ordinary bookings retain the authoritative quote contract", () => {
   assert.match(mock, /bookingQuotes\.set\(quoteId/);
-  assert.match(mock, /pricing_schema: "booking-cart-pricing:v1"/);
+  assert.match(mock, /pricing_schema: "booking-cart-pricing:v2"/);
   assert.match(wizard, /quote_id: quote\.quote_id/);
   assert.match(wizard, /quote_version: quote\.quote_version/);
 });

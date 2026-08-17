@@ -9,6 +9,7 @@ import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import { HourSlotPicker } from "@/components/booking/HourSlotPicker";
 import { CustomerNotifications } from "@/components/account/CustomerNotifications";
+import { LoyaltyModal } from "@/components/loyalty/LoyaltyModal";
 import { useI18n } from "@/lib/i18n";
 import { formatQar } from "@/lib/money";
 import {
@@ -18,6 +19,7 @@ import {
   cancelStoreOrder,
   deleteVehicle,
   getBookingRescheduleOptions,
+  getCustomerLoyalty,
   initializeBookingPayment,
   listAddresses,
   listBookings,
@@ -41,6 +43,7 @@ import type {
   Address,
   Customer,
   CustomerMembership,
+  CustomerLoyalty,
   PaymentState,
   StoreOrder,
   Vehicle,
@@ -65,7 +68,7 @@ const STATUS_STYLES: Record<BookingStatus, string> = {
 };
 
 const CANCELLABLE: BookingStatus[] = ["pending_payment", "paid", "assigned"];
-const ACCOUNT_TABS = ["overview", "bookings", "orders", "memberships", "vehicles", "notifications"] as const;
+const ACCOUNT_TABS = ["overview", "rewards", "bookings", "orders", "memberships", "vehicles", "notifications"] as const;
 
 type BookingFilter = "all" | "upcoming" | "in_progress" | "completed" | "cancelled";
 
@@ -157,6 +160,7 @@ export default function AccountPage() {
   const [addresses, setAddresses] = useState<Address[] | null>(null);
   const [memberships, setMemberships] = useState<CustomerMembership[] | null>(null);
   const [orders, setOrders] = useState<StoreOrder[] | null>(null);
+  const [loyalty, setLoyalty] = useState<CustomerLoyalty | null>(null);
   const [tab, setTab] = useState<(typeof ACCOUNT_TABS)[number]>("overview");
   const [bookingFilter, setBookingFilter] = useState<BookingFilter>("all");
   const [bookingSearch, setBookingSearch] = useState("");
@@ -239,6 +243,7 @@ export default function AccountPage() {
         listAddresses().then(setAddresses).catch(() => setAddresses([])),
         listMemberships().then(setMemberships).catch(() => setMemberships([])),
         listStoreOrders().then(setOrders).catch(() => setOrders([])),
+        getCustomerLoyalty().then(setLoyalty).catch(() => setLoyalty(null)),
       ]);
     } finally {
       setRefreshing(false);
@@ -276,6 +281,7 @@ export default function AccountPage() {
       setAddresses(null);
       setMemberships(null);
       setOrders(null);
+      setLoyalty(null);
       setPaymentNotice(null);
       setSessionEnded(true);
     }
@@ -538,6 +544,7 @@ export default function AccountPage() {
     setAddresses(null);
     setMemberships(null);
     setOrders(null);
+    setLoyalty(null);
     setPaymentNotice(null);
   }
 
@@ -668,15 +675,18 @@ export default function AccountPage() {
               <Link href="/account/locations" className="commerce-card flex min-h-24 flex-col justify-between p-3 transition hover:border-[color:var(--blue)] sm:p-4"><svg viewBox="0 0 24 24" className="h-5 w-5 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="M12 21s6-5.33 6-11a6 6 0 1 0-12 0c0 5.67 6 11 6 11Z" stroke="currentColor" strokeWidth="1.8"/><circle cx="12" cy="10" r="2" fill="currentColor"/></svg><span className="mt-3 text-xs font-bold text-[color:var(--navy)] sm:text-sm">{t("Manage locations")}</span></Link>
             </section>
 
-            <div className="mt-7 grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-white p-1 sm:grid-cols-3 lg:grid-cols-6" role="tablist" aria-label={t("Account sections")}>
-              {([["overview", t("Overview")], ["bookings", t("Bookings")], ["orders", t("Orders")], ["memberships", t("Memberships")], ["vehicles", t("Vehicles")], ["notifications", t("Notifications")]] as const).map(([value, label]) => <button key={value} id={`account-tab-${value}`} type="button" role="tab" tabIndex={tab === value ? 0 : -1} aria-selected={tab === value} aria-controls={`account-panel-${value}`} onKeyDown={(event) => handleTabKeyDown(event, value)} onClick={() => setTab(value)} className={clsx("min-h-11 rounded-xl px-3 text-sm font-semibold transition", tab === value ? "bg-[color:var(--navy)] text-white" : "text-[color:var(--muted-foreground)] hover:bg-slate-50 hover:text-[color:var(--navy)]")}>{label}</button>)}
+            <div className="mt-7 grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-white p-1 sm:grid-cols-4 lg:grid-cols-7" role="tablist" aria-label={t("Account sections")}>
+              {([["overview", t("Overview")], ["rewards", t("Rewards")], ["bookings", t("Bookings")], ["orders", t("Orders")], ["memberships", t("Memberships")], ["vehicles", t("Vehicles")], ["notifications", t("Notifications")]] as const).map(([value, label]) => <button key={value} id={`account-tab-${value}`} type="button" role="tab" tabIndex={tab === value ? 0 : -1} aria-selected={tab === value} aria-controls={`account-panel-${value}`} onKeyDown={(event) => handleTabKeyDown(event, value)} onClick={() => setTab(value)} className={clsx("min-h-11 rounded-xl px-3 text-sm font-semibold transition", tab === value ? "bg-[color:var(--navy)] text-white" : "text-[color:var(--muted-foreground)] hover:bg-slate-50 hover:text-[color:var(--navy)]")}>{label}</button>)}
             </div>
 
             <div key={tab} id={`account-panel-${tab}`} role="tabpanel" aria-labelledby={`account-tab-${tab}`} tabIndex={0} className="checkout-step mt-6 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-4">
               {tab === "overview" && <div className="grid gap-5 lg:grid-cols-2">
                 <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} busy={paymentAction !== null} paying={paymentAction === `booking:${activeBookings[0].id}`} cancelling={paymentAction === `cancel-booking:${activeBookings[0].id}`} onPay={() => handleCompleteBookingPayment(activeBookings[0])} onCancel={() => handleCancel(activeBookings[0].id)} onReschedule={() => loadRescheduleOptions(activeBookings[0], qatarServiceDate(activeBookings[0].scheduled_at))} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
                 <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Savings")}</p><h2 className="mt-1 text-xl font-bold">{t("Membership")}</h2></div><button type="button" aria-label={t("View all memberships")} onClick={() => setTab("memberships")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{memberships === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeMemberships.length > 0 ? <MembershipCard membership={activeMemberships[0]} busy={paymentAction === `cancel-membership:${activeMemberships[0].id}`} onCancel={() => handleCancelCashMembership(activeMemberships[0])} /> : <EmptyState title={t("Wash more, pay less")} copy={t("Prepaid wash bundles make every booking faster.")} action={t("See memberships")} href="/memberships" />}</section>
+                <section className="lg:col-span-2"><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Loyalty")}</p><h2 className="mt-1 text-xl font-bold">{t("Your free-wash progress")}</h2></div><button type="button" aria-label={t("View all rewards")} onClick={() => setTab("rewards")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View rewards")}</button></div><LoyaltyOverview loyalty={loyalty} /></section>
               </div>}
+
+              {tab === "rewards" && <LoyaltyRewards loyalty={loyalty} lang={lang} />}
 
               {tab === "bookings" && (
                 <section>
@@ -812,6 +822,67 @@ export default function AccountPage() {
       )}
       <Footer />
     </>
+  );
+}
+
+function LoyaltyMeter({ completed, required }: { completed: number; required: number }) {
+  const filled = Math.min(completed, required);
+  return (
+    <div className="mt-4" role="progressbar" aria-valuemin={0} aria-valuemax={required} aria-valuenow={filled}>
+      <div className="flex gap-2" aria-hidden="true">
+        {Array.from({ length: required }, (_, index) => (
+          <span key={index} className={clsx("h-2.5 flex-1 rounded-full", index < filled ? "bg-[color:var(--cyan)]" : "bg-slate-200")} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LoyaltyOverview({ loyalty }: { loyalty: CustomerLoyalty | null }) {
+  const { lang, t } = useI18n();
+  if (!loyalty) return <div className="commerce-card h-40 animate-pulse bg-slate-100" />;
+  const next = loyalty.buckets.find((bucket) => bucket.available_rewards > 0) ?? loyalty.buckets[0];
+  return (
+    <article className="commerce-card overflow-hidden p-5 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-bold text-[color:var(--navy)]">{loyalty.totals.available_rewards > 0 ? t("You have a free wash ready") : t("Wash 5, get the 6th free")}</p>
+          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
+            {loyalty.program.enabled ? t("Every eligible wash brings you closer. Progress never expires.") : t("The loyalty program is paused. Your progress and rewards are safe.")}
+          </p>
+        </div>
+        <div className="flex items-center gap-5">
+          <div className="text-center"><span className="block text-2xl font-extrabold text-[color:var(--navy)]">{loyalty.totals.available_rewards}</span><span className="text-xs font-semibold text-[color:var(--muted-foreground)]">{t("Free washes")}</span></div>
+          {loyalty.program.enabled && <Link href="/book" className="primary-button whitespace-nowrap">{t("Book now")}</Link>}
+        </div>
+      </div>
+      {next && <div className="mt-5 border-t border-slate-200 pt-4"><div className="flex justify-between gap-3 text-sm"><span className="font-bold text-[color:var(--navy)]">{lang === "ar" ? next.service_name_ar : next.service_name} · {t(next.vehicle_class.toUpperCase())}</span><span className="font-semibold text-[color:var(--muted-foreground)]">{next.completed}/{next.required}</span></div><LoyaltyMeter completed={next.completed} required={next.required} /></div>}
+    </article>
+  );
+}
+
+function LoyaltyRewards({ loyalty, lang }: { loyalty: CustomerLoyalty | null; lang: "en" | "ar" }) {
+  const { t } = useI18n();
+  if (!loyalty) return <div className="grid gap-4 md:grid-cols-2">{[0, 1].map((item) => <div key={item} className="commerce-card h-44 animate-pulse bg-slate-100" />)}</div>;
+  return (
+    <section>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div><h2 className="text-2xl font-bold">{t("My rewards")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Progress is separate for every service and vehicle type.")}</p></div>
+        {loyalty.program.enabled ? <div className="flex flex-wrap gap-2"><LoyaltyModal placement="account" program={loyalty.program} /><Link href="/book" className="primary-button self-start">{t("Book toward a reward")}</Link></div> : <span className="rounded-full bg-amber-100 px-4 py-2 text-sm font-bold text-amber-800">{t("Program paused")}</span>}
+      </div>
+      {!loyalty.program.enabled && <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">{t("Your earned rewards and progress remain available when the program resumes.")}</div>}
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {loyalty.buckets.length === 0 ? <div className="commerce-card p-6 md:col-span-2 xl:col-span-3"><h3 className="text-lg font-bold text-[color:var(--navy)]">{t("Start your first reward")}</h3><p className="mt-2 text-sm text-[color:var(--muted-foreground)]">{t("Complete five matching washes to unlock the sixth base wash free.")}</p>{loyalty.program.enabled && <Link href="/book" className="primary-button mt-5">{t("Book a Wash")}</Link>}</div> : loyalty.buckets.map((bucket) => (
+          <article key={`${bucket.service_id}:${bucket.vehicle_class}`} className="commerce-card p-5">
+            <div className="flex items-start justify-between gap-3"><div><p className="font-bold text-[color:var(--navy)]">{lang === "ar" ? bucket.service_name_ar : bucket.service_name}</p><p className="mt-1 text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">{t(bucket.vehicle_class.toUpperCase())}</p></div>{bucket.available_rewards > 0 && <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">{bucket.available_rewards} {t("free")}</span>}</div>
+            <LoyaltyMeter completed={bucket.completed} required={bucket.required} />
+            <p className="mt-3 text-sm text-[color:var(--muted-foreground)]">{bucket.available_rewards > 0 ? t("Your matching free base wash is ready.") : `${bucket.remaining} ${t("more matching washes to your reward")}`}</p>
+            {loyalty.program.enabled && <Link href="/book" className="secondary-button mt-4 w-full">{bucket.available_rewards > 0 ? t("Use free wash") : t("Book this wash")}</Link>}
+          </article>
+        ))}
+      </div>
+      <div className="mt-8"><h3 className="text-xl font-bold text-[color:var(--navy)]">{t("Reward history")}</h3>{loyalty.history.length === 0 ? <p className="mt-3 text-sm text-[color:var(--muted-foreground)]">{t("Your earned rewards will appear here.")}</p> : <div className="mt-3 divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white">{loyalty.history.map((event) => <div key={event.id} className="flex items-center justify-between gap-4 p-4"><div><p className="font-semibold text-[color:var(--navy)]">{lang === "ar" ? event.service_name_ar : event.service_name} · {t(event.vehicle_class.toUpperCase())}</p><p className="mt-1 text-xs text-[color:var(--muted-foreground)]">{event.issued_at ? formatQatarDateTime(event.issued_at, lang, { dateStyle: "medium" }) : ""}</p></div><span className="text-sm font-bold text-[color:var(--blue)]">{t(event.status === "issued" ? "Available" : event.status === "reserved" ? "Reserved" : "Redeemed")}</span></div>)}</div>}</div>
+    </section>
   );
 }
 

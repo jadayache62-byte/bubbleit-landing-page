@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { AppToast } from "@/components/AppToast";
 import { AuthPanel } from "@/components/booking/AuthPanel";
+import { ServiceZoneChargeNotice } from "@/components/ServiceZoneChargeNotice";
 import {
   ApiError,
   createStoreOrder,
@@ -183,13 +184,25 @@ function pricingFromConflict(data: unknown): StorePricingConfirmation | null {
   if (!pricing || typeof pricing !== "object") return null;
   const candidate = pricing as Partial<StorePricingConfirmation>;
   if (
-    candidate.schema !== "store-cart-pricing:v1" ||
+    !["store-cart-pricing:v1", "store-cart-pricing:v2"].includes(candidate.schema ?? "") ||
     candidate.currency !== "QAR" ||
     typeof candidate.version !== "string" ||
     !Array.isArray(candidate.lines) ||
     !Number.isInteger(candidate.subtotal_minor) ||
     !Number.isInteger(candidate.delivery_fee_minor) ||
     !Number.isInteger(candidate.total_minor)
+  ) return null;
+  if (
+    candidate.schema === "store-cart-pricing:v2" &&
+    (
+      !Number.isInteger(candidate.product_subtotal_minor) ||
+      !Number.isInteger(candidate.base_delivery_fee_minor) ||
+      !Number.isInteger(candidate.service_zone_rate_minor) ||
+      !Number.isInteger(candidate.combined_delivery_minor) ||
+      !Number.isInteger(candidate.dispatch_zone_id) ||
+      !Number.isInteger(candidate.dispatch_zone_version) ||
+      typeof candidate.dispatch_zone_token !== "string"
+    )
   ) return null;
 
   return candidate as StorePricingConfirmation;
@@ -226,6 +239,7 @@ export function StoreCheckoutClient() {
   const [error, setError] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
   const [pricingReview, setPricingReview] = useState<StorePricingConfirmation | null>(null);
+  const [serviceZoneRate, setServiceZoneRate] = useState<number | null>(null);
   const [completedOrder, setCompletedOrder] = useState<StoreOrder | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -248,6 +262,8 @@ export function StoreCheckoutClient() {
         ? { lat: address.latitude, lng: address.longitude }
         : null,
     );
+    setPricingReview(null);
+    setServiceZoneRate(null);
     setGeoState("idle");
     savedLocationAppliedRef.current = true;
   }, []);
@@ -272,6 +288,8 @@ export function StoreCheckoutClient() {
       setStreetNumber("");
       setAddressDetails("");
       setGeo(null);
+      setPricingReview(null);
+      setServiceZoneRate(null);
       setSavedAddresses([]);
       setSelectedAddressId(null);
       locationTouchedRef.current = false;
@@ -317,12 +335,40 @@ export function StoreCheckoutClient() {
       ) {
         setGeo({ lat: pending.order.latitude, lng: pending.order.longitude });
       }
+      setServiceZoneRate(pending.order.service_zone_rate ?? null);
     });
 
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!geo) return;
+    if (step !== "location" || pendingCheckout) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      validateServiceArea(geo.lat, geo.lng)
+        .then((snapshot) => {
+          if (!cancelled) {
+            setServiceZoneRate(
+              snapshot.dispatch_zone.rate_applied
+                ? snapshot.dispatch_zone.service_rate
+                : 0,
+            );
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setServiceZoneRate(null);
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [geo, pendingCheckout, step]);
 
   useEffect(() => {
     let cancelled = false;
@@ -534,6 +580,13 @@ export function StoreCheckoutClient() {
     };
   }, [items]);
   const reviewedPricing = pricingReview ?? catalogPricing;
+  const previewZoneRateMinor = minorUnits(serviceZoneRate ?? 0);
+  const displayedZoneRateMinor = pricingReview?.service_zone_rate_minor
+    ?? previewZoneRateMinor;
+  const displayedBaseDeliveryMinor = pricingReview?.base_delivery_fee_minor
+    ?? catalogPricing.delivery_fee_minor;
+  const displayedTotalMinor = pricingReview?.total_minor
+    ?? catalogPricing.total_minor + previewZoneRateMinor;
 
   async function reverseGeocode(lat: number, lng: number) {
     try {
@@ -564,6 +617,8 @@ export function StoreCheckoutClient() {
     if (pendingCheckout) return;
 
     markLocationManual();
+    setPricingReview(null);
+    setServiceZoneRate(null);
     setGeo(value);
     setGeoState("idle");
     reverseGeocode(value.lat, value.lng);
@@ -585,6 +640,8 @@ export function StoreCheckoutClient() {
           lng: position.coords.longitude,
         };
         setGeo(value);
+        setPricingReview(null);
+        setServiceZoneRate(null);
         setGeoState("idle");
         reverseGeocode(value.lat, value.lng);
       },
@@ -731,6 +788,7 @@ export function StoreCheckoutClient() {
         latitude: geo.lat,
         longitude: geo.lng,
         service_area_version: serviceArea.version,
+        dispatch_zone_version: serviceArea.dispatch_zone.version,
         pricing_confirmation: reviewedPricing,
         lines: items.map(({ product, quantity }) => ({
           product_id: product.id,
@@ -760,6 +818,7 @@ export function StoreCheckoutClient() {
         const updatedPricing = pricingFromConflict(caught.data);
         if (updatedPricing) {
           setPricingReview(updatedPricing);
+          setServiceZoneRate((updatedPricing.service_zone_rate_minor ?? 0) / 100);
           setError(t("The store total changed. Review the updated prices and confirm again to continue to payment."));
           setStep("review");
           return;
@@ -903,7 +962,7 @@ export function StoreCheckoutClient() {
             <Link href="/store" className="inline-flex min-h-11 items-center text-sm font-semibold text-[color:var(--muted-foreground)] hover:text-[color:var(--navy)]">
               <span className="me-2 rtl:rotate-180" aria-hidden="true">←</span> {t("Back to cart")}
             </Link>
-            <span className="text-sm font-bold text-[color:var(--navy)]">{formatStorePrice(reviewedPricing.total_minor / 100, lang)}</span>
+            <span className="text-sm font-bold text-[color:var(--navy)]">{formatStorePrice(displayedTotalMinor / 100, lang)}</span>
           </div>
 
           <nav className={customer ? "mb-7 grid grid-cols-2 gap-2" : "mb-7 grid grid-cols-3 gap-2"} aria-label={t("Checkout progress")}>
@@ -931,7 +990,7 @@ export function StoreCheckoutClient() {
                     {t("Order summary")}
                   </h2>
                   <span className="shrink-0 text-lg font-extrabold text-[color:var(--navy)]">
-                    {formatStorePrice(reviewedPricing.total_minor / 100, lang)}
+                    {formatStorePrice(displayedTotalMinor / 100, lang)}
                   </span>
                 </div>
                 <div className="mt-3 divide-y divide-slate-100">
@@ -1028,6 +1087,7 @@ export function StoreCheckoutClient() {
                   <div className="overflow-hidden rounded-2xl">
                     <LocationMap value={geo} onChange={handlePinChange} />
                   </div>
+                  <ServiceZoneChargeNotice rate={serviceZoneRate} />
                   <button type="button" className="secondary-button w-full gap-2" disabled={geoState === "locating" || checkoutLocked} onClick={requestLocation}>
                     <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true" fill="none"><path d="M12 20s5.25-5.13 5.25-9a5.25 5.25 0 1 0-10.5 0c0 3.87 5.25 9 5.25 9Z" stroke="currentColor" strokeWidth="1.8"/><circle cx="12" cy="11" r="1.9" fill="currentColor"/></svg>
                     {geoState === "locating" ? t("Finding your location…") : geo ? t("Update precise location") : t("Use my precise location")}
@@ -1100,8 +1160,12 @@ export function StoreCheckoutClient() {
                       </div>
                     ))}
                   </div>
-                  {reviewedPricing.delivery_fee_minor > 0 && <div className="flex items-center justify-between border-t border-slate-100 py-3 text-sm"><span>{t("Delivery fee")}</span><span className="font-bold">{formatStorePrice(reviewedPricing.delivery_fee_minor / 100, lang)}</span></div>}
-                  <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4"><span className="font-semibold">{t("Total")}</span><span className="text-2xl font-extrabold text-[color:var(--navy)]">{formatStorePrice(reviewedPricing.total_minor / 100, lang)}</span></div>
+                  {displayedBaseDeliveryMinor > 0 && <div className="flex items-center justify-between border-t border-slate-100 py-3 text-sm"><span>{t("Delivery fee")}</span><span className="font-bold">{formatStorePrice(displayedBaseDeliveryMinor / 100, lang)}</span></div>}
+                  {displayedZoneRateMinor > 0 && <div className="flex items-center justify-between border-t border-slate-100 py-3 text-sm"><span>{t("Additional service-zone charge")}</span><span className="font-bold">{formatStorePrice(displayedZoneRateMinor / 100, lang)}</span></div>}
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4"><span className="font-semibold">{t("Total")}</span><span className="text-2xl font-extrabold text-[color:var(--navy)]">{formatStorePrice(displayedTotalMinor / 100, lang)}</span></div>
+                  <div className="mt-4">
+                    <ServiceZoneChargeNotice rate={displayedZoneRateMinor / 100} compact />
+                  </div>
                   {pricingReview && <p role="status" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">{t("Pricing changed since your first review. This updated QAR total must be confirmed before payment starts.")}</p>}
                 </section>
 
