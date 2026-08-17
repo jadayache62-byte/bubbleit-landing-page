@@ -32,6 +32,11 @@
   how to move the pin or choose another saved location. The snackbar must remain visible regardless
   of the page scroll position. The browser never resolves polygons, combines capacity across zones,
   or performs a cross-zone fallback.
+- A priced service zone exposes an exact backend-owned rate after the map pin resolves. Show it on the
+  Location step and as a separate checkout line for ordinary, membership, loyalty, and store flows.
+  Membership and loyalty cover only their wash scope; promotions never reduce the zone rate. Store
+  checkout keeps product subtotal, base delivery, and zone rate separate and reconfirms pricing v2
+  before payment whenever the immutable snapshot changes.
 - Keep customer dispatch messaging intentionally narrow: distinguish a location outside configured
   coverage from a covered zone with no available time, but never reveal internal zone names, bus or
   driver data, candidate counts, or assignment explanations. The development mock must preserve the
@@ -150,11 +155,12 @@ Repository notes for agents working on the Bubble It marketing site and customer
   backend-returned quarter-hour slots from 00:00 through 04:45.
 - Membership Pay & Confirm uses the same optional-product modal as an ordinary booking and opens it
   once when the step is first reached. Do not add a separate yes/no product question. Closing the
-  modal with no selection allows the prepaid membership booking to confirm immediately. Selected
-  products are sent in `product_lines`; checkout and the displayed amount due cover products only,
-  while the wash remains reserved until verified payment.
+  modal with no selection allows immediate confirmation only when the selected zone has no charge.
+  Selected products are sent in `product_lines`; checkout and the displayed amount due cover products
+  plus the separate immutable service-zone charge, while the wash remains reserved until verified payment.
 - Final booking copy follows the payable state: **Confirm booking** when fully covered, **Pay for
-  products** when only products are due, and **Confirm & Pay** for an ordinary paid booking.
+  products** when only products are due, and **Confirm & Pay** whenever an ordinary balance or
+  service-zone charge remains payable.
 - Selecting a membership plan must open a review dialog before any purchase request. Show wash scope, vehicle type, wash count, validity, per-wash price, and total; only the explicit confirmation action may continue to authentication/payment.
 - Membership plan grids reserve their final layout with accessible skeleton cards while plan data loads.
 

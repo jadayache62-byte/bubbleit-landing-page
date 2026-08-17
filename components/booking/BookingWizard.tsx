@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { ServicePopularBadge } from "@/components/ServicePopularBadge";
+import { ServiceZoneChargeNotice } from "@/components/ServiceZoneChargeNotice";
 import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -316,6 +317,7 @@ export function BookingWizard() {
   const [slotSelectedAt, setSlotSelectedAt] = useState<number | null>(null);
   const [serviceAreaVersion, setServiceAreaVersion] = useState<string | null>(null);
   const [dispatchZoneVersion, setDispatchZoneVersion] = useState<string | null>(null);
+  const [serviceZoneRate, setServiceZoneRate] = useState<number | null>(null);
 
   // Step 4 — payment
   const [notes, setNotes] = useState("");
@@ -512,6 +514,33 @@ export function BookingWizard() {
   const slotRequestRef = useRef(0);
   const skipNextAvailabilityLoadRef = useRef(false);
 
+  useEffect(() => {
+    if (!geo) return;
+    if (step !== 1) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      validateServiceArea(geo.lat, geo.lng)
+        .then((snapshot) => {
+          if (!cancelled) {
+            setServiceZoneRate(
+              snapshot.dispatch_zone.rate_applied
+                ? snapshot.dispatch_zone.service_rate
+                : 0,
+            );
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setServiceZoneRate(null);
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [geo, step]);
+
   const loadSlots = useCallback(async (
     d: string,
     cart: { service_id: number; add_on_ids: number[] }[] = [],
@@ -546,6 +575,9 @@ export function BookingWizard() {
             serviceAreaVersion: areaSnapshot.version,
             membershipOptions: options,
             dispatchZoneVersion: options.dispatch_zone.version,
+            serviceZoneRate: options.dispatch_zone.rate_applied
+              ? (options.dispatch_zone.service_rate ?? 0)
+              : 0,
           }))
         : Promise.reject(new Error(t("Membership and vehicle are required.")))
       : getAvailability(d, "standard", { latitude: geo.lat, longitude: geo.lng }, cart)
@@ -555,6 +587,9 @@ export function BookingWizard() {
             serviceAreaVersion: availability.service_area.version,
             membershipOptions: null,
             dispatchZoneVersion: availability.dispatch_zone.version,
+            serviceZoneRate: availability.dispatch_zone.rate_applied
+              ? (availability.dispatch_zone.service_rate ?? 0)
+              : 0,
           }));
 
     try {
@@ -565,6 +600,7 @@ export function BookingWizard() {
       setAvailabilityDuration(availability.duration);
       setMembershipOptions(availability.membershipOptions);
       setDispatchZoneVersion(availability.dispatchZoneVersion);
+      setServiceZoneRate(availability.serviceZoneRate);
       setLocationIssue(null);
       setError(null);
       return true;
@@ -575,6 +611,7 @@ export function BookingWizard() {
       setAvailabilityDuration(null);
       setMembershipOptions(null);
       setDispatchZoneVersion(null);
+      setServiceZoneRate(null);
       const coverageIssue = caught instanceof ApiError ? locationCoverageIssue(caught) : null;
       if (coverageIssue) {
         setLocationIssue(coverageIssue);
@@ -819,7 +856,12 @@ export function BookingWizard() {
   // The authoritative quote includes services, add-ons, products, membership,
   // and promo impact. No client-computed amount is submitted to payment.
   const activeProductTotal = membershipMode ? productTotal : (quote?.product_total ?? productTotal);
-  const dueTotal = membershipMode ? productTotal : (quote?.total_price ?? netTotal + productTotal);
+  const checkoutZoneRate = membershipMode
+    ? (serviceZoneRate ?? 0)
+    : (quote?.service_zone_rate ?? 0);
+  const dueTotal = membershipMode
+    ? productTotal + checkoutZoneRate
+    : (quote?.total_price ?? netTotal + productTotal);
   const washesLeftAfter = membershipMode
     ? selectedMembership ? Math.max(0, selectedMembership.washes_remaining - 1) : undefined
     : applyMembership
@@ -858,6 +900,7 @@ export function BookingWizard() {
     setSlot(null);
     setSlots(null);
     setDispatchZoneVersion(null);
+    setServiceZoneRate(null);
     setLocationIssue(savedGeo ? null : "missing");
     setGeoState("idle");
   }
@@ -994,6 +1037,7 @@ export function BookingWizard() {
       markLocationManual();
       setGeo(v);
       setDispatchZoneVersion(null);
+      setServiceZoneRate(null);
       setLocationIssue(null);
       setGeoState("idle");
       reverseGeocode(v.lat, v.lng);
@@ -1013,6 +1057,7 @@ export function BookingWizard() {
         markLocationManual();
         setGeo({ lat: latitude, lng: longitude });
         setDispatchZoneVersion(null);
+        setServiceZoneRate(null);
         setLocationIssue(null);
         setGeoState("idle");
         reverseGeocode(latitude, longitude);
@@ -1459,6 +1504,7 @@ export function BookingWizard() {
                 )}
               </p>
             </div>
+            <ServiceZoneChargeNotice rate={serviceZoneRate} />
             <div className="rounded-3xl border border-[color:var(--border)] bg-white p-3 shadow-sm sm:p-4">
               <p className="mb-3 text-sm font-bold text-[color:var(--navy)]">{t("Blue plate")}</p>
               <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-center text-white">
@@ -1764,6 +1810,7 @@ export function BookingWizard() {
                 products={bookingProducts}
                 quantities={productQuantities}
                 productTotal={productTotal}
+                serviceZoneRate={checkoutZoneRate}
               />
             ) : quote ? (
               <Summary
@@ -1788,6 +1835,7 @@ export function BookingWizard() {
                 quoteCars={quote.cars}
                 quotedProducts={quote.products}
                 productTotal={activeProductTotal}
+                serviceZoneRate={checkoutZoneRate}
               />
             ) : null}
           </StepPanel>
@@ -1820,7 +1868,7 @@ export function BookingWizard() {
             {step === 3 ? (
               membershipMode ? (
                 <>
-                  {t("Products due")} {" "}
+                  {t("Amount due")} {" "}
                   <span className="block truncate text-base font-bold text-[color:var(--navy)] sm:inline sm:text-lg">
                     {fmt(dueTotal, lang)}
                   </span>
@@ -1905,7 +1953,9 @@ export function BookingWizard() {
                 {submitting
                   ? t("Confirming…")
                   : membershipMode && dueTotal > 0
-                    ? t("Pay for products")
+                    ? productTotal > 0 && checkoutZoneRate <= 0
+                      ? t("Pay for products")
+                      : t("Confirm & Pay")
                     : applyMembership && dueTotal <= 0
                     ? t("Confirm booking")
                     : paymentOptions?.mode === "cash"
@@ -2775,6 +2825,7 @@ function MembershipSummary({
   products,
   quantities,
   productTotal,
+  serviceZoneRate,
 }: {
   membership: CustomerMembership;
   options: MembershipBookingOptions;
@@ -2786,6 +2837,7 @@ function MembershipSummary({
   products: StoreProductInventory[];
   quantities: Record<string, number>;
   productTotal: number;
+  serviceZoneRate: number;
 }) {
   const { lang, t } = useI18n();
   const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(
@@ -2847,15 +2899,30 @@ function MembershipSummary({
             </div>
           );
         })}
+        {serviceZoneRate > 0 && (
+          <div className="flex items-start justify-between gap-4 border-t border-[color:var(--border)] pt-3">
+            <dt>
+              <span className="font-semibold">{t("Additional service-zone charge")}</span>
+              <span className="mt-1 block text-xs text-[color:var(--muted-foreground)]">
+                {t("This location has a separate service charge that is not covered by the membership.")}
+              </span>
+            </dt>
+            <dd className="font-semibold">{fmt(serviceZoneRate, lang)}</dd>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-4 border-t border-[color:var(--border)] pt-3 text-base">
           <dt className="font-bold text-[color:var(--navy)]">{t("Amount to pay")}</dt>
-          <dd className="font-extrabold text-[color:var(--navy)]">{fmt(productTotal, lang)}</dd>
+          <dd className="font-extrabold text-[color:var(--navy)]">{fmt(productTotal + serviceZoneRate, lang)}</dd>
         </div>
       </dl>
       <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
-        {productTotal > 0
-          ? t("The membership covers the wash. Checkout is only for the selected products.")
-          : t("The membership covers the wash. No payment is required.")}
+        {productTotal > 0 && serviceZoneRate > 0
+          ? t("The membership covers the wash. Products and the service-zone charge remain payable.")
+          : serviceZoneRate > 0
+            ? t("The membership covers the wash. The service-zone charge remains payable.")
+            : productTotal > 0
+              ? t("The membership covers the wash. Checkout is only for the selected products.")
+              : t("The membership covers the wash. No payment is required.")}
       </p>
     </section>
   );
@@ -2887,6 +2954,7 @@ function Summary({
   quoteCars,
   quotedProducts,
   productTotal,
+  serviceZoneRate,
 }: {
   cars: CarDraft[];
   services: Service[];
@@ -2909,6 +2977,7 @@ function Summary({
   quoteCars: BookingQuote["cars"];
   quotedProducts: BookingQuote["products"];
   productTotal: number;
+  serviceZoneRate: number;
 }) {
   const { lang, t } = useI18n();
   const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(
@@ -3075,6 +3144,12 @@ function Summary({
           <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
             <span className="text-[color:var(--muted-foreground)]">{t("Booking products")}</span>
             <span className="font-medium">{fmt(productTotal, lang)}</span>
+          </li>
+        )}
+        {serviceZoneRate > 0 && (
+          <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
+            <span className="text-[color:var(--muted-foreground)]">{t("Additional service-zone charge")}</span>
+            <span className="font-medium">{fmt(serviceZoneRate, lang)}</span>
           </li>
         )}
         <li className="flex justify-between border-t border-[color:var(--border)] pt-2 text-base font-bold">

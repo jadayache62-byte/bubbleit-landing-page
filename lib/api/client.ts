@@ -25,7 +25,7 @@ import type {
   PromoValidation,
   QuoteCar,
   Service,
-  ServiceAreaSnapshot,
+  ServiceAreaValidation,
   StoreOrder,
   StoreOrderPayment,
   StoreProductInventory,
@@ -176,7 +176,7 @@ export function getAvailability(
 }
 
 export function validateServiceArea(latitude: number, longitude: number) {
-  return request<ServiceAreaSnapshot>("/service-area/validate", {
+  return request<ServiceAreaValidation>("/service-area/validate", {
     method: "POST",
     body: { latitude, longitude },
   });

@@ -32,6 +32,21 @@ export type DispatchZoneSnapshot = {
   version: string | null;
   eligible: boolean;
   enabled: boolean;
+  name_en?: string | null;
+  name_ar?: string | null;
+  service_rate?: number;
+  rate_applied?: boolean;
+};
+
+export type ServiceAreaValidation = ServiceAreaSnapshot & {
+  dispatch_zone: {
+    id: number;
+    name_en: string | null;
+    name_ar: string | null;
+    version: string;
+    service_rate: number;
+    rate_applied: boolean;
+  };
 };
 
 export type DurationContribution = {
@@ -149,7 +164,7 @@ export type Address = {
   service_area: ServiceAreaSnapshot & { stale: boolean };
 };
 
-export type PaymentMethod = "pay_on_site" | "online" | "cash" | "membership" | "membership_with_products" | "loyalty";
+export type PaymentMethod = "pay_on_site" | "online" | "cash" | "membership" | "membership_with_products" | "membership_with_balance" | "loyalty";
 
 export type LoyaltyProgram = {
   enabled: boolean;
@@ -327,6 +342,16 @@ export type Booking = {
   payment_purchase_id?: number | null;
   total: number;
   product_total?: number;
+  service_zone_rate?: number;
+  payable_total?: number;
+  dispatch_zone?: {
+    id: number;
+    name_en: string;
+    name_ar: string;
+    version: number | null;
+    service_rate: number;
+    rate_applied: boolean;
+  } | null;
   products?: {
     product_id: number;
     sku: string;
@@ -411,7 +436,7 @@ export type QuoteCar = {
 export type BookingQuote = {
   quote_id: string;
   quote_version: string;
-  pricing_schema: "booking-cart-pricing:v1";
+  pricing_schema: "booking-cart-pricing:v2";
   currency: "QAR";
   expires_at: string;
   service: {
@@ -435,6 +460,15 @@ export type BookingQuote = {
   loyalty_discount: number;
   promo_discount: number;
   product_total: number;
+  service_zone_rate: number;
+  service_zone: {
+    id: number;
+    name_en: string | null;
+    name_ar: string | null;
+    version: string;
+    rate: number;
+    rate_applied: boolean;
+  };
   total_price: number;
   payment_required: boolean;
   payment_method: PaymentMethod;
@@ -527,12 +561,19 @@ export type StorePricingLine = {
 };
 
 export type StorePricingConfirmation = {
-  schema: "store-cart-pricing:v1";
+  schema: "store-cart-pricing:v1" | "store-cart-pricing:v2";
   version: string | null;
   currency: "QAR";
   lines: StorePricingLine[];
   subtotal_minor: number;
   delivery_fee_minor: number;
+  product_subtotal_minor?: number;
+  base_delivery_fee_minor?: number;
+  service_zone_rate_minor?: number;
+  combined_delivery_minor?: number;
+  dispatch_zone_id?: number;
+  dispatch_zone_version?: number;
+  dispatch_zone_token?: string;
   total_minor: number;
 };
 
@@ -564,6 +605,16 @@ export type StoreOrder = {
   latitude: number | null;
   longitude: number | null;
   service_area: ServiceAreaSnapshot;
+  dispatch_zone?: {
+    id: number;
+    name_en: string;
+    name_ar: string;
+    version: number | null;
+    service_rate: number;
+    rate_applied: boolean;
+  } | null;
+  base_delivery_fee?: number | null;
+  service_zone_rate?: number | null;
   subtotal: number;
   delivery_fee: number;
   discount_total: number;
@@ -583,6 +634,7 @@ export type CreateStoreOrderPayload = {
   latitude: number;
   longitude: number;
   service_area_version: string;
+  dispatch_zone_version?: string;
   notes?: string;
   pricing_confirmation: StorePricingConfirmation;
   lines: { product_id: number; inventory_item_id?: number; quantity: number }[];

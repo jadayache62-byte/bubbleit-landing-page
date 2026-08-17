@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-17 — Service-zone pricing at location and checkout
+
+### Changed
+
+- Added bilingual, accessible notices on booking and store Location steps when the selected pin has an
+  additional service-zone charge.
+- Added a separate service-zone line to ordinary, membership, loyalty, and store checkout totals; the
+  charge remains payable outside membership, loyalty, and promotional coverage.
+- Upgraded booking quotes, store pricing, public types/schema, and the development mock to immutable
+  pricing v2 with stale-price reconfirmation and separate product/base-delivery/zone components.
+
 ## 2026-08-12 — Direct language switching and featured popular service
 
 ### Changed

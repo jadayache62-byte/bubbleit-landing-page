@@ -97,7 +97,7 @@
     },
     "PaymentMethod": {
       "type": "string",
-      "enum": ["pay_on_site", "online", "cash", "membership", "membership_with_products", "loyalty"]
+      "enum": ["pay_on_site", "online", "cash", "membership", "membership_with_products", "membership_with_balance", "loyalty"]
     },
     "CustomerNotificationType": {
       "type": "string",
@@ -168,7 +168,7 @@
         "checkout_url": { "type": ["string", "null"] },
         "channel": {
           "type": ["string", "null"],
-          "enum": ["cash", "skipcash_hosted", "skipcash_qpay", "membership", null]
+          "enum": ["cash", "skipcash_hosted", "skipcash_qpay", "paylater", "membership", null]
         }
       },
       "additionalProperties": false
@@ -309,6 +309,9 @@
         "loyalty_applied",
         "total",
         "product_total",
+        "service_zone_rate",
+        "payable_total",
+        "dispatch_zone",
         "address_label",
         "address_area",
         "address_street",
@@ -348,6 +351,26 @@
         "loyalty_applied": { "type": "boolean" },
         "total": { "type": "number", "minimum": 0 },
         "product_total": { "type": "number", "minimum": 0 },
+        "service_zone_rate": { "type": "number", "minimum": 0 },
+        "payable_total": { "type": "number", "minimum": 0 },
+        "dispatch_zone": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["id", "name_en", "name_ar", "version", "service_rate", "rate_applied"],
+              "properties": {
+                "id": { "type": "integer" },
+                "name_en": { "type": "string" },
+                "name_ar": { "type": "string" },
+                "version": { "type": ["integer", "null"] },
+                "service_rate": { "type": "number", "minimum": 0 },
+                "rate_applied": { "type": "boolean" }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
         "address_label": { "type": ["string", "null"] },
         "address_area": { "type": "string" },
         "address_street": { "type": ["string", "null"] },
@@ -417,6 +440,9 @@
         "latitude",
         "longitude",
         "service_area",
+        "dispatch_zone",
+        "base_delivery_fee",
+        "service_zone_rate",
         "subtotal",
         "delivery_fee",
         "discount_total",
@@ -451,6 +477,26 @@
         "latitude": { "type": ["number", "null"] },
         "longitude": { "type": ["number", "null"] },
         "service_area": { "type": "object" },
+        "dispatch_zone": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["id", "name_en", "name_ar", "version", "service_rate", "rate_applied"],
+              "properties": {
+                "id": { "type": "integer" },
+                "name_en": { "type": "string" },
+                "name_ar": { "type": "string" },
+                "version": { "type": ["integer", "null"] },
+                "service_rate": { "type": "number", "minimum": 0 },
+                "rate_applied": { "type": "boolean" }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
+        "base_delivery_fee": { "type": ["number", "null"], "minimum": 0 },
+        "service_zone_rate": { "type": ["number", "null"], "minimum": 0 },
         "subtotal": { "type": "number", "minimum": 0 },
         "delivery_fee": { "type": "number", "minimum": 0 },
         "discount_total": { "type": "number", "minimum": 0 },

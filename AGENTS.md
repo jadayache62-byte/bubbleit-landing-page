@@ -26,6 +26,10 @@ membership, loyalty, authentication, localization, security, and accessibility c
   or price it.
 - Availability, duration, price, membership coverage, inventory, service-area version, and payment
   outcome are backend-owned. Do not calculate operational or financial truth in the browser.
+- Service-zone pricing is backend-owned and forward-only. Resolve the selected pin through the customer
+  API, show the exact additional charge on Location and Pay & Confirm, and keep it separate from products,
+  base delivery, promotions, membership coverage, and loyalty coverage. Booking quotes and store pricing
+  v2 are immutable; stale pricing must return the customer to review before payment.
 - Loyalty promotion is shown only from the public active-status endpoint. Authenticated progress and
   matching rewards are backend-owned per booking line; keep reward identifiers inside quote snapshots,
   disable promo entry while a reward is selected, and show base-wash coverage separately from payable
@@ -42,8 +46,9 @@ membership, loyalty, authentication, localization, security, and accessibility c
 - Membership vehicle and slot choices come only from the owner-scoped booking-options endpoint.
   Sedan plans accept only sedans, SUV plans accept only SUVs, and 00:00–05:00 slots remain private
   to eligible midnight memberships. Membership Pay & Confirm opens the same optional-product modal
-  as an ordinary booking; dismissing it confirms the prepaid wash without products, while selected
-  products are the only payable amount.
+  as an ordinary booking. The plan covers its wash only; selected products and any immutable
+  service-zone charge remain payable, while a product-free redemption confirms without payment only
+  when the selected zone has no charge.
 - Adding a membership vehicle asks only for its plate number. Keep the internally generated
   vehicle-create idempotency key stable for an identical retry and rotate it when plate/type changes.
   Do not let automatic saved-vehicle selection override “Add a different vehicle.”

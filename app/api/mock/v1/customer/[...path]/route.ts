@@ -122,7 +122,10 @@ function mockPayment(subject: "BKG" | "MEM" | "STO", id: number) {
   return payment;
 }
 
-async function storePricing(lines: StoreOrderLine[]): Promise<StorePricingConfirmation> {
+async function storePricing(
+  lines: StoreOrderLine[],
+  dispatchZone: NonNullable<ReturnType<typeof mockDispatchZone>>,
+): Promise<StorePricingConfirmation> {
   const pricedLines = lines.map((line) => ({
     product_id: line.product_id,
     sku: line.sku,
@@ -132,13 +135,22 @@ async function storePricing(lines: StoreOrderLine[]): Promise<StorePricingConfir
     line_total_minor: Math.round(line.unit_price * 100) * line.quantity,
   }));
   const subtotalMinor = pricedLines.reduce((sum, line) => sum + line.line_total_minor, 0);
+  const serviceZoneRateMinor = dispatchZone.serviceRateMinor;
+  const combinedDeliveryMinor = STORE_DELIVERY_FEE_MINOR + serviceZoneRateMinor;
   const snapshot = {
-    schema: "store-cart-pricing:v1" as const,
+    schema: "store-cart-pricing:v2" as const,
     currency: "QAR" as const,
     lines: pricedLines,
     subtotal_minor: subtotalMinor,
-    delivery_fee_minor: STORE_DELIVERY_FEE_MINOR,
-    total_minor: subtotalMinor + STORE_DELIVERY_FEE_MINOR,
+    product_subtotal_minor: subtotalMinor,
+    base_delivery_fee_minor: STORE_DELIVERY_FEE_MINOR,
+    service_zone_rate_minor: serviceZoneRateMinor,
+    combined_delivery_minor: combinedDeliveryMinor,
+    delivery_fee_minor: combinedDeliveryMinor,
+    dispatch_zone_id: dispatchZone.id,
+    dispatch_zone_version: DISPATCH_ZONE_REVISION,
+    dispatch_zone_token: dispatchZone.version,
+    total_minor: subtotalMinor + combinedDeliveryMinor,
   };
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -169,6 +181,13 @@ function storePricingMatches(confirmation: unknown, pricing: StorePricingConfirm
     && candidate.currency === pricing.currency
     && candidate.subtotal_minor === pricing.subtotal_minor
     && candidate.delivery_fee_minor === pricing.delivery_fee_minor
+    && candidate.product_subtotal_minor === pricing.product_subtotal_minor
+    && candidate.base_delivery_fee_minor === pricing.base_delivery_fee_minor
+    && candidate.service_zone_rate_minor === pricing.service_zone_rate_minor
+    && candidate.combined_delivery_minor === pricing.combined_delivery_minor
+    && candidate.dispatch_zone_id === pricing.dispatch_zone_id
+    && candidate.dispatch_zone_version === pricing.dispatch_zone_version
+    && candidate.dispatch_zone_token === pricing.dispatch_zone_token
     && candidate.total_minor === pricing.total_minor
     && JSON.stringify(normalizedLines) === JSON.stringify(authoritativeLines)
     && (candidate.version == null || candidate.version === pricing.version);
@@ -287,6 +306,9 @@ function mockDispatchZone(latitude: number, longitude: number) {
     id,
     version: opaqueVersions[id],
     capacity: id === 1 ? 1 : 2,
+    nameEn: id === 1 ? "West service zone" : "East service zone",
+    nameAr: id === 1 ? "منطقة الخدمة الغربية" : "منطقة الخدمة الشرقية",
+    serviceRateMinor: id === 1 ? 0 : 1500,
   };
 }
 
@@ -419,7 +441,24 @@ async function handle(req: NextRequest, segments: string[]) {
     if (!mockQatarLand(body.latitude, body.longitude)) {
       return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
     }
-    return envelope({ version: SERVICE_AREA_VERSION, eligible: true });
+    const dispatchZone = mockDispatchZone(Number(body.latitude), Number(body.longitude));
+    if (!dispatchZone) {
+      return fail(422, "We do not currently serve this location.", null, {
+        dispatch_zone: { version: null, eligible: false },
+      }, "DISPATCH_ZONE_UNCOVERED");
+    }
+    return envelope({
+      version: SERVICE_AREA_VERSION,
+      eligible: true,
+      dispatch_zone: {
+        id: dispatchZone.id,
+        name_en: dispatchZone.nameEn,
+        name_ar: dispatchZone.nameAr,
+        version: dispatchZone.version,
+        service_rate: dispatchZone.serviceRateMinor / 100,
+        rate_applied: dispatchZone.serviceRateMinor > 0,
+      },
+    });
   }
 
   // ── Store inventory ──
@@ -467,6 +506,17 @@ async function handle(req: NextRequest, segments: string[]) {
     if (!mockQatarLand(body.latitude, body.longitude)) {
       return serviceAreaFailure("SERVICE_AREA_OUTSIDE_QATAR", "This location is outside Bubble It’s Qatar service area.");
     }
+    const dispatchZone = mockDispatchZone(Number(body.latitude), Number(body.longitude));
+    if (!dispatchZone) {
+      return fail(422, "We do not currently serve this location.", null, {
+        dispatch_zone: { version: null, eligible: false },
+      }, "DISPATCH_ZONE_UNCOVERED");
+    }
+    if (body.dispatch_zone_version && body.dispatch_zone_version !== dispatchZone.version) {
+      return fail(409, "Service-zone pricing changed. Confirm the location again.", null, {
+        dispatch_zone: { version: dispatchZone.version, eligible: false },
+      }, "DISPATCH_ZONE_STALE");
+    }
 
     if (!customerName || !customerPhone || !deliveryArea || !buildingNumber || linesInput.length === 0) {
       return fail(422, "Validation failed.", {
@@ -498,7 +548,7 @@ async function handle(req: NextRequest, segments: string[]) {
       });
     }
 
-    const pricing = await storePricing(orderLines);
+    const pricing = await storePricing(orderLines, dispatchZone);
     if (!storePricingMatches(body.pricing_confirmation, pricing)) {
       return fail(
         409,
@@ -534,6 +584,16 @@ async function handle(req: NextRequest, segments: string[]) {
       latitude: typeof body.latitude === "number" ? body.latitude : null,
       longitude: typeof body.longitude === "number" ? body.longitude : null,
       service_area: { version: SERVICE_AREA_VERSION, eligible: true },
+      dispatch_zone: {
+        id: dispatchZone.id,
+        name_en: dispatchZone.nameEn,
+        name_ar: dispatchZone.nameAr,
+        version: DISPATCH_ZONE_REVISION,
+        service_rate: dispatchZone.serviceRateMinor / 100,
+        rate_applied: dispatchZone.serviceRateMinor > 0,
+      },
+      base_delivery_fee: pricing.base_delivery_fee_minor! / 100,
+      service_zone_rate: pricing.service_zone_rate_minor! / 100,
       subtotal,
       delivery_fee: pricing.delivery_fee_minor / 100,
       discount_total: 0,
@@ -711,6 +771,10 @@ async function handle(req: NextRequest, segments: string[]) {
         enabled: true,
         eligible: true,
         version: dispatchZone.version,
+        name_en: dispatchZone.nameEn,
+        name_ar: dispatchZone.nameAr,
+        service_rate: dispatchZone.serviceRateMinor / 100,
+        rate_applied: dispatchZone.serviceRateMinor > 0,
       },
     });
   }
@@ -1187,6 +1251,10 @@ async function handle(req: NextRequest, segments: string[]) {
         enabled: true,
         eligible: true,
         version: dispatchZone.version,
+        name_en: dispatchZone.nameEn,
+        name_ar: dispatchZone.nameAr,
+        service_rate: dispatchZone.serviceRateMinor / 100,
+        rate_applied: dispatchZone.serviceRateMinor > 0,
       },
     });
   }
@@ -1390,7 +1458,9 @@ async function handle(req: NextRequest, segments: string[]) {
       ? evaluatePromo(store, String(body.promo_code), customer.id, serviceTotal, norm.map((car) => car.service_id))
       : { valid: false, discount: 0 };
     const promoDiscount = promo.valid ? promo.discount : 0;
-    const total = Math.max(0, serviceTotal - membershipDiscount - promoDiscount + productTotal);
+    const serviceZoneRate = quoteDispatchZone.serviceRateMinor / 100;
+    const total = Math.max(0, serviceTotal - membershipDiscount - promoDiscount + productTotal)
+      + serviceZoneRate;
     // Nominal wall-clock start (as sent) + duration → end and range label.
     const startHm = scheduledAt.slice(11, 16);
     const endDate = new Date(scheduledAt);
@@ -1399,7 +1469,7 @@ async function handle(req: NextRequest, segments: string[]) {
     const quoteId = crypto.randomUUID();
     const quoteVersion = await crypto.subtle.digest(
       "SHA-256",
-      new TextEncoder().encode(JSON.stringify({ carsOut, quotedProducts, total, scheduledAt, duration: durationContract.version })),
+      new TextEncoder().encode(JSON.stringify({ carsOut, quotedProducts, serviceZoneRate, total, scheduledAt, duration: durationContract.version })),
     ).then((bytes) => Array.from(new Uint8Array(bytes)).map((byte) => byte.toString(16).padStart(2, "0")).join(""));
     const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
     bookingQuotes.set(quoteId, {
@@ -1411,7 +1481,7 @@ async function handle(req: NextRequest, segments: string[]) {
     return envelope({
       quote_id: quoteId,
       quote_version: quoteVersion,
-      pricing_schema: "booking-cart-pricing:v1",
+      pricing_schema: "booking-cart-pricing:v2",
       currency: "QAR",
       expires_at: expiresAt,
       service: firstService && norm.length === 1 ? {
@@ -1435,9 +1505,22 @@ async function handle(req: NextRequest, segments: string[]) {
       loyalty_discount: 0,
       promo_discount: promoDiscount,
       product_total: productTotal,
+      service_zone_rate: serviceZoneRate,
+      service_zone: {
+        id: quoteDispatchZone.id,
+        name_en: quoteDispatchZone.nameEn,
+        name_ar: quoteDispatchZone.nameAr,
+        version: quoteDispatchZone.version,
+        rate: serviceZoneRate,
+        rate_applied: serviceZoneRate > 0,
+      },
       total_price: total,
       payment_required: total > 0,
-      payment_method: total <= 0 && membershipDiscount > 0 ? "membership" : "online",
+      payment_method: total <= 0 && membershipDiscount > 0
+        ? "membership"
+        : membershipDiscount > 0
+          ? "membership_with_balance"
+          : "online",
       cars: carsOut,
       memberships: [...summary.values()].map(({ m, applied }) => ({
         id: m.id,
@@ -1558,24 +1641,36 @@ async function handle(req: NextRequest, segments: string[]) {
         productTotal += lineTotal;
       }
 
-      const hasProducts = bookingProducts.length > 0;
+      const serviceZoneRate = dispatchZone.serviceRateMinor / 100;
+      const payableTotal = productTotal + serviceZoneRate;
+      const hasPayableBalance = payableTotal > 0;
       const id = store.nextId++;
       const booking: Booking & { customer_id: number } = {
         id,
         customer_id: customer.id,
         reference: makeReference(id),
-        status: hasProducts ? "pending_payment" : "paid",
-        status_label: hasProducts ? STATUS_LABELS.pending_payment : STATUS_LABELS.paid,
+        status: hasPayableBalance ? "pending_payment" : "paid",
+        status_label: hasPayableBalance ? STATUS_LABELS.pending_payment : STATUS_LABELS.paid,
         scheduled_at: new Date(scheduledAt).toISOString(),
         service_date: qatarServiceDate(scheduledAt),
         timezone: "Asia/Qatar",
         scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (membershipDuration.total_minutes * 60_000)).toISOString(),
         duration_minutes: membershipDuration.total_minutes,
         duration: { ...membershipDuration, status: "accepted", ambiguous: false },
-        membership_applied: !hasProducts,
-        payment_method: hasProducts ? "membership_with_products" : "membership",
-        total: productTotal,
+        membership_applied: true,
+        payment_method: hasPayableBalance ? "membership_with_balance" : "membership",
+        total: payableTotal,
         product_total: productTotal,
+        service_zone_rate: serviceZoneRate,
+        payable_total: payableTotal,
+        dispatch_zone: {
+          id: dispatchZone.id,
+          name_en: dispatchZone.nameEn,
+          name_ar: dispatchZone.nameAr,
+          version: DISPATCH_ZONE_REVISION,
+          service_rate: serviceZoneRate,
+          rate_applied: serviceZoneRate > 0,
+        },
         address_label: bookingAddress?.label ?? (String(body.address_label ?? "").trim() || null),
         address_area: bookingAddress?.area ?? String(body.address_area ?? "").trim(),
         address_street: bookingAddress?.details ?? (String(body.address_street ?? "").trim() || null),
@@ -1594,7 +1689,7 @@ async function handle(req: NextRequest, segments: string[]) {
       };
       store.bookings.push(booking);
       bookingDispatchZones.set(booking.id, dispatchZone.id);
-      if (hasProducts) {
+      if (hasPayableBalance) {
         membershipBookingReservations.set(booking.id, membership.id);
         for (const line of bookingProducts) {
           const product = store.storeProducts.find((item) => item.id === line.product_id);
@@ -1609,11 +1704,11 @@ async function handle(req: NextRequest, segments: string[]) {
       return envelope({
         ...pub,
         payment: {
-          status: hasProducts ? "ready" : "not_required",
+          status: hasPayableBalance ? "ready" : "not_required",
           captured: false,
           checkout_url: null,
           reconciliation_reason: null,
-          channel: hasProducts ? "skipcash_hosted" : "membership",
+          channel: hasPayableBalance ? "skipcash_hosted" : "membership",
         },
       }, { status: 201, message: "Booking created." });
     }
@@ -1705,7 +1800,11 @@ async function handle(req: NextRequest, segments: string[]) {
       m.washes_remaining -= 1;
       if (m.washes_remaining === 0) m.status = "exhausted" as never;
     });
-    const fullyCovered = coveredCount > 0 && bookingCars.every((c) => c.subtotal === 0) && bookingProducts.length === 0;
+    const serviceZoneRate = dispatchZone.serviceRateMinor / 100;
+    const fullyCovered = coveredCount > 0
+      && bookingCars.every((c) => c.subtotal === 0)
+      && bookingProducts.length === 0
+      && serviceZoneRate === 0;
 
     let addressArea = String(body.address_area ?? "").trim();
     if (body.address_id) {
@@ -1745,9 +1844,23 @@ async function handle(req: NextRequest, segments: string[]) {
       scheduled_end_at: new Date(new Date(scheduledAt).getTime() + (bookingDuration * 60_000)).toISOString(),
       duration_minutes: bookingDuration,
       duration: { ...bookingDurationContract, status: "accepted", ambiguous: false },
-      payment_method: fullyCovered ? "membership" : paymentMethod,
-      total: Math.max(0, subtotal - discount + productTotal),
+      payment_method: fullyCovered
+        ? "membership"
+        : coveredCount > 0
+          ? "membership_with_balance"
+          : paymentMethod,
+      total: Math.max(0, subtotal - discount + productTotal) + serviceZoneRate,
       product_total: productTotal,
+      service_zone_rate: serviceZoneRate,
+      payable_total: Math.max(0, subtotal - discount + productTotal) + serviceZoneRate,
+      dispatch_zone: {
+        id: dispatchZone.id,
+        name_en: dispatchZone.nameEn,
+        name_ar: dispatchZone.nameAr,
+        version: DISPATCH_ZONE_REVISION,
+        service_rate: serviceZoneRate,
+        rate_applied: serviceZoneRate > 0,
+      },
       address_label: bookingAddress?.label ?? (String(body.address_label ?? "").trim() || null),
       address_area: addressArea,
       address_street: bookingAddress?.details ?? (String(body.address_street ?? "").trim() || null),
@@ -1782,7 +1895,9 @@ async function handle(req: NextRequest, segments: string[]) {
     return envelope({
       ...pub,
       payment: {
-        status: pub.payment_method === "online" && pub.total > 0 ? "not_started" : "not_required",
+        status: ["online", "membership_with_balance"].includes(pub.payment_method) && pub.total > 0
+          ? "not_started"
+          : "not_required",
         checkout_url: null,
       },
     }, { status: 201, message: "Booking created." });
@@ -1927,7 +2042,7 @@ async function handle(req: NextRequest, segments: string[]) {
           status: "paid",
         });
       }
-      if (booking.status !== "pending_payment" || !["online", "membership_with_products"].includes(booking.payment_method)) {
+      if (booking.status !== "pending_payment" || !["online", "membership_with_products", "membership_with_balance"].includes(booking.payment_method)) {
         return fail(422, "This booking is not awaiting online payment.");
       }
       return envelope(mockPayment("BKG", booking.id));

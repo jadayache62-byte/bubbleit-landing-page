@@ -313,6 +313,16 @@ const AR: Record<string, string> = {
   "Use my exact location": "استخدم موقعي الحالي",
   "Locating…": "جاري تحديد الموقع…",
   "Location pinned": "تم تثبيت الموقع",
+  "Additional service-zone charge": "رسوم خدمة إضافية للمنطقة",
+  "This location is subject to an additional service charge of {amount}. It is included in the total shown at checkout.":
+    "يخضع هذا الموقع لرسوم خدمة إضافية قدرها {amount}. وهي مشمولة في الإجمالي المعروض عند الدفع.",
+  "This location has a separate service charge that is not covered by the membership.":
+    "لهذا الموقع رسوم خدمة منفصلة لا يغطيها الاشتراك.",
+  "The membership covers the wash. Products and the service-zone charge remain payable.":
+    "يغطي الاشتراك الغسلة، وتبقى قيمة المنتجات ورسوم خدمة المنطقة مستحقة.",
+  "The membership covers the wash. The service-zone charge remains payable.":
+    "يغطي الاشتراك الغسلة، وتبقى رسوم خدمة المنطقة مستحقة.",
+  "Amount due": "المبلغ المستحق",
   "Couldn't get your location — check browser permissions, or type the area below.":
     "تعذّر تحديد موقعك — تحقق من أذونات المتصفح أو اكتب المنطقة أدناه.",
   "Tap the map or drag the pin to set your exact spot — the driver navigates straight to it.":
