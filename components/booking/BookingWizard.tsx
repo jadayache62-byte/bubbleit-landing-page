@@ -643,25 +643,38 @@ export function BookingWizard() {
   }, [step, date, availabilityCars, loadSlots]);
 
   const resetStaleSlot = useCallback(() => {
-    if (!slotSelectedAt || Date.now() - slotSelectedAt < STALE_SLOT_MS) return;
+    if (!slotSelectedAt || Date.now() - slotSelectedAt < STALE_SLOT_MS) return false;
     setSlot(null);
     setSlots(null);
     setAvailabilityDuration(null);
     setStep(1);
+    return true;
   }, [slotSelectedAt]);
 
   useEffect(() => {
-    const onPageShow = () => resetStaleSlot();
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") resetStaleSlot();
+    let refreshTimer: number | undefined;
+    const refreshOnReturn = () => {
+      if (document.visibilityState !== "visible") return;
+      if (resetStaleSlot() || step !== 2) return;
+      // A cancellation can free capacity while this page is hidden, even
+      // without a selected slot. Coalesce restore signals into one request.
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        void loadSlots(date, availabilityCars);
+      }, 100);
     };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) refreshOnReturn();
+    };
+    const onVisibilityChange = () => refreshOnReturn();
     window.addEventListener("pageshow", onPageShow);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
+      window.clearTimeout(refreshTimer);
       window.removeEventListener("pageshow", onPageShow);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [resetStaleSlot]);
+  }, [resetStaleSlot, step, date, availabilityCars, loadSlots]);
 
   const total = useMemo(
     () =>
@@ -1600,7 +1613,10 @@ export function BookingWizard() {
                 <button
                   key={d.date}
                   type="button"
-                  onClick={() => setDate(d.date)}
+                  onClick={() => {
+                    if (d.date !== date) setDate(d.date);
+                    else if (slots !== null) void loadSlots(date, availabilityCars);
+                  }}
                   className={clsx(
                     "flex min-w-[4.5rem] flex-col items-center rounded-2xl border px-3 py-2.5 text-sm transition",
                     date === d.date

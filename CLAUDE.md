@@ -108,6 +108,15 @@ Repository notes for agents working on the Bubble It marketing site and customer
   ask a membership customer to choose the plan-owned service.
 - Customers do **not** select a bus.
 - Availability slots are quarter-hour starts grouped into hour pills. Each hour pill opens the connected `HourSlotPicker` popover for `:00`, `:15`, `:30`, and `:45`; keep disabled/past choices visible but unselectable.
+- Schedule reloads authoritative availability when a visible tab returns, when the browser restores
+  the page from history, or when the customer clicks the already selected date. Return events are
+  coalesced into one request, without fixed polling. A selection older than 15 minutes still clears
+  and returns to Location. Reloading clears the old selection and keeps request ordering guards.
+- A missing hour group is distinct from an occupied returned slot. Backend working windows require
+  the full service plus buffer to fit. With 00:00 to 03:00 and 15:00 to 24:00 windows and a 30 minute
+  buffer, a 60 minute service ends its start grid at 01:30 and 22:30. Do not invent 02:00 or 23:00
+  choices in the browser. Cancelled bookings no longer consume backend capacity, but an open page
+  must request fresh availability before displaying that change.
 - The backend keeps fleet capacity occupied for the configured post-booking buffer after `scheduled_end_at`. The website should continue to display the actual service end only.
 - The local mock API must mirror production slot generation and buffer-aware conflict behavior so booking demos cannot overbook a bus/driver pair.
 - Keep dispatch metadata operational: do not show bus availability or assignment cards in customer booking flows.

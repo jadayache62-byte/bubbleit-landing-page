@@ -26,6 +26,10 @@ membership, loyalty, authentication, localization, security, and accessibility c
   or price it.
 - Availability, duration, price, membership coverage, inventory, service-area version, and payment
   outcome are backend-owned. Do not calculate operational or financial truth in the browser.
+- Schedule refreshes on visible tab return or browser history restoration and when the customer
+  reselects the current date. Coalesce return signals into one request; never add interval polling.
+  Preserve expired selection recovery through Location. Hour buttons group backend quarter-hour
+  starts, so a missing hour means no start was returned for it, not necessarily an occupied booking.
 - Service-zone pricing is backend-owned and forward-only. Resolve the selected pin through the customer
   API, show the exact additional charge on Location and Pay & Confirm, and keep it separate from products,
   base delivery, promotions, membership coverage, and loyalty coverage. Booking quotes and store pricing

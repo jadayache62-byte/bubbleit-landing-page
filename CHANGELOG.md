@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-28 Timetable refresh after cancellation
+
+* Refresh Schedule availability on visible tab return, browser history restoration, and clicking the
+  selected date, so cancelled bookings do not leave old occupied slots on an open page.
+* Coalesce restoration events into one request without adding interval polling. Preserve the existing
+  expired selection recovery through Location and backend ownership of duration and slot boundaries.
+* Add browser regressions for released slots, request coalescing, expired selections, and the existing
+  mobile hour picker. Browser fixtures isolate customer APIs and block external requests.
+
 ## 2026-08-17 — Service-zone pricing at location and checkout
 
 ### Changed
