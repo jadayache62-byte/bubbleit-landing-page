@@ -1,94 +1,42 @@
-# Bubble It Customer Web — Agent Instructions
+# Bubble It Customer Web
 
-Read `CLAUDE.md` before changing customer behavior; it contains the detailed booking, store,
-membership, loyalty, authentication, localization, security, and accessibility contracts.
+Next.js 16 App Router, React 19, TypeScript, npm/Nx. This repo owns marketing, bookings, memberships, store checkout, account, and legal pages.
 
-## Current architecture
+## Read context for the task
 
-- Next.js 16 App Router customer website with React 19 and TypeScript.
-- Scope: marketing pages, the four-step booking wizard, memberships, store, authenticated account,
-  legal/release pages, and a development-only mock API.
-- Browser requests go to the same-origin `/api/customer` BFF. Only the BFF may hold the backend bearer
-  token, in an HttpOnly, Secure-in-production, SameSite=Lax cookie.
-- Production requires the server-only `CUSTOMER_API_BASE`. Never add a browser API base, direct
-  browser authorization header, localStorage token, or script-readable auth cookie.
-- Customer contracts expose customer-relevant payment/refund/fulfillment state only. Never expose
-  journal, revenue-recognition, accounting, reconciliation, provider, or internal fingerprint data.
-- Forgot-password recovery is a two-step OTP flow. OTP verification returns a short-lived reset grant
-  held only in component memory; it must not establish the HttpOnly customer session. Choosing the new
-  password consumes the grant once and returns the customer to normal password sign-in.
+AGENTS.md is canonical; CLAUDE.md only imports it. Read the matching guide below before editing, including when a domain crosses components, app routes, lib helpers, or tests. Shared UI and helper guides apply to callers too. Do not load every domain by default.
 
-## Current customer behavior
+## Related repositories
 
-- Booking remains one adaptive flow. Ordinary customers use Services → Location → Schedule → Pay &
-  Confirm. An authenticated customer with a redeemable membership uses Vehicle → Location →
-  Schedule → Pay & Confirm; the plan owns the service and the browser never asks them to choose
-  or price it.
-- Availability, duration, price, membership coverage, inventory, service-area version, and payment
-  outcome are backend-owned. Do not calculate operational or financial truth in the browser.
-- Schedule refreshes on visible tab return or browser history restoration and when the customer
-  reselects the current date. Coalesce return signals into one request; never add interval polling.
-  Preserve expired selection recovery through Location. Hour buttons group backend quarter-hour
-  starts, so a missing hour means no start was returned for it, not necessarily an occupied booking.
-- Service-zone pricing is backend-owned and forward-only. Resolve the selected pin through the customer
-  API, show the exact additional charge on Location and Pay & Confirm, and keep it separate from products,
-  base delivery, promotions, membership coverage, and loyalty coverage. Booking quotes and store pricing
-  v2 are immutable; stale pricing must return the customer to review before payment.
-- Loyalty promotion is shown only from the public active-status endpoint. Authenticated progress and
-  matching rewards are backend-owned per booking line; keep reward identifiers inside quote snapshots,
-  disable promo entry while a reward is selected, and show base-wash coverage separately from payable
-  add-ons/products. Paused balances remain visible in the account but cannot be claimed.
-- Present loyalty marketing through the shared bilingual modal: it may auto-prompt only once per
-  session after homepage Services engagement, while booking/account entry points stay click-triggered.
-  Keep authoritative progress, reward selection, pricing, history, and paused states inline.
-- Regular and membership availability require the selected latitude/longitude and return an opaque
-  dispatch-zone version that must survive quote/confirmation. A location outside configured coverage
-  is blocked on Location with a fixed informational snackbar that remains visible at any scroll
-  position; a covered zone with no available time advances to Schedule so the customer can choose
-  another day. Never expose internal zone names, buses, drivers, candidate counts, or
-  automatic-assignment details to customers.
-- Membership vehicle and slot choices come only from the owner-scoped booking-options endpoint.
-  Sedan plans accept only sedans, SUV plans accept only SUVs, and 00:00–05:00 slots remain private
-  to eligible midnight memberships. Membership Pay & Confirm opens the same optional-product modal
-  as an ordinary booking. The plan covers its wash only; selected products and any immutable
-  service-zone charge remain payable, while a product-free redemption confirms without payment only
-  when the selected zone has no charge.
-- Adding a membership vehicle asks only for its plate number. Keep the internally generated
-  vehicle-create idempotency key stable for an identical retry and rotate it when plate/type changes.
-  Do not let automatic saved-vehicle selection override “Add a different vehicle.”
-- Display the selected vehicle type's sedan/SUV duration. Customers never choose a bus or see bus,
-  plate, driver, or dispatch details.
-- Booking history is booking-reference-first, newest first, with search and lifecycle filters.
-  Cancellation must remain duplicate-safe and update the matching card immediately.
-- Store checkout is Location → Contact → Review for unauthenticated customers and Location → Review
-  for authenticated customers. Contact is an authentication/OTP gate; guest order creation is not
-  supported. Preserve the cart through authentication and bind pending orders to their server owner.
-- A provider return is not proof of payment. Reconcile through the backend and preserve processing,
-  failed, cancelled, review, refund, and payment-recovery states.
-- Use the shared accessible, dismissible top snackbar for customer action errors.
-- Keep the compact language switcher directly visible in the global header at every viewport; do not
-  hide the mobile control inside the navigation drawer. Deep Bubble's shared Popular badge and cyan
-  card emphasis must remain prominent in both homepage services and booking service selection.
+These three repos form one product. The paths below are known local checkouts; worktrees and CI may use other locations.
 
-## Quality and safety
+| Repository | Owns | Known local checkout |
+| --- | --- | --- |
+| [bubbleit-backend](../../Bubbleit/bubbleit-backend/AGENTS.md) | Authoritative APIs, business rules, auth, payments, accounting, inventory, and dispatch | `~/Documents/Bubbleit/bubbleit-backend` |
+| [bubbleit-mobile](../../Bubbleit/bubbleit-mobile/AGENTS.md) | Staff operations for iOS, Android, and Web; tutorial workspace at `apps/bubbleit-docs` | `~/Documents/Bubbleit/bubbleit-mobile` |
+| [bubbleit-landing-page](AGENTS.md) | Customer website, booking, memberships, store, account, and customer BFF | `~/Documents/GitHub/bubbleit-landing-page` |
 
-- English/Arabic, server-rendered `lang`/`dir`, RTL, 320 px reflow, increased text, keyboard access,
-  visible focus, focus restoration, reduced motion, and axe WCAG A/AA coverage are release gates.
-- Every app-owned string—including dynamic option labels, generated defaults, validation/runtime
-  errors, accessible names, legal-page chrome, and page metadata—belongs in the shared English/Arabic
-  catalog. Keep customer-authored names and backend-authored catalogue content verbatim.
-- Keep `docs/contracts/public-contract-v1.schema.json` and
-  `docs/contracts/duration-v1.json` byte-identical with the backend and Flutter consumers.
-- The local mock must follow production contracts but must never become a production fallback.
-- The local mock must preserve zone-specific capacity and stale-version behavior; a bus serving one
-  zone must never contribute a customer slot in another zone.
-- Tests must not contact real payment, messaging, production, or shared services.
-- Use the declared Nx targets through `npm exec nx -- <target> bubbleit-landing-page`; do not bypass
-  Nx for routine lint, test, build, or end-to-end work and do not guess flags.
-- Before release, run the relevant focused tests followed by lint, unit/contract tests, Playwright
-  release gates, session/security verification, and the production build.
-- Keep `CHANGELOG.md`, `CLAUDE.md`, and this file synchronized whenever durable behavior,
-  architecture, contracts, release state, or operational knowledge changes.
+When a task crosses a repo boundary, read that repo's root AGENTS.md and relevant domain guide first. Use the active checkout/worktree for edits and modify only repos required by the user's task. If a listed path is missing, locate an existing checkout by repo name or ask; do not invent a replacement or infer deployment URLs from filesystem paths. Backend contracts remain authoritative, with coordinated schema and duration copies in both clients.
+
+## Global safeguards
+
+- Browser traffic uses the same origin customer BFF. Backend bearer tokens stay in its HttpOnly cookie, never localStorage, script readable cookies, or browser authorization headers.
+- Backend contracts own availability, duration, price, coverage, stock, and payment/refund state. Customer screens never expose internal accounting or dispatch data; a browser provider return does not prove payment.
+- Preserve English/Arabic, RTL, server lang/dir, responsive accessibility, and authored content. Use shared controls/catalog/helpers and the coordinated schema/duration snapshots.
+- Tests use isolated loopback services, not live providers or shared data. No production mock fallback or new general polling.
+- Preserve existing work and scope. Commits, pushes, merges, and deployments require a user request. Update the primary domain AGENTS guide and CHANGELOG for durable changes; surface code/contract conflicts rather than guessing.
+
+## Commands
+
+From this root use `npm exec nx -- run bubbleit-landing-page:<target>` with declared targets `lint`, `test`, `test:session`, `test:e2e`, `test:security`, or `build`. Before release, run relevant focused checks plus these gates. Builds require a configured backend base; Playwright uses isolated loopback configuration in `playwright.config.ts`, not a production smoke test.
+
+## Context files
+
+- [app/AGENTS.md](app/AGENTS.md) (The customer BFF, session cookies, authentication, account pages, and security policy)
+- [components/AGENTS.md](components/AGENTS.md) (Navigation, shared controls, feedback, responsive layout, and accessibility)
+- [components/booking/AGENTS.md](components/booking/AGENTS.md) (The adaptive booking wizard, owner membership choices, optional products, and loyalty)
+- [components/store/AGENTS.md](components/store/AGENTS.md) (Product catalog, cart, authenticated checkout, and pending order recovery)
+- [lib/AGENTS.md](lib/AGENTS.md) (API types, duration, service eligibility, localization, Qatar time, and safe development mocks)
 
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->

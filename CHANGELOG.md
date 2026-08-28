@@ -1,5 +1,26 @@
 # Changelog
 
+## [2026-08-28] Related repository map for agents
+
+### Changed
+
+- Added the three related repositories, their responsibilities, known local paths, and links to their root instructions. Clarified active checkout selection, missing path recovery, and task scope across repos.
+
+## [2026-08-28] Agent context domain refinement
+
+### Changed
+
+- Shortened general agent context and separated booking and membership guidance from store checkout. Centralized BFF, authentication, account, and CSP rules, with shared contract, service area, locale, and accessibility references.
+
+## 2026-08-28 Canonical AI context and scoped guidance
+
+* Made AGENTS.md the canonical context and moved detailed guidance into linked route, component,
+  and shared helper guides. CLAUDE.md files now import their sibling AGENTS.md.
+* Updated service eligibility to include the backend Qatar territorial sea boundary, documented the
+  actual public schema source and BFF configuration compatibility, and listed the verified Nx targets.
+  Removed automatic commit, push, merge, and deployment instructions.
+* Application code, customer contracts, configuration, and deployment state were not changed.
+
 ## 2026-08-28 Timetable refresh after cancellation
 
 * Refresh Schedule availability on visible tab return, browser history restoration, and clicking the
