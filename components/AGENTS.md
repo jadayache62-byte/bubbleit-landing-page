@@ -14,6 +14,13 @@ Paths in code and commands are relative to the repository root. These rules also
 - Use the shared accessible dismissible top snackbar for comparable action errors in booking, auth, memberships, checkout, locations, notifications, reviews, and deletion. Coverage information uses its fixed non-danger snackbar, visible at any scroll position.
 - App owned strings, including accessible names, validation, errors, option labels, generated defaults, legal chrome, and metadata, come from the bilingual catalog. Preserve customer and backend authored catalogue names verbatim.
 - Preserve responsive skeletons for services, products, memberships, availability, and other server backed regions instead of blank space or generic loading text.
+- Customer tracking stays on Looking for your bus until the authoritative assignment exists, then
+  deliberately shows every found/assigning/assigned stage once per tab session even for instant
+  allocation. Precise map data appears only from an eligible snapshot. Keep truthful no map, stale,
+  disconnected, route unavailable and terminal fallbacks in both languages.
+- Reuse one Google map instance and move the bus marker in place. Respect reduced motion, pause live
+  sockets while hidden/offline, recover event gaps from a snapshot, and never fabricate a route line
+  or ETA. A missing/blocked map must leave status and bus details usable.
 
 ## Accessibility
 

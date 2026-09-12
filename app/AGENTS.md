@@ -20,6 +20,10 @@ Paths in code and commands are relative to the repository root. These rules also
 
 - Customer resources expose payment/refund/fulfillment/delivery outcomes only. Never expose journal, recognition, deferred revenue, account codes, posting policy, provider internals, reconciliation, or fingerprints.
 - `/account` owns Overview, Bookings, Memberships, Store Orders, Vehicles, and Notifications. Keep owner scoped booking/rebooking/cancellation/payment recovery, membership redemption/renewal, order tracking, vehicle booking/removal, notification recovery, quick actions, loading and empty states.
+- `/account?tab=bookings&booking={id}` owns the customer live bus journey. Its same origin BFF snapshot
+  and authorization paths require the HttpOnly customer session; live authorization also requires an
+  exact Origin and an allowlisted body. Responses are no store and allowlisted before reaching UI.
+  Private grants, bearer tokens and coordinates never enter URLs, localStorage, analytics or Sentry.
 - Booking history is reference first, newest reference first, with search and lifecycle filters. Cancellation is duplicate safe and updates the affected card from the server response with visible progress.
 - Provider ReturnUrl is purchase specific and returns to the matching account section/purchase ID; dashboard return URL is only a fallback. A return is not payment proof. Use the existing bounded backend state reconciliation/polling for localized success, failure, cancellation, timeout, processing, refund, or review. Do not turn this into general list polling.
 - Pending purchases offer Complete payment from their own account section. Reconcile the current attempt before retry so a verified purchase cannot create another checkout. Approval or cancellation never promises automatic reimbursement.
@@ -30,8 +34,16 @@ Paths in code and commands are relative to the repository root. These rules also
 
 ## Security policy and checks
 
+- Local build verification sets `SENTRY_BUILD_UPLOADS=false` to prevent source map uploads, release creation, and build plugin telemetry. Clearing a token alone is insufficient because the SDK can load its separate ignored environment file. Runtime error reporting stays configured. Sentry sample error routes are not part of the customer site.
+- Isolated browser verification also sets `NEXT_PUBLIC_SENTRY_ENABLED=false` for client, server and edge reporting. The Playwright test server includes both guards. Normal runtime reporting stays on by default.
+
 - `proxy.ts` uses a request nonce. `CSP_MODE` defaults to `report-only`; release browser tests use `enforce`. Hosting enforcement requires reviewed report only evidence first. Report only CSP omits `upgrade-insecure-requests`; Permissions-Policy uses broadly recognized directives.
-- OpenStreetMap tiles and Nominatim are the current external runtime sources. Keep CSP reports bounded and redact query strings. Enforced `frame-ancestors 'none'` is authoritative; nginx owns compatibility X-Frame-Options, so do not emit a conflicting application duplicate.
+- OpenStreetMap tiles and Nominatim remain booking location sources. The account tracking map may load
+  Google Maps only when its public browser key is configured; CSP adds only the documented Google
+  sources in that configuration. Restrict the key to exact website referrers. Reverb WebSocket CSP is
+  derived from a validated public host, numeric port and ws/wss scheme. Keep CSP reports bounded and
+  redact query strings. Enforced `frame-ancestors 'none'` is authoritative; nginx owns compatibility
+  X-Frame-Options, so do not emit a conflicting application duplicate.
 - HSTS, MIME/referrer/isolation headers, permissions policy, HttpOnly sessions, and same origin mutation checks are release gates.
 - Run the declared `test:session` and `test:security` Nx targets for this boundary. Playwright uses `http://127.0.0.1:3100`, unreachable loopback upstream port 9, and CSP enforce. Reuse a local server only with that same isolated configuration; never test against live payments or shared customer data.
 

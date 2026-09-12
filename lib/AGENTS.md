@@ -9,6 +9,12 @@ Paths in code and commands are relative to the repository root. These rules also
 ## Contracts and shared code
 
 - Backend source `docs/api/public-contract-v1.schema.json` is copied byte identically to `docs/contracts/public-contract-v1.schema.json` here and in mobile. `docs/contracts/duration-v1.json` is byte identical in all three repos. Coordinate schema changes with provider/consumer tests.
+- The shared schema includes `trip_already_en_route` plus customer dispatch/tracking summaries,
+  snapshots, live events and private authorization. Backend state remains authoritative and all fleet
+  flags default off. Never infer assignment, tracking availability, route or ETA in browser code.
+- `lib/tracking/customer-tracking.ts` owns ordered epoch/revision reduction, 45/120 second display
+  health and bounded reconnect delay. A duplicate is ignored; a gap or changed assignment/plan/policy
+  reloads one fresh snapshot. Do not add location polling.
 - Keep type unions, nullable fields, error/pagination parsing, integer product IDs, and mock fixtures aligned. A catalogue outage means unavailable/retry, never production cart hydration from `STORE_PRODUCTS`.
 - Use `@/` imports, `lib/api/client.ts`, `lib/api/types.ts`, `lib/money.ts`, `lib/datetime.ts`, and `lib/i18n.tsx`. Browser calls remain behind the BFF.
 - Use backend `duration-v1` from availability, echo its version to quote, then the accepted quote version to commit. Recover `DURATION_VERSION_STALE` by reloading availability; do not calculate scheduling duration from the catalogue.

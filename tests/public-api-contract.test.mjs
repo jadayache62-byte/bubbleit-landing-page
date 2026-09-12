@@ -27,6 +27,7 @@ function typeBlock(name) {
 
 test("the checked-in public contract publishes envelope, error, null, and pagination shapes", () => {
   assert.equal(schema["x-contract-version"], "public-contract-v1");
+  assert.ok(schema.$defs.ErrorCode.enum.includes("trip_already_en_route"));
   assert.deepEqual(schema.required, ["success", "message", "data", "errors"]);
   assert.deepEqual(schema.$defs.PaginationMeta.required, [
     "current_page",
@@ -62,6 +63,20 @@ test("customer notification enums and safe-link resources match the backend-owne
     "created_at",
   ]);
   assert.equal(schema.$defs.CustomerNotificationPreference.properties.transactional_fallback.const, true);
+});
+
+test("customer booking tracking types match the backend-owned live contract", () => {
+  assert.deepEqual(
+    quotedValues(typeBlock("CustomerDispatchState")),
+    schema.$defs.CustomerDispatchState.enum,
+  );
+  assert.deepEqual(
+    quotedValues(typeBlock("CustomerTrackingReason")),
+    schema.$defs.CustomerTrackingReason.enum,
+  );
+  assert.equal(schema.$defs.CustomerTrackingSnapshot.additionalProperties, false);
+  assert.equal(schema.$defs.CustomerTrackingEvent.additionalProperties, false);
+  assert.equal(schema.$defs.CustomerLiveAuthorization.additionalProperties, false);
 });
 
 test("store client accepts only numeric server product IDs and published order states", () => {

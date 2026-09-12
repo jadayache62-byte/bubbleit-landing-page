@@ -328,6 +328,10 @@ export type Booking = {
   reference: string;
   status: BookingStatus;
   status_label: string;
+  dispatch_state: CustomerDispatchState;
+  tracking_state: "disabled" | "waiting" | "available" | "closed";
+  tracking_available: boolean;
+  tracking_path: string;
   scheduled_at: string; // ISO
   scheduled_end_at?: string;
   service_date: string; // Qatar YYYY-MM-DD
@@ -373,6 +377,104 @@ export type Booking = {
   // separate idempotent payment-initialization command.
   payment?: PaymentState;
   refund?: RefundState | null;
+};
+
+export type CustomerDispatchState =
+  | "looking_for_bus"
+  | "assigned"
+  | "en_route"
+  | "arrived"
+  | "service_started"
+  | "closed";
+
+export type CustomerTrackingReason =
+  | "feature_disabled"
+  | "not_assigned"
+  | "before_window"
+  | "prior_service_active"
+  | "location_stale"
+  | "location_disconnected"
+  | "route_unavailable"
+  | "service_started"
+  | "trip_interrupted"
+  | "booking_terminal";
+
+export type CustomerTrackingPosition = {
+  latitude: number;
+  longitude: number;
+  heading: number | null;
+  accuracy_m: number;
+  captured_at: string;
+};
+
+export type CustomerTrackingSnapshot = {
+  schema_version: "customer-tracking-v1";
+  server_time: string;
+  policy_revision: number;
+  booking_id: number;
+  dispatch_state: CustomerDispatchState;
+  assignment_version: number;
+  tracking_available: boolean;
+  reason: CustomerTrackingReason;
+  trip: {
+    id: string;
+    status: "planned" | "en_route" | "arrived" | "closed" | "cancelled" | "interrupted";
+    plan_revision: number;
+    window_starts_at: string;
+    arrived_at: string | null;
+  } | null;
+  bus: { bus_number: string; plate_number: string } | null;
+  position: CustomerTrackingPosition | null;
+  destination: { latitude: number; longitude: number } | null;
+  route: { encoded_polyline: string; calculated_at: string; expires_at: string } | null;
+  eta: {
+    arrival_at: string;
+    remaining_seconds: number;
+    source: string;
+    calculated_at: string;
+    expires_at: string;
+  } | null;
+  delay: { late_seconds: number; source: "predicted_arrival" | "elapsed_booking_start" } | null;
+  health: {
+    status: "healthy" | "stale" | "disconnected";
+    last_valid_at: string | null;
+    last_received_at: string | null;
+  };
+  stream: {
+    purpose: "dispatch" | "tracking";
+    epoch: string;
+    revision: number;
+    grant_id: string;
+    channel: string;
+    expires_at: string;
+  } | null;
+};
+
+export type CustomerTrackingEvent = {
+  schema_version: "customer-tracking-event-v1";
+  event_id: string;
+  type: "tracking_available" | "position_updated" | "revoked" | "closed" | "feature_disabled";
+  stream_epoch: string;
+  revision: number;
+  occurred_at: string;
+  policy_revision: number;
+  assignment_version: number;
+  trip_plan_revision: number | null;
+  booking_id: number;
+  trip_id: string | null;
+  payload: Partial<Pick<CustomerTrackingSnapshot,
+    "dispatch_state" | "tracking_available" | "reason" | "position" | "destination" | "route" | "eta" | "delay" | "health"
+  >>;
+};
+
+export type CustomerLiveAuthorization = {
+  auth: string;
+  channel: string;
+  grant_id: string;
+  purpose: "dispatch" | "tracking";
+  epoch: string;
+  revision: number;
+  expires_at: string;
 };
 
 export type VerifyOtpResult = {
@@ -661,7 +763,8 @@ export type CustomerNotificationType =
   | "membership_status_changed"
   | "store_order_status_changed"
   | "review_requested"
-  | "loyalty_reward_earned";
+  | "loyalty_reward_earned"
+  | "tracking_available";
 
 export type CustomerReviewInvitation = {
   id: string;

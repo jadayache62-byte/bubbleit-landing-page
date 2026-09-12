@@ -1651,6 +1651,10 @@ async function handle(req: NextRequest, segments: string[]) {
         reference: makeReference(id),
         status: hasPayableBalance ? "pending_payment" : "paid",
         status_label: hasPayableBalance ? STATUS_LABELS.pending_payment : STATUS_LABELS.paid,
+        dispatch_state: "looking_for_bus",
+        tracking_state: "disabled",
+        tracking_available: false,
+        tracking_path: `/account?tab=bookings&booking=${id}`,
         scheduled_at: new Date(scheduledAt).toISOString(),
         service_date: qatarServiceDate(scheduledAt),
         timezone: "Asia/Qatar",
@@ -1838,6 +1842,10 @@ async function handle(req: NextRequest, segments: string[]) {
       reference,
       status: fullyCovered ? "paid" : "pending_payment",
       status_label: fullyCovered ? STATUS_LABELS.paid : STATUS_LABELS.pending_payment,
+      dispatch_state: "looking_for_bus",
+      tracking_state: "disabled",
+      tracking_available: false,
+      tracking_path: `/account?tab=bookings&booking=${id}`,
       scheduled_at: new Date(scheduledAt).toISOString(),
       service_date: qatarServiceDate(scheduledAt),
       timezone: "Asia/Qatar",
@@ -1901,6 +1909,39 @@ async function handle(req: NextRequest, segments: string[]) {
         checkout_url: null,
       },
     }, { status: 201, message: "Booking created." });
+  }
+
+  const trackingMatch = path.match(/^bookings\/(\d+)\/(tracking|live\/authorize)$/);
+  if (trackingMatch) {
+    const booking = store.bookings.find(
+      (item) => item.id === Number(trackingMatch[1]) && item.customer_id === customer.id,
+    );
+    if (!booking) return fail(404, "Booking not found.");
+    if (method === "POST" && trackingMatch[2] === "live/authorize") {
+      return fail(403, "Live tracking is disabled.", null, null, "tracking_grant_stale");
+    }
+    if (method !== "GET" || trackingMatch[2] !== "tracking") {
+      return fail(405, "Method not allowed.");
+    }
+    return envelope({
+      schema_version: "customer-tracking-v1",
+      server_time: new Date().toISOString(),
+      policy_revision: 0,
+      booking_id: booking.id,
+      dispatch_state: booking.dispatch_state,
+      assignment_version: 0,
+      tracking_available: false,
+      reason: "feature_disabled",
+      trip: null,
+      bus: null,
+      position: null,
+      destination: null,
+      route: null,
+      eta: null,
+      delay: null,
+      health: { status: "disconnected", last_valid_at: null, last_received_at: null },
+      stream: null,
+    });
   }
 
   const bookingMatch = path.match(/^bookings\/(\d+)(?:\/(cancel|pay|payment-status|mock-complete-payment|reschedule-options|reschedule))?$/);

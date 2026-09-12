@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const nextConfig = readFileSync(new URL("../next.config.mjs", import.meta.url), "utf8");
@@ -7,6 +7,18 @@ const proxy = readFileSync(new URL("../proxy.ts", import.meta.url), "utf8");
 const csp = readFileSync(new URL("../lib/security/csp.ts", import.meta.url), "utf8");
 const bff = readFileSync(new URL("../app/api/customer/[...path]/route.ts", import.meta.url), "utf8");
 const client = readFileSync(new URL("../lib/api/client.ts", import.meta.url), "utf8");
+
+test("Sentry demo routes are absent and local build uploads can be disabled", () => {
+  assert.equal(existsSync(new URL("../app/sentry-example-page/page.tsx", import.meta.url)), false);
+  assert.equal(existsSync(new URL("../app/api/sentry-example-api/route.ts", import.meta.url)), false);
+  assert.match(nextConfig, /process\.env\.SENTRY_BUILD_UPLOADS === "false"/);
+  assert.match(nextConfig, /sourcemaps: \{ disable: disableSentryBuildUploads \}/);
+  assert.match(nextConfig, /telemetry: false, release: \{ create: false, finalize: false \}/);
+  for (const filename of ["sentry.server.config.ts", "sentry.edge.config.ts", "instrumentation-client.ts"]) {
+    const config = readFileSync(new URL(`../${filename}`, import.meta.url), "utf8");
+    assert.match(config, /enabled: process\.env\.NEXT_PUBLIC_SENTRY_ENABLED !== "false"/);
+  }
+});
 
 test("security headers include transport, permission, isolation, and MIME defenses", () => {
   assert.match(nextConfig, /Strict-Transport-Security/);

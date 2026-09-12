@@ -35,19 +35,78 @@ function upstreamBase(request: NextRequest) {
   return `${requestOrigin(request)}/api/mock/v1/customer`;
 }
 
-function isCrossSiteMutation(request: NextRequest) {
+function isCrossSiteMutation(request: NextRequest, requireExactOrigin = false) {
   if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return false;
 
   const fetchSite = request.headers.get("sec-fetch-site");
   if (fetchSite === "cross-site") return true;
 
   const origin = request.headers.get("origin");
-  if (origin === null) return false;
+  if (origin === null) return requireExactOrigin;
 
   try {
     return new URL(origin).origin !== requestOrigin(request);
   } catch {
     return true;
+  }
+}
+
+function trackingRoute(path: string) {
+  if (/^bookings\/[1-9][0-9]*\/tracking$/.test(path)) return "snapshot" as const;
+  if (/^bookings\/[1-9][0-9]*\/live\/authorize$/.test(path)) return "authorize" as const;
+  return null;
+}
+
+function object(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function pick(value: unknown, keys: readonly string[]) {
+  const source = object(value);
+  if (!source) return null;
+  return Object.fromEntries(keys.filter((key) => key in source).map((key) => [key, source[key]]));
+}
+
+function sanitizeTrackingBody(body: string, kind: "snapshot" | "authorize") {
+  try {
+    const envelope = object(JSON.parse(body));
+    if (!envelope) return body;
+    const clean: Record<string, unknown> = {
+      success: envelope.success,
+      message: envelope.message,
+      data: envelope.data,
+      errors: envelope.errors,
+      ...(typeof envelope.code === "string" ? { code: envelope.code } : {}),
+    };
+    if (envelope.success !== true) return JSON.stringify(clean);
+    const data = object(envelope.data);
+    if (!data) return JSON.stringify({ ...clean, data: null });
+
+    if (kind === "authorize") {
+      clean.data = pick(data, ["auth", "channel", "grant_id", "purpose", "epoch", "revision", "expires_at"]);
+      return JSON.stringify(clean);
+    }
+
+    const sanitized = pick(data, [
+      "schema_version", "server_time", "policy_revision", "booking_id", "dispatch_state",
+      "assignment_version", "tracking_available", "reason", "trip", "bus", "position",
+      "destination", "route", "eta", "delay", "health", "stream",
+    ]) ?? {};
+    sanitized.trip = pick(data.trip, ["id", "status", "plan_revision", "window_starts_at", "arrived_at"]);
+    sanitized.bus = pick(data.bus, ["bus_number", "plate_number"]);
+    sanitized.position = pick(data.position, ["latitude", "longitude", "heading", "accuracy_m", "captured_at"]);
+    sanitized.destination = pick(data.destination, ["latitude", "longitude"]);
+    sanitized.route = pick(data.route, ["encoded_polyline", "calculated_at", "expires_at"]);
+    sanitized.eta = pick(data.eta, ["arrival_at", "remaining_seconds", "source", "calculated_at", "expires_at"]);
+    sanitized.delay = pick(data.delay, ["late_seconds", "source"]);
+    sanitized.health = pick(data.health, ["status", "last_valid_at", "last_received_at"]);
+    sanitized.stream = pick(data.stream, ["purpose", "epoch", "revision", "grant_id", "channel", "expires_at"]);
+    clean.data = sanitized;
+    return JSON.stringify(clean);
+  } catch {
+    return body;
   }
 }
 
@@ -78,7 +137,10 @@ function establishSession(response: NextResponse, token: string, expiresAt?: str
 
 async function proxy(request: NextRequest, context: RouteContext) {
   const correlationId = requestId(request);
-  if (isCrossSiteMutation(request)) {
+  const { path: segments } = await context.params;
+  const path = segments.join("/");
+  const tracking = trackingRoute(path);
+  if (isCrossSiteMutation(request, tracking === "authorize")) {
     return NextResponse.json(
       {
         success: false,
@@ -89,9 +151,13 @@ async function proxy(request: NextRequest, context: RouteContext) {
       { status: 403, headers: { "X-Request-ID": correlationId } },
     );
   }
-
-  const { path: segments } = await context.params;
-  const path = segments.join("/");
+  if (tracking === "snapshot" && request.method !== "GET"
+    || tracking === "authorize" && request.method !== "POST") {
+    return NextResponse.json(
+      { success: false, message: "Method not allowed.", data: null, errors: null },
+      { status: 405, headers: { "Cache-Control": "no-store, private", "X-Request-ID": correlationId } },
+    );
+  }
   const target = new URL(`${upstreamBase(request)}/${path}`);
   target.search = request.nextUrl.search;
 
@@ -103,15 +169,43 @@ async function proxy(request: NextRequest, context: RouteContext) {
   if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (tracking && !token) {
+    return NextResponse.json(
+      { success: false, message: "Authentication required.", data: null, errors: null },
+      { status: 401, headers: { "Cache-Control": "no-store, private", "X-Request-ID": correlationId } },
+    );
+  }
+
+  let requestBody: ArrayBuffer | undefined;
+  if (!["GET", "HEAD"].includes(request.method)) {
+    requestBody = await request.arrayBuffer();
+  }
+  if (tracking === "authorize") {
+    if (!requestBody || requestBody.byteLength > 1024) {
+      return NextResponse.json(
+        { success: false, message: "Invalid live authorization request.", data: null, errors: null },
+        { status: 422, headers: { "Cache-Control": "no-store, private", "X-Request-ID": correlationId } },
+      );
+    }
+    try {
+      const input = object(JSON.parse(new TextDecoder().decode(requestBody)));
+      if (!input || Object.keys(input).some((key) => !["socket_id", "grant_id", "purpose"].includes(key))) {
+        throw new Error("invalid");
+      }
+    } catch {
+      return NextResponse.json(
+        { success: false, message: "Invalid live authorization request.", data: null, errors: null },
+        { status: 422, headers: { "Cache-Control": "no-store, private", "X-Request-ID": correlationId } },
+      );
+    }
+  }
 
   let upstream: Response;
   try {
     upstream = await fetch(target, {
       method: request.method,
       headers,
-      body: ["GET", "HEAD"].includes(request.method)
-        ? undefined
-        : await request.arrayBuffer(),
+      body: requestBody,
       cache: "no-store",
       redirect: "manual",
     });
@@ -145,6 +239,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
   if (retryAfter) responseHeaders.set("Retry-After", retryAfter);
 
   let body = await upstream.text();
+  if (tracking) body = sanitizeTrackingBody(body, tracking);
   let issuedToken: string | undefined;
   let expiresAt: string | undefined;
 

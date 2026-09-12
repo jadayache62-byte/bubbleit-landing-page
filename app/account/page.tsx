@@ -9,6 +9,7 @@ import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import { HourSlotPicker } from "@/components/booking/HourSlotPicker";
 import { CustomerNotifications } from "@/components/account/CustomerNotifications";
+import { BookingTrackingPanel } from "@/components/account/BookingTrackingPanel";
 import { LoyaltyModal } from "@/components/loyalty/LoyaltyModal";
 import { useI18n } from "@/lib/i18n";
 import { formatQar } from "@/lib/money";
@@ -164,6 +165,7 @@ export default function AccountPage() {
   const [tab, setTab] = useState<(typeof ACCOUNT_TABS)[number]>("overview");
   const [bookingFilter, setBookingFilter] = useState<BookingFilter>("all");
   const [bookingSearch, setBookingSearch] = useState("");
+  const [selectedBookingId, setSelectedBookingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [paymentNotice, setPaymentNotice] = useState<PaymentFeedback | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
@@ -282,6 +284,7 @@ export default function AccountPage() {
       setMemberships(null);
       setOrders(null);
       setLoyalty(null);
+      setSelectedBookingId(null);
       setPaymentNotice(null);
       setSessionEnded(true);
     }
@@ -303,6 +306,13 @@ export default function AccountPage() {
     const requestedTab = parameters.get("tab");
     if (ACCOUNT_TABS.includes(requestedTab as (typeof ACCOUNT_TABS)[number])) {
       queueMicrotask(() => setTab(requestedTab as (typeof ACCOUNT_TABS)[number]));
+    }
+    const requestedBooking = Number.parseInt(parameters.get("booking") ?? "", 10);
+    if (Number.isSafeInteger(requestedBooking) && requestedBooking > 0) {
+      queueMicrotask(() => {
+        setTab("bookings");
+        setSelectedBookingId(requestedBooking);
+      });
     }
   }, [customer, t]);
 
@@ -355,6 +365,10 @@ export default function AccountPage() {
 
           setPaymentNotice(paymentFeedback(state, t));
           if (TERMINAL_PAYMENT_STATES.has(state)) {
+            if (hasBooking && state === "paid") {
+              setTab("bookings");
+              setSelectedBookingId(bookingId);
+            }
             parameters.delete("payment");
             window.history.replaceState(null, "", `${window.location.pathname}?${parameters.toString()}`);
             return;
@@ -377,6 +391,23 @@ export default function AccountPage() {
       active = false;
     };
   }, [customer, t]);
+
+  function openBookingTracking(id: number) {
+    setTab("bookings");
+    setSelectedBookingId(id);
+    const parameters = new URLSearchParams(window.location.search);
+    parameters.set("tab", "bookings");
+    parameters.set("booking", String(id));
+    window.history.replaceState(null, "", `${window.location.pathname}?${parameters.toString()}`);
+  }
+
+  function closeBookingTracking() {
+    setSelectedBookingId(null);
+    const parameters = new URLSearchParams(window.location.search);
+    parameters.delete("booking");
+    parameters.set("tab", "bookings");
+    window.history.replaceState(null, "", `${window.location.pathname}?${parameters.toString()}`);
+  }
 
   async function handleCancel(id: number) {
     const action = `cancel-booking:${id}`;
@@ -681,7 +712,7 @@ export default function AccountPage() {
 
             <div key={tab} id={`account-panel-${tab}`} role="tabpanel" aria-labelledby={`account-tab-${tab}`} tabIndex={0} className="checkout-step mt-6 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-4">
               {tab === "overview" && <div className="grid gap-5 lg:grid-cols-2">
-                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} busy={paymentAction !== null} paying={paymentAction === `booking:${activeBookings[0].id}`} cancelling={paymentAction === `cancel-booking:${activeBookings[0].id}`} onPay={() => handleCompleteBookingPayment(activeBookings[0])} onCancel={() => handleCancel(activeBookings[0].id)} onReschedule={() => loadRescheduleOptions(activeBookings[0], qatarServiceDate(activeBookings[0].scheduled_at))} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
+                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} busy={paymentAction !== null} paying={paymentAction === `booking:${activeBookings[0].id}`} cancelling={paymentAction === `cancel-booking:${activeBookings[0].id}`} onPay={() => handleCompleteBookingPayment(activeBookings[0])} onCancel={() => handleCancel(activeBookings[0].id)} onReschedule={() => loadRescheduleOptions(activeBookings[0], qatarServiceDate(activeBookings[0].scheduled_at))} onTrack={() => openBookingTracking(activeBookings[0].id)} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
                 <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Savings")}</p><h2 className="mt-1 text-xl font-bold">{t("Membership")}</h2></div><button type="button" aria-label={t("View all memberships")} onClick={() => setTab("memberships")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{memberships === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeMemberships.length > 0 ? <MembershipCard membership={activeMemberships[0]} busy={paymentAction === `cancel-membership:${activeMemberships[0].id}`} onCancel={() => handleCancelCashMembership(activeMemberships[0])} /> : <EmptyState title={t("Wash more, pay less")} copy={t("Prepaid wash bundles make every booking faster.")} action={t("See memberships")} href="/memberships" />}</section>
                 <section className="lg:col-span-2"><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Loyalty")}</p><h2 className="mt-1 text-xl font-bold">{t("Your free-wash progress")}</h2></div><button type="button" aria-label={t("View all rewards")} onClick={() => setTab("rewards")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View rewards")}</button></div><LoyaltyOverview loyalty={loyalty} /></section>
               </div>}
@@ -690,6 +721,9 @@ export default function AccountPage() {
 
               {tab === "bookings" && (
                 <section>
+                  {selectedBookingId !== null && (
+                    <BookingTrackingPanel key={selectedBookingId} bookingId={selectedBookingId} onClose={closeBookingTracking} />
+                  )}
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <div>
                       <h2 className="text-2xl font-bold">{t("My bookings")}</h2>
@@ -760,6 +794,7 @@ export default function AccountPage() {
                           onPay={() => handleCompleteBookingPayment(booking)}
                           onCancel={() => handleCancel(booking.id)}
                           onReschedule={() => loadRescheduleOptions(booking, qatarServiceDate(booking.scheduled_at))}
+                          onTrack={() => openBookingTracking(booking.id)}
                         />
                       ))}
                     </div>
@@ -1044,6 +1079,7 @@ function BookingCard({
   onPay,
   onCancel,
   onReschedule,
+  onTrack,
 }: {
   booking: Booking;
   busy: boolean;
@@ -1052,6 +1088,7 @@ function BookingCard({
   onPay: () => void;
   onCancel: () => void;
   onReschedule: () => void;
+  onTrack: () => void;
 }) {
   const { lang, t } = useI18n();
   const when = formatQatarDateTime(booking.scheduled_at, lang, {
@@ -1144,6 +1181,11 @@ function BookingCard({
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
         <span className="font-bold" dir="ltr">{formatQar(booking.total, lang)}</span>
         <div className="flex flex-wrap gap-2">
+          {booking.tracking_state !== "closed" && (
+            <button type="button" className="primary-button min-h-9 px-4 py-2 text-xs" onClick={onTrack}>
+              {t(booking.tracking_available ? "Track your bus" : "View booking journey")}
+            </button>
+          )}
           {paymentRequired && (
             <button type="button" className="primary-button min-h-9 px-4 py-2 text-xs" disabled={busy} onClick={onPay}>
               {paying ? t("Checking payment…") : t("Complete payment")}

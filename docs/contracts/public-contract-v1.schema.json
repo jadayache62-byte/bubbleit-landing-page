@@ -112,7 +112,27 @@
         "membership_status_changed",
         "store_order_status_changed",
         "review_requested",
-        "loyalty_reward_earned"
+        "loyalty_reward_earned",
+        "tracking_available"
+      ]
+    },
+    "CustomerDispatchState": {
+      "type": "string",
+      "enum": ["looking_for_bus", "assigned", "en_route", "arrived", "service_started", "closed"]
+    },
+    "CustomerTrackingReason": {
+      "type": "string",
+      "enum": [
+        "feature_disabled",
+        "not_assigned",
+        "before_window",
+        "prior_service_active",
+        "location_stale",
+        "location_disconnected",
+        "route_unavailable",
+        "service_started",
+        "trip_interrupted",
+        "booking_terminal"
       ]
     },
     "ErrorCode": {
@@ -129,7 +149,8 @@
         "SERVICE_AREA_STALE",
         "STORE_PRICING_CHANGED",
         "STORE_PRICING_CONFIRMATION_REQUIRED",
-        "VALIDATION_FAILED"
+        "VALIDATION_FAILED",
+        "trip_already_en_route"
       ]
     },
     "PaginationMeta": {
@@ -294,6 +315,10 @@
         "reference",
         "status",
         "status_label",
+        "dispatch_state",
+        "tracking_state",
+        "tracking_available",
+        "tracking_path",
         "scheduled_at",
         "scheduled_end_at",
         "service_date",
@@ -329,6 +354,10 @@
         "reference": { "type": "string" },
         "status": { "$ref": "#/$defs/BookingStatus" },
         "status_label": { "type": "string" },
+        "dispatch_state": { "$ref": "#/$defs/CustomerDispatchState" },
+        "tracking_state": { "enum": ["disabled", "waiting", "available", "closed"] },
+        "tracking_available": { "type": "boolean" },
+        "tracking_path": { "type": "string", "pattern": "^/account\\?tab=bookings&booking=[1-9][0-9]*$" },
         "scheduled_at": { "type": ["string", "null"] },
         "scheduled_end_at": { "type": ["string", "null"] },
         "service_date": { "type": ["string", "null"] },
@@ -382,6 +411,272 @@
         "created_at": { "type": ["string", "null"] },
         "cars": { "type": "array" },
         "products": { "type": "array" }
+      },
+      "additionalProperties": false
+    },
+    "CustomerTrackingPosition": {
+      "type": "object",
+      "required": ["latitude", "longitude", "heading", "accuracy_m", "captured_at"],
+      "properties": {
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+        "heading": { "type": ["number", "null"], "minimum": 0, "exclusiveMaximum": 360 },
+        "accuracy_m": { "type": "number", "minimum": 0 },
+        "captured_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "CustomerTrackingSnapshot": {
+      "type": "object",
+      "required": [
+        "schema_version", "server_time", "policy_revision", "booking_id", "dispatch_state",
+        "assignment_version", "tracking_available", "reason", "trip", "bus", "position",
+        "destination", "route", "eta", "delay", "health", "stream"
+      ],
+      "properties": {
+        "schema_version": { "const": "customer-tracking-v1" },
+        "server_time": { "type": "string", "format": "date-time" },
+        "policy_revision": { "type": "integer", "minimum": 0 },
+        "booking_id": { "type": "integer", "minimum": 1 },
+        "dispatch_state": { "$ref": "#/$defs/CustomerDispatchState" },
+        "assignment_version": { "type": "integer", "minimum": 0 },
+        "tracking_available": { "type": "boolean" },
+        "reason": { "$ref": "#/$defs/CustomerTrackingReason" },
+        "trip": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["id", "status", "plan_revision", "window_starts_at", "arrived_at"],
+              "properties": {
+                "id": { "type": "string", "format": "uuid" },
+                "status": { "enum": ["planned", "en_route", "arrived", "closed", "cancelled", "interrupted"] },
+                "plan_revision": { "type": "integer", "minimum": 1 },
+                "window_starts_at": { "type": "string", "format": "date-time" },
+                "arrived_at": { "type": ["string", "null"], "format": "date-time" }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
+        "bus": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["bus_number", "plate_number"],
+              "properties": {
+                "bus_number": { "type": "string" },
+                "plate_number": { "type": "string" }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
+        "position": { "oneOf": [{ "$ref": "#/$defs/CustomerTrackingPosition" }, { "type": "null" }] },
+        "destination": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["latitude", "longitude"],
+              "properties": {
+                "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+                "longitude": { "type": "number", "minimum": -180, "maximum": 180 }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
+        "route": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["encoded_polyline", "calculated_at", "expires_at"],
+              "properties": {
+                "encoded_polyline": { "type": "string" },
+                "calculated_at": { "type": "string", "format": "date-time" },
+                "expires_at": { "type": "string", "format": "date-time" }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
+        "eta": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["arrival_at", "remaining_seconds", "source", "calculated_at", "expires_at"],
+              "properties": {
+                "arrival_at": { "type": "string", "format": "date-time" },
+                "remaining_seconds": { "type": "integer", "minimum": 0 },
+                "source": { "type": "string" },
+                "calculated_at": { "type": "string", "format": "date-time" },
+                "expires_at": { "type": "string", "format": "date-time" }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
+        "delay": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["late_seconds", "source"],
+              "properties": {
+                "late_seconds": { "type": "integer", "minimum": 0 },
+                "source": { "enum": ["predicted_arrival", "elapsed_booking_start"] }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
+        "health": {
+          "type": "object",
+          "required": ["status", "last_valid_at", "last_received_at"],
+          "properties": {
+            "status": { "enum": ["healthy", "stale", "disconnected"] },
+            "last_valid_at": { "type": ["string", "null"], "format": "date-time" },
+            "last_received_at": { "type": ["string", "null"], "format": "date-time" }
+          },
+          "additionalProperties": false
+        },
+        "stream": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["purpose", "epoch", "revision", "grant_id", "channel", "expires_at"],
+              "properties": {
+                "purpose": { "enum": ["dispatch", "tracking"] },
+                "epoch": { "type": "string", "format": "uuid" },
+                "revision": { "type": "integer", "minimum": 0 },
+                "grant_id": { "type": "string", "format": "uuid" },
+                "channel": { "type": "string", "pattern": "^private-fleet\\.customer\\.(dispatch|tracking)\\.[0-9a-f-]{36}$" },
+                "expires_at": { "type": "string", "format": "date-time" }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "CustomerLiveAuthorization": {
+      "type": "object",
+      "required": ["auth", "channel", "grant_id", "purpose", "epoch", "revision", "expires_at"],
+      "properties": {
+        "auth": { "type": "string" },
+        "channel": { "type": "string" },
+        "grant_id": { "type": "string", "format": "uuid" },
+        "purpose": { "enum": ["dispatch", "tracking"] },
+        "epoch": { "type": "string", "format": "uuid" },
+        "revision": { "type": "integer", "minimum": 0 },
+        "expires_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "CustomerTrackingEvent": {
+      "type": "object",
+      "required": [
+        "schema_version", "event_id", "type", "stream_epoch", "revision", "occurred_at",
+        "policy_revision", "assignment_version", "trip_plan_revision", "booking_id", "trip_id", "payload"
+      ],
+      "properties": {
+        "schema_version": { "const": "customer-tracking-event-v1" },
+        "event_id": { "type": "string", "format": "uuid" },
+        "type": { "enum": ["tracking_available", "position_updated", "revoked", "closed", "feature_disabled"] },
+        "stream_epoch": { "type": "string", "format": "uuid" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "occurred_at": { "type": "string", "format": "date-time" },
+        "policy_revision": { "type": "integer", "minimum": 0 },
+        "assignment_version": { "type": "integer", "minimum": 0 },
+        "trip_plan_revision": { "type": ["integer", "null"], "minimum": 1 },
+        "booking_id": { "type": "integer", "minimum": 1 },
+        "trip_id": { "type": ["string", "null"], "format": "uuid" },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "dispatch_state": { "$ref": "#/$defs/CustomerDispatchState" },
+            "tracking_available": { "type": "boolean" },
+            "reason": { "$ref": "#/$defs/CustomerTrackingReason" },
+            "position": { "oneOf": [{ "$ref": "#/$defs/CustomerTrackingPosition" }, { "type": "null" }] },
+            "destination": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["latitude", "longitude"],
+                  "properties": {
+                    "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+                    "longitude": { "type": "number", "minimum": -180, "maximum": 180 }
+                  },
+                  "additionalProperties": false
+                },
+                { "type": "null" }
+              ]
+            },
+            "route": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["encoded_polyline", "calculated_at", "expires_at"],
+                  "properties": {
+                    "encoded_polyline": { "type": "string" },
+                    "calculated_at": { "type": "string", "format": "date-time" },
+                    "expires_at": { "type": "string", "format": "date-time" }
+                  },
+                  "additionalProperties": false
+                },
+                { "type": "null" }
+              ]
+            },
+            "eta": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["arrival_at", "remaining_seconds", "source", "calculated_at", "expires_at"],
+                  "properties": {
+                    "arrival_at": { "type": "string", "format": "date-time" },
+                    "remaining_seconds": { "type": "integer", "minimum": 0 },
+                    "source": { "type": "string" },
+                    "calculated_at": { "type": "string", "format": "date-time" },
+                    "expires_at": { "type": "string", "format": "date-time" }
+                  },
+                  "additionalProperties": false
+                },
+                { "type": "null" }
+              ]
+            },
+            "delay": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["late_seconds", "source"],
+                  "properties": {
+                    "late_seconds": { "type": "integer", "minimum": 0 },
+                    "source": { "enum": ["predicted_arrival", "elapsed_booking_start"] }
+                  },
+                  "additionalProperties": false
+                },
+                { "type": "null" }
+              ]
+            },
+            "health": {
+              "type": "object",
+              "required": ["status", "last_valid_at", "last_received_at"],
+              "properties": {
+                "status": { "enum": ["healthy", "stale", "disconnected"] },
+                "last_valid_at": { "type": ["string", "null"], "format": "date-time" },
+                "last_received_at": { "type": ["string", "null"], "format": "date-time" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },

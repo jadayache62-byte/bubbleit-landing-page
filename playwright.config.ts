@@ -24,6 +24,8 @@ export default defineConfig({
     env: {
       CUSTOMER_API_BASE: "http://127.0.0.1:9/api/v1/customer",
       CSP_MODE: "enforce",
+      NEXT_PUBLIC_SENTRY_ENABLED: "false",
+      SENTRY_BUILD_UPLOADS: "false",
     },
   },
 });

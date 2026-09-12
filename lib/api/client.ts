@@ -15,6 +15,8 @@ import type {
   CustomerNotification,
   CustomerNotificationDevice,
   CustomerNotificationPreference,
+  CustomerLiveAuthorization,
+  CustomerTrackingSnapshot,
   CustomerReviewInvitation,
   CreateVehiclePayload,
   Envelope,
@@ -74,7 +76,7 @@ export class ApiError extends Error {
 
 async function request<T>(
   path: string,
-  options: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
+  options: { method?: string; body?: unknown; headers?: Record<string, string>; signal?: AbortSignal } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -87,6 +89,7 @@ async function request<T>(
     headers,
     credentials: "same-origin",
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    signal: options.signal,
   });
 
   let envelope: Envelope<T>;
@@ -559,6 +562,22 @@ export function listBookings() {
 
 export function getBooking(id: number) {
   return request<Booking>(`/bookings/${id}`);
+}
+
+export function getBookingTracking(id: number, signal?: AbortSignal) {
+  return request<CustomerTrackingSnapshot>(`/bookings/${id}/tracking`, { signal });
+}
+
+export function authorizeBookingLive(
+  id: number,
+  input: { socket_id: string; grant_id: string; purpose: "dispatch" | "tracking" },
+  signal?: AbortSignal,
+) {
+  return request<CustomerLiveAuthorization>(`/bookings/${id}/live/authorize`, {
+    method: "POST",
+    body: input,
+    signal,
+  });
 }
 
 export function cancelBooking(id: number) {

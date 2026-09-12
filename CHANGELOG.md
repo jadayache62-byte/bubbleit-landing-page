@@ -1,5 +1,42 @@
 # Changelog
 
+## [2026-09-05] Remove Sentry demo routes
+
+### Removed
+
+- Removed the Sentry example page and its deliberate error API. Existing application error reporting remains configured.
+
+### Changed
+
+- Added `SENTRY_BUILD_UPLOADS=false` for local builds to disable source map uploads, release creation and build plugin telemetry without disabling application error reporting.
+- Added `NEXT_PUBLIC_SENTRY_ENABLED=false` for isolated runtime verification and set it in the browser test server. Normal runtime reporting remains enabled by default.
+
+### Verification
+
+- Verified the local `main` working tree based on `a0c4e16`: lint, unit/contract tests, the production build with a loopback backend, and all four Chromium security checks passed. The browser checks used an unreachable loopback upstream with both Sentry controls disabled. No website deployment or database access was performed.
+- The first build attempted a Sentry source map upload through its ignored SDK environment file. The upload processes were stopped; completion is unconfirmed. Subsequent builds used the explicit upload guard above.
+
+## [2026-09-04] Customer live bus journey
+
+### Added
+
+- Added the authenticated booking tracking journey after payment with a deliberate assignment
+  presentation, owner scoped snapshot recovery, private Reverb stream, reconnect/offline handling and
+  a responsive bilingual Google map that moves one bus marker without persisting coordinates.
+- Added same origin BFF hardening for tracking snapshot/authorization, exact Origin checks, request and
+  response allowlists, no store responses, noindex account metadata, privacy masking and conditional
+  CSP sources for Reverb and Google Maps.
+- Synchronized the backend owned public schema and added event ordering, terminal cleanup, health,
+  reconnect, contract and authorization boundary tests. Missing route/ETA remains clearly unavailable.
+  All backend feature switches default off and no deployment was performed.
+
+## [2026-08-31] Shared trip conflict contract
+
+### Changed
+
+- Synchronized the backend `trip_already_en_route` error code with the backend and mobile schema.
+  Added a contract assertion. No BFF, UI, map, notification or deployment change.
+
 ## [2026-08-28] Related repository map for agents
 
 ### Changed
