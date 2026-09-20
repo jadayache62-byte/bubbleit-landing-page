@@ -1,5 +1,20 @@
 # Changelog
 
+## [2026-09-20] Configurable zone minimum spend
+
+### Added
+
+- Booking Location now explains each selected zone's backend-configured minimum order and
+  below-threshold service-area charge in English and Arabic.
+- Pay & Confirm shows an applied surcharge as a separate line and requires an explicit customer
+  acknowledgement before the booking request can be submitted.
+- Ordinary quotes use the backend-resolved surcharge; no zone or amount is hardcoded in the page.
+
+### Changed
+
+- Membership booking-options currently report minimum-spend pricing as disabled, so membership
+  redemptions do not show, confirm, or pay the surcharge. The backend can re-enable it later.
+
 ## [2026-08-28] Related repository map for agents
 
 ### Changed

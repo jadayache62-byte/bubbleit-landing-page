@@ -36,6 +36,10 @@ export type DispatchZoneSnapshot = {
   name_ar?: string | null;
   service_rate?: number;
   rate_applied?: boolean;
+  minimum_spend_enabled?: boolean;
+  minimum_spend?: number;
+  minimum_spend_surcharge?: number;
+  minimum_spend_surcharge_applied?: number;
 };
 
 export type ServiceAreaValidation = ServiceAreaSnapshot & {
@@ -46,6 +50,9 @@ export type ServiceAreaValidation = ServiceAreaSnapshot & {
     version: string;
     service_rate: number;
     rate_applied: boolean;
+    minimum_spend_enabled: boolean;
+    minimum_spend: number;
+    minimum_spend_surcharge: number;
   };
 };
 
@@ -343,6 +350,7 @@ export type Booking = {
   total: number;
   product_total?: number;
   service_zone_rate?: number;
+  minimum_spend_surcharge?: number;
   payable_total?: number;
   dispatch_zone?: {
     id: number;
@@ -351,6 +359,10 @@ export type Booking = {
     version: number | null;
     service_rate: number;
     rate_applied: boolean;
+    minimum_spend_enabled?: boolean;
+    minimum_spend?: number;
+    minimum_spend_surcharge?: number;
+    minimum_spend_surcharge_applied?: number;
   } | null;
   products?: {
     product_id: number;
@@ -405,6 +417,7 @@ export type CreateBookingPayload = {
   longitude?: number;
   service_area_version: string;
   dispatch_zone_version?: string;
+  minimum_spend_surcharge_confirmed?: boolean;
   payment_method?: PaymentMethod;
   use_membership?: boolean;
   notes?: string;
@@ -436,7 +449,7 @@ export type QuoteCar = {
 export type BookingQuote = {
   quote_id: string;
   quote_version: string;
-  pricing_schema: "booking-cart-pricing:v2";
+  pricing_schema: "booking-cart-pricing:v3";
   currency: "QAR";
   expires_at: string;
   service: {
@@ -461,6 +474,7 @@ export type BookingQuote = {
   promo_discount: number;
   product_total: number;
   service_zone_rate: number;
+  minimum_spend_surcharge: number;
   service_zone: {
     id: number;
     name_en: string | null;
@@ -468,6 +482,10 @@ export type BookingQuote = {
     version: string;
     rate: number;
     rate_applied: boolean;
+    minimum_spend_enabled: boolean;
+    minimum_spend: number;
+    minimum_spend_surcharge: number;
+    minimum_spend_surcharge_applied: number;
   };
   total_price: number;
   payment_required: boolean;

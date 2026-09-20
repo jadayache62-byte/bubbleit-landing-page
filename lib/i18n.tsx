@@ -314,8 +314,19 @@ const AR: Record<string, string> = {
   "Locating…": "جاري تحديد الموقع…",
   "Location pinned": "تم تثبيت الموقع",
   "Additional service-zone charge": "رسوم خدمة إضافية للمنطقة",
+  "Service-area pricing": "تسعير منطقة الخدمة",
   "This location is subject to an additional service charge of {amount}. It is included in the total shown at checkout.":
     "يخضع هذا الموقع لرسوم خدمة إضافية قدرها {amount}. وهي مشمولة في الإجمالي المعروض عند الدفع.",
+  "A minimum order of {minimum} applies to this area. Orders below {minimum} include a {surcharge} service-area charge.":
+    "يطبق حد أدنى للطلب بقيمة {minimum} في هذه المنطقة. تتضمن الطلبات الأقل من {minimum} رسوم منطقة خدمة بقيمة {surcharge}.",
+  "Below-minimum service-area charge": "رسوم منطقة الخدمة لما دون الحد الأدنى",
+  "The selected services are below this area's configured minimum order.":
+    "الخدمات المحددة أقل من الحد الأدنى للطلب المضبوط لهذه المنطقة.",
+  "Confirm service-area charge": "تأكيد رسوم منطقة الخدمة",
+  "My selected services are below this area's {minimum} minimum. I agree to the {surcharge} service-area charge.":
+    "خدماتي المحددة أقل من الحد الأدنى لهذه المنطقة وهو {minimum}. أوافق على رسوم منطقة الخدمة بقيمة {surcharge}.",
+  "Confirm the service-area charge before completing your booking.":
+    "أكّد رسوم منطقة الخدمة قبل إكمال حجزك.",
   "This location has a separate service charge that is not covered by the membership.":
     "لهذا الموقع رسوم خدمة منفصلة لا يغطيها الاشتراك.",
   "The membership covers the wash. Products and the service-zone charge remain payable.":

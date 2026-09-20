@@ -5,14 +5,26 @@ import { formatQar } from "@/lib/money";
 
 export function ServiceZoneChargeNotice({
   rate,
+  minimumSpendEnabled = false,
+  minimumSpend,
+  minimumSpendSurcharge,
   compact = false,
 }: {
   rate: number | null | undefined;
+  minimumSpendEnabled?: boolean;
+  minimumSpend?: number | null;
+  minimumSpendSurcharge?: number | null;
   compact?: boolean;
 }) {
   const { lang, t } = useI18n();
 
-  if (!(typeof rate === "number" && rate > 0)) return null;
+  const hasRate = typeof rate === "number" && rate > 0;
+  const hasMinimumSpend = minimumSpendEnabled
+    && typeof minimumSpend === "number"
+    && minimumSpend > 0
+    && typeof minimumSpendSurcharge === "number"
+    && minimumSpendSurcharge > 0;
+  if (!hasRate && !hasMinimumSpend) return null;
 
   return (
     <div
@@ -36,13 +48,22 @@ export function ServiceZoneChargeNotice({
           </svg>
         </span>
         <div className="min-w-0">
-          <p className="font-bold">{t("Additional service-zone charge")}</p>
-          <p className="mt-1 text-sm leading-6 text-amber-900">
-            {t("This location is subject to an additional service charge of {amount}. It is included in the total shown at checkout.").replace(
-              "{amount}",
-              formatQar(rate, lang),
-            )}
-          </p>
+          <p className="font-bold">{t("Service-area pricing")}</p>
+          {hasRate && (
+            <p className="mt-1 text-sm leading-6 text-amber-900">
+              {t("This location is subject to an additional service charge of {amount}. It is included in the total shown at checkout.").replace(
+                "{amount}",
+                formatQar(rate ?? 0, lang),
+              )}
+            </p>
+          )}
+          {hasMinimumSpend && (
+            <p className="mt-1 text-sm leading-6 text-amber-900">
+              {t("A minimum order of {minimum} applies to this area. Orders below {minimum} include a {surcharge} service-area charge.")
+                .replaceAll("{minimum}", formatQar(minimumSpend ?? 0, lang))
+                .replace("{surcharge}", formatQar(minimumSpendSurcharge ?? 0, lang))}
+            </p>
+          )}
         </div>
       </div>
     </div>

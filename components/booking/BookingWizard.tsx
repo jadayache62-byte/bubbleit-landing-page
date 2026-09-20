@@ -318,6 +318,10 @@ export function BookingWizard() {
   const [serviceAreaVersion, setServiceAreaVersion] = useState<string | null>(null);
   const [dispatchZoneVersion, setDispatchZoneVersion] = useState<string | null>(null);
   const [serviceZoneRate, setServiceZoneRate] = useState<number | null>(null);
+  const [minimumSpendEnabled, setMinimumSpendEnabled] = useState(false);
+  const [minimumSpend, setMinimumSpend] = useState(0);
+  const [minimumSpendSurcharge, setMinimumSpendSurcharge] = useState(0);
+  const [minimumSpendSurchargeApplied, setMinimumSpendSurchargeApplied] = useState(0);
 
   // Step 4 — payment
   const [notes, setNotes] = useState("");
@@ -335,6 +339,7 @@ export function BookingWizard() {
   const [addingMembershipVehicle, setAddingMembershipVehicle] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [minimumSpendConfirmed, setMinimumSpendConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Booking | null>(null);
   const [paymentRetrying, setPaymentRetrying] = useState(false);
@@ -528,10 +533,18 @@ export function BookingWizard() {
                 ? snapshot.dispatch_zone.service_rate
                 : 0,
             );
+            setMinimumSpendEnabled(snapshot.dispatch_zone.minimum_spend_enabled ?? false);
+            setMinimumSpend(snapshot.dispatch_zone.minimum_spend ?? 0);
+            setMinimumSpendSurcharge(snapshot.dispatch_zone.minimum_spend_surcharge ?? 0);
           }
         })
         .catch(() => {
-          if (!cancelled) setServiceZoneRate(null);
+          if (!cancelled) {
+            setServiceZoneRate(null);
+            setMinimumSpendEnabled(false);
+            setMinimumSpend(0);
+            setMinimumSpendSurcharge(0);
+          }
         });
     }, 250);
 
@@ -550,6 +563,12 @@ export function BookingWizard() {
       setSlots([]);
       setServiceAreaVersion(null);
       setDispatchZoneVersion(null);
+      setServiceZoneRate(null);
+      setMinimumSpendEnabled(false);
+      setMinimumSpend(0);
+      setMinimumSpendSurcharge(0);
+      setMinimumSpendSurchargeApplied(0);
+      setMinimumSpendConfirmed(false);
       setLocationIssue("missing");
       setError(null);
       return false;
@@ -578,6 +597,10 @@ export function BookingWizard() {
             serviceZoneRate: options.dispatch_zone.rate_applied
               ? (options.dispatch_zone.service_rate ?? 0)
               : 0,
+            minimumSpendEnabled: options.dispatch_zone.minimum_spend_enabled ?? false,
+            minimumSpend: options.dispatch_zone.minimum_spend ?? 0,
+            minimumSpendSurcharge: options.dispatch_zone.minimum_spend_surcharge ?? 0,
+            minimumSpendSurchargeApplied: options.dispatch_zone.minimum_spend_surcharge_applied ?? 0,
           }))
         : Promise.reject(new Error(t("Membership and vehicle are required.")))
       : getAvailability(d, "standard", { latitude: geo.lat, longitude: geo.lng }, cart)
@@ -590,6 +613,10 @@ export function BookingWizard() {
             serviceZoneRate: availability.dispatch_zone.rate_applied
               ? (availability.dispatch_zone.service_rate ?? 0)
               : 0,
+            minimumSpendEnabled: availability.dispatch_zone.minimum_spend_enabled ?? false,
+            minimumSpend: availability.dispatch_zone.minimum_spend ?? 0,
+            minimumSpendSurcharge: availability.dispatch_zone.minimum_spend_surcharge ?? 0,
+            minimumSpendSurchargeApplied: availability.dispatch_zone.minimum_spend_surcharge_applied ?? 0,
           }));
 
     try {
@@ -601,6 +628,11 @@ export function BookingWizard() {
       setMembershipOptions(availability.membershipOptions);
       setDispatchZoneVersion(availability.dispatchZoneVersion);
       setServiceZoneRate(availability.serviceZoneRate);
+      setMinimumSpendEnabled(availability.minimumSpendEnabled);
+      setMinimumSpend(availability.minimumSpend);
+      setMinimumSpendSurcharge(availability.minimumSpendSurcharge);
+      setMinimumSpendSurchargeApplied(availability.minimumSpendSurchargeApplied);
+      setMinimumSpendConfirmed(false);
       setLocationIssue(null);
       setError(null);
       return true;
@@ -612,6 +644,11 @@ export function BookingWizard() {
       setMembershipOptions(null);
       setDispatchZoneVersion(null);
       setServiceZoneRate(null);
+      setMinimumSpendEnabled(false);
+      setMinimumSpend(0);
+      setMinimumSpendSurcharge(0);
+      setMinimumSpendSurchargeApplied(0);
+      setMinimumSpendConfirmed(false);
       const coverageIssue = caught instanceof ApiError ? locationCoverageIssue(caught) : null;
       if (coverageIssue) {
         setLocationIssue(coverageIssue);
@@ -872,8 +909,11 @@ export function BookingWizard() {
   const checkoutZoneRate = membershipMode
     ? (serviceZoneRate ?? 0)
     : (quote?.service_zone_rate ?? 0);
+  const checkoutMinimumSpendSurcharge = membershipMode
+    ? minimumSpendSurchargeApplied
+    : (quote?.minimum_spend_surcharge ?? 0);
   const dueTotal = membershipMode
-    ? productTotal + checkoutZoneRate
+    ? productTotal + checkoutZoneRate + checkoutMinimumSpendSurcharge
     : (quote?.total_price ?? netTotal + productTotal);
   const washesLeftAfter = membershipMode
     ? selectedMembership ? Math.max(0, selectedMembership.washes_remaining - 1) : undefined
@@ -1102,6 +1142,10 @@ export function BookingWizard() {
       setStep(0);
       return;
     }
+    if (checkoutMinimumSpendSurcharge > 0 && !minimumSpendConfirmed) {
+      setError(t("Confirm the service-area charge before completing your booking."));
+      return;
+    }
     setSubmitting(true);
     setError(null);
     const attemptKey = bookingAttemptKey();
@@ -1133,6 +1177,7 @@ export function BookingWizard() {
           ...(dispatchZoneVersion
             ? { dispatch_zone_version: dispatchZoneVersion }
             : {}),
+          minimum_spend_surcharge_confirmed: checkoutMinimumSpendSurcharge > 0,
           payment_method: "online",
           notes: notes.trim() || undefined,
           product_lines: productLines,
@@ -1171,6 +1216,7 @@ export function BookingWizard() {
           ...(dispatchZoneVersion
             ? { dispatch_zone_version: dispatchZoneVersion }
             : {}),
+          minimum_spend_surcharge_confirmed: checkoutMinimumSpendSurcharge > 0,
           payment_method: "online",
           notes: notes.trim() || undefined,
           promo_code: !applyMembership && promoActive ? applied.code : undefined,
@@ -1517,7 +1563,14 @@ export function BookingWizard() {
                 )}
               </p>
             </div>
-            <ServiceZoneChargeNotice rate={serviceZoneRate} />
+            <ServiceZoneChargeNotice
+              rate={serviceZoneRate}
+              minimumSpendEnabled={minimumSpendEnabled && (
+                !membershipMode || minimumSpendSurchargeApplied > 0
+              )}
+              minimumSpend={minimumSpend}
+              minimumSpendSurcharge={minimumSpendSurcharge}
+            />
             <div className="rounded-3xl border border-[color:var(--border)] bg-white p-3 shadow-sm sm:p-4">
               <p className="mb-3 text-sm font-bold text-[color:var(--navy)]">{t("Blue plate")}</p>
               <label className="block rounded-2xl bg-[color:var(--navy)] px-4 py-4 text-center text-white">
@@ -1827,6 +1880,7 @@ export function BookingWizard() {
                 quantities={productQuantities}
                 productTotal={productTotal}
                 serviceZoneRate={checkoutZoneRate}
+                minimumSpendSurcharge={checkoutMinimumSpendSurcharge}
               />
             ) : quote ? (
               <Summary
@@ -1852,8 +1906,27 @@ export function BookingWizard() {
                 quotedProducts={quote.products}
                 productTotal={activeProductTotal}
                 serviceZoneRate={checkoutZoneRate}
+                minimumSpendSurcharge={checkoutMinimumSpendSurcharge}
               />
             ) : null}
+            {checkoutMinimumSpendSurcharge > 0 && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-[color:var(--navy)]"
+                  checked={minimumSpendConfirmed}
+                  onChange={(event) => setMinimumSpendConfirmed(event.target.checked)}
+                />
+                <span>
+                  <span className="block font-bold">{t("Confirm service-area charge")}</span>
+                  <span className="mt-1 block leading-6">
+                    {t("My selected services are below this area's {minimum} minimum. I agree to the {surcharge} service-area charge.")
+                      .replace("{minimum}", fmt(minimumSpend, lang))
+                      .replace("{surcharge}", fmt(checkoutMinimumSpendSurcharge, lang))}
+                  </span>
+                </span>
+              </label>
+            )}
           </StepPanel>
         )}
 
@@ -1960,6 +2033,7 @@ export function BookingWizard() {
                   submitting
                   || !authed
                   || quoteLoading
+                  || (checkoutMinimumSpendSurcharge > 0 && !minimumSpendConfirmed)
                   || (membershipMode
                     ? !availabilityDuration?.version
                     : !quote?.quote_id || !quote?.quote_version)
@@ -1969,7 +2043,7 @@ export function BookingWizard() {
                 {submitting
                   ? t("Confirming…")
                   : membershipMode && dueTotal > 0
-                    ? productTotal > 0 && checkoutZoneRate <= 0
+                    ? productTotal > 0 && checkoutZoneRate <= 0 && checkoutMinimumSpendSurcharge <= 0
                       ? t("Pay for products")
                       : t("Confirm & Pay")
                     : applyMembership && dueTotal <= 0
@@ -2842,6 +2916,7 @@ function MembershipSummary({
   quantities,
   productTotal,
   serviceZoneRate,
+  minimumSpendSurcharge,
 }: {
   membership: CustomerMembership;
   options: MembershipBookingOptions;
@@ -2854,6 +2929,7 @@ function MembershipSummary({
   quantities: Record<string, number>;
   productTotal: number;
   serviceZoneRate: number;
+  minimumSpendSurcharge: number;
 }) {
   const { lang, t } = useI18n();
   const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(
@@ -2861,6 +2937,7 @@ function MembershipSummary({
     { weekday: "long", month: "long", day: "numeric" },
   );
   const selectedProducts = products.filter((product) => (quantities[String(product.id)] ?? 0) > 0);
+  const zoneCharges = serviceZoneRate + minimumSpendSurcharge;
 
   return (
     <section className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5" aria-labelledby="membership-booking-summary-heading">
@@ -2926,15 +3003,26 @@ function MembershipSummary({
             <dd className="font-semibold">{fmt(serviceZoneRate, lang)}</dd>
           </div>
         )}
+        {minimumSpendSurcharge > 0 && (
+          <div className="flex items-start justify-between gap-4 border-t border-[color:var(--border)] pt-3">
+            <dt>
+              <span className="font-semibold">{t("Below-minimum service-area charge")}</span>
+              <span className="mt-1 block text-xs text-[color:var(--muted-foreground)]">
+                {t("The selected services are below this area's configured minimum order.")}
+              </span>
+            </dt>
+            <dd className="font-semibold">{fmt(minimumSpendSurcharge, lang)}</dd>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-4 border-t border-[color:var(--border)] pt-3 text-base">
           <dt className="font-bold text-[color:var(--navy)]">{t("Amount to pay")}</dt>
-          <dd className="font-extrabold text-[color:var(--navy)]">{fmt(productTotal + serviceZoneRate, lang)}</dd>
+          <dd className="font-extrabold text-[color:var(--navy)]">{fmt(productTotal + serviceZoneRate + minimumSpendSurcharge, lang)}</dd>
         </div>
       </dl>
       <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
-        {productTotal > 0 && serviceZoneRate > 0
+        {productTotal > 0 && zoneCharges > 0
           ? t("The membership covers the wash. Products and the service-zone charge remain payable.")
-          : serviceZoneRate > 0
+          : zoneCharges > 0
             ? t("The membership covers the wash. The service-zone charge remains payable.")
             : productTotal > 0
               ? t("The membership covers the wash. Checkout is only for the selected products.")
@@ -2971,6 +3059,7 @@ function Summary({
   quotedProducts,
   productTotal,
   serviceZoneRate,
+  minimumSpendSurcharge,
 }: {
   cars: CarDraft[];
   services: Service[];
@@ -2994,6 +3083,7 @@ function Summary({
   quotedProducts: BookingQuote["products"];
   productTotal: number;
   serviceZoneRate: number;
+  minimumSpendSurcharge: number;
 }) {
   const { lang, t } = useI18n();
   const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString(
@@ -3166,6 +3256,12 @@ function Summary({
           <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
             <span className="text-[color:var(--muted-foreground)]">{t("Additional service-zone charge")}</span>
             <span className="font-medium">{fmt(serviceZoneRate, lang)}</span>
+          </li>
+        )}
+        {minimumSpendSurcharge > 0 && (
+          <li className="flex justify-between border-t border-[color:var(--border)] pt-2">
+            <span className="text-[color:var(--muted-foreground)]">{t("Below-minimum service-area charge")}</span>
+            <span className="font-medium">{fmt(minimumSpendSurcharge, lang)}</span>
           </li>
         )}
         <li className="flex justify-between border-t border-[color:var(--border)] pt-2 text-base font-bold">

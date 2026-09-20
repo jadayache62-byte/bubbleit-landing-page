@@ -10,7 +10,7 @@ const mock = read("../app/api/mock/v1/customer/[...path]/route.ts");
 const types = read("../lib/api/types.ts");
 
 test("booking location and every checkout show the backend-owned service-zone charge", () => {
-  assert.match(booking, /<ServiceZoneChargeNotice rate=\{serviceZoneRate\}/);
+  assert.match(booking, /<ServiceZoneChargeNotice[\s\S]*rate=\{serviceZoneRate\}/);
   assert.match(booking, /serviceZoneRate=\{checkoutZoneRate\}/);
   assert.match(booking, /Additional service-zone charge/);
   assert.match(notice, /This location is subject to an additional service charge of \{amount\}/);
@@ -19,11 +19,25 @@ test("booking location and every checkout show the backend-owned service-zone ch
 });
 
 test("memberships and loyalty cannot remove the location charge", () => {
-  assert.match(booking, /productTotal \+ checkoutZoneRate/);
+  assert.match(booking, /productTotal \+ checkoutZoneRate \+ checkoutMinimumSpendSurcharge/);
   assert.match(booking, /The service-zone charge remains payable/);
   assert.match(types, /"membership_with_balance"/);
   assert.match(mock, /membership_with_balance/);
   assert.match(mock, /serviceTotal - membershipDiscount - promoDiscount \+ productTotal\)[\s\S]*\+ serviceZoneRate/);
+});
+
+test("minimum-spend pricing is dynamic, separately displayed, and explicitly confirmed", () => {
+  assert.match(notice, /A minimum order of \{minimum\} applies to this area/);
+  assert.match(booking, /setMinimumSpendEnabled\(snapshot\.dispatch_zone\.minimum_spend_enabled/);
+  assert.match(booking, /setMinimumSpend\(snapshot\.dispatch_zone\.minimum_spend/);
+  assert.match(booking, /setMinimumSpendSurcharge\(snapshot\.dispatch_zone\.minimum_spend_surcharge/);
+  assert.match(booking, /minimumSpendSurcharge=\{checkoutMinimumSpendSurcharge\}/);
+  assert.match(booking, /Below-minimum service-area charge/);
+  assert.match(booking, /checked=\{minimumSpendConfirmed\}/);
+  assert.match(booking, /minimum_spend_surcharge_confirmed: checkoutMinimumSpendSurcharge > 0/);
+  assert.match(booking, /!membershipMode \|\| minimumSpendSurchargeApplied > 0/);
+  assert.match(types, /pricing_schema: "booking-cart-pricing:v3"/);
+  assert.match(types, /minimum_spend_surcharge_applied/);
 });
 
 test("store pricing v2 snapshots separate base delivery and service-zone amounts", () => {

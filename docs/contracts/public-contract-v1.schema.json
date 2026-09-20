@@ -129,7 +129,8 @@
         "SERVICE_AREA_STALE",
         "STORE_PRICING_CHANGED",
         "STORE_PRICING_CONFIRMATION_REQUIRED",
-        "VALIDATION_FAILED"
+        "VALIDATION_FAILED",
+        "trip_already_en_route"
       ]
     },
     "PaginationMeta": {
@@ -310,6 +311,7 @@
         "total",
         "product_total",
         "service_zone_rate",
+        "minimum_spend_surcharge",
         "payable_total",
         "dispatch_zone",
         "address_label",
@@ -352,19 +354,24 @@
         "total": { "type": "number", "minimum": 0 },
         "product_total": { "type": "number", "minimum": 0 },
         "service_zone_rate": { "type": "number", "minimum": 0 },
+        "minimum_spend_surcharge": { "type": "number", "minimum": 0 },
         "payable_total": { "type": "number", "minimum": 0 },
         "dispatch_zone": {
           "oneOf": [
             {
               "type": "object",
-              "required": ["id", "name_en", "name_ar", "version", "service_rate", "rate_applied"],
+              "required": ["id", "name_en", "name_ar", "version", "service_rate", "rate_applied", "minimum_spend_enabled", "minimum_spend", "minimum_spend_surcharge", "minimum_spend_surcharge_applied"],
               "properties": {
                 "id": { "type": "integer" },
                 "name_en": { "type": "string" },
                 "name_ar": { "type": "string" },
                 "version": { "type": ["integer", "null"] },
                 "service_rate": { "type": "number", "minimum": 0 },
-                "rate_applied": { "type": "boolean" }
+                "rate_applied": { "type": "boolean" },
+                "minimum_spend_enabled": { "type": "boolean" },
+                "minimum_spend": { "type": "number", "minimum": 0 },
+                "minimum_spend_surcharge": { "type": "number", "minimum": 0 },
+                "minimum_spend_surcharge_applied": { "type": "number", "minimum": 0 }
               },
               "additionalProperties": false
             },

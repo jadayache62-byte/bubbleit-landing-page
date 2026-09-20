@@ -1481,7 +1481,7 @@ async function handle(req: NextRequest, segments: string[]) {
     return envelope({
       quote_id: quoteId,
       quote_version: quoteVersion,
-      pricing_schema: "booking-cart-pricing:v2",
+      pricing_schema: "booking-cart-pricing:v3",
       currency: "QAR",
       expires_at: expiresAt,
       service: firstService && norm.length === 1 ? {
@@ -1506,6 +1506,7 @@ async function handle(req: NextRequest, segments: string[]) {
       promo_discount: promoDiscount,
       product_total: productTotal,
       service_zone_rate: serviceZoneRate,
+      minimum_spend_surcharge: 0,
       service_zone: {
         id: quoteDispatchZone.id,
         name_en: quoteDispatchZone.nameEn,
@@ -1513,6 +1514,10 @@ async function handle(req: NextRequest, segments: string[]) {
         version: quoteDispatchZone.version,
         rate: serviceZoneRate,
         rate_applied: serviceZoneRate > 0,
+        minimum_spend_enabled: false,
+        minimum_spend: 0,
+        minimum_spend_surcharge: 0,
+        minimum_spend_surcharge_applied: 0,
       },
       total_price: total,
       payment_required: total > 0,
