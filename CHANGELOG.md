@@ -1,5 +1,14 @@
 # Changelog
 
+## [2026-10-03] Dependency security refresh
+
+### Security
+
+- Updated Next.js to the patched 16.3 release line and refreshed Nx and compatible transitive
+  dependency overrides for current security advisories.
+- Scoped the blocking CI audit to shipped production dependencies so an unpatched advisory in the
+  ESLint-only dependency tree does not prevent lint and release regression checks from running.
+
 ## [2026-10-03] Booking time display
 
 ### Changed

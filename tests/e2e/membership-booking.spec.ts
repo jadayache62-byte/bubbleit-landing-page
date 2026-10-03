@@ -303,13 +303,13 @@ test("a midnight member books the covered vehicle without choosing a service", a
 
   await page.getByRole("button", { name: /Tomorrow/ }).click();
   await expect(page.getByText("Midnight membership access")).toBeVisible();
-  await expect.poll(() => bookingOptionsUrl?.searchParams.get("vehicle_id")).toBe("11");
-  expect(bookingOptionsUrl?.searchParams.get("latitude")).toBe("25.329");
-  expect(bookingOptionsUrl?.searchParams.get("longitude")).toBe("51.531");
+  await expect.poll(() => (bookingOptionsUrl as URL | null)?.searchParams.get("vehicle_id")).toBe("11");
+  expect((bookingOptionsUrl as URL | null)?.searchParams.get("latitude")).toBe("25.329");
+  expect((bookingOptionsUrl as URL | null)?.searchParams.get("longitude")).toBe("51.531");
   expect(publicAvailabilityRequests).toBe(0);
 
-  await page.getByRole("button", { name: "00:00", exact: true }).click();
-  await page.getByRole("option", { name: "00:00", exact: true }).click();
+  await page.getByRole("button", { name: "12:00 AM", exact: true }).click();
+  await page.getByRole("option", { name: "12:00 AM", exact: true }).click();
   await page.getByRole("button", { name: "Continue" }).click();
 
   const productsDialog = page.getByRole("dialog", { name: "Complete your wash" });

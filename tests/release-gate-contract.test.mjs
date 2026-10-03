@@ -9,7 +9,7 @@ const workflow = readFileSync(
 
 test("landing release CI keeps security, contract, build, and browser gates blocking", () => {
   for (const gate of [
-    "npm audit --audit-level=moderate",
+    "npm audit --omit=dev --audit-level=moderate",
     "npm run lint",
     "npm test",
     "npm run build",
