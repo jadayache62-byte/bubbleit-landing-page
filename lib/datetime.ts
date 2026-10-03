@@ -21,6 +21,30 @@ export function serializeQatarBookingDateTime(date: string, time: string): strin
   return `${date}T${time}:00${QATAR_UTC_OFFSET}`;
 }
 
+/** Format a backend Qatar wall-clock time without changing its timezone. */
+export function formatQatarWallClockTime(time: string, locale: string): string {
+  const match = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!match) return time;
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return time;
+
+  return new Intl.DateTimeFormat(locale, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(2000, 0, 1, hour, minute)));
+}
+
+/** Convert each HH:MM token in a backend display label to localized 12-hour time. */
+export function formatQatarWallClockLabel(label: string, locale: string): string {
+  return label.replace(/\b(?:[01]\d|2[0-3]):[0-5]\d\b/g, (time) =>
+    formatQatarWallClockTime(time, locale),
+  );
+}
+
 /**
  * Offset-less values are supported only as a temporary read compatibility
  * path and are interpreted as Qatar wall-clock.

@@ -94,6 +94,7 @@ test("right-edge hour options remain inside the mobile viewport", async ({ page 
 
   const triggers = page.locator('button[aria-haspopup="listbox"]:not(:disabled)');
   await expect(triggers).toHaveCount(6);
+  await expect(page.getByRole("button", { name: "1:00 PM", exact: true })).toBeVisible();
   const boxes = await triggers.evaluateAll((elements) => elements.map((element, index) => ({
     index,
     left: element.getBoundingClientRect().left,
@@ -154,7 +155,7 @@ for (const restore of ["tab return", "same date"] as const) {
     await page.getByRole("button", { name: "Continue" }).click();
     const tomorrow = page.getByRole("button", { name: /Tomorrow/ });
     await tomorrow.click();
-    const hour = page.getByRole("button", { name: "01:00", exact: true });
+    const hour = page.getByRole("button", { name: "1:00 AM", exact: true });
     await expect(hour).toBeDisabled();
     const before = requests;
 
@@ -171,7 +172,7 @@ for (const restore of ["tab return", "same date"] as const) {
     await expect(hour).toBeEnabled();
     expect(requests).toBe(before + 1);
     await hour.click();
-    await page.getByRole("option", { name: "01:00", exact: true }).click();
+    await page.getByRole("option", { name: "1:00 AM", exact: true }).click();
     await expect(hour).toHaveClass(/bg-\[color:var\(--navy\)\]/);
     await expect(page.getByRole("heading", { name: "Pick your time" })).toBeVisible();
 

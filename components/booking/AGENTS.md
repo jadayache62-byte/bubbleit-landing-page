@@ -14,6 +14,7 @@ Paths in code and commands are relative to the repository root. These rules also
   ask a membership customer to choose the plan-owned service.
 - Customers do **not** select a bus.
 - Availability slots are quarter-hour starts grouped into hour pills. Each hour pill opens the connected `HourSlotPicker` popover for `:00`, `:15`, `:30`, and `:45`; keep disabled/past choices visible but unselectable.
+- Display customer-facing booking times in localized 12-hour format with AM/PM while preserving backend slot values and booking payloads as 24-hour `HH:MM` strings.
 - Schedule reloads authoritative availability when a visible tab returns, when the browser restores
   the page from history, or when the customer clicks the already selected date. Return events are
   coalesced into one request, without fixed polling. A selection older than 15 minutes still clears

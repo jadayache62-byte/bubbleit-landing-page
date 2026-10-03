@@ -4,7 +4,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import type { Slot } from "@/lib/api/types";
-import { qatarSlotMs } from "@/lib/datetime";
+import { formatQatarWallClockTime, qatarSlotMs } from "@/lib/datetime";
+import { useI18n } from "@/lib/i18n";
 import {
   positionPopoverInViewport,
   type PopoverPosition,
@@ -32,6 +33,8 @@ export function HourSlotPicker({
   nowMs,
   onSelect,
 }: HourSlotPickerProps) {
+  const { lang } = useI18n();
+  const timeLocale = lang === "ar" ? "ar-QA" : "en-QA";
   const [openHour, setOpenHour] = useState<string | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -121,6 +124,8 @@ export function HourSlotPicker({
   return (
     <div ref={rootRef} className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
       {hours.map(([hour, options]) => {
+        const hourStart = `${hour}:00`;
+        const hourLabel = formatQatarWallClockTime(hourStart, timeLocale);
         const selectable = options.filter(
           (option) => option.available && qatarSlotMs(date, option.start) > nowMs,
         );
@@ -151,14 +156,14 @@ export function HourSlotPicker({
                     : "cursor-not-allowed border-transparent bg-[color:var(--background)] text-[color:var(--muted-foreground)]/50 line-through",
               )}
             >
-              {selectedInHour ? selectedSlot : `${hour}:00`}
+              {formatQatarWallClockTime(selectedInHour ? selectedSlot! : hourStart, timeLocale)}
             </button>
             {openHour === hour && popoverPosition && createPortal(
               <div
                 ref={popoverRef}
                 id={`time-options-${hour}`}
                 role="listbox"
-                aria-label={`${hour}:00 time options`}
+                aria-label={`${hourLabel} time options`}
                 className="fixed z-[100] grid grid-cols-2 gap-1 rounded-2xl border border-[color:var(--border)] bg-white p-2 shadow-xl"
                 style={popoverPosition}
               >
@@ -185,7 +190,7 @@ export function HourSlotPicker({
                             : "cursor-not-allowed text-[color:var(--muted-foreground)]/50 line-through",
                       )}
                     >
-                      {option.start}
+                      {formatQatarWallClockTime(option.start, timeLocale)}
                     </button>
                   );
                 })}

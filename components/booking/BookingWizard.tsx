@@ -69,6 +69,8 @@ import type {
 } from "@/lib/api/types";
 import {
   formatQatarDateTime,
+  formatQatarWallClockLabel,
+  formatQatarWallClockTime,
   nextQatarDays,
   serializeQatarBookingDateTime,
 } from "@/lib/datetime";
@@ -2938,6 +2940,7 @@ function MembershipSummary({
   );
   const selectedProducts = products.filter((product) => (quantities[String(product.id)] ?? 0) > 0);
   const zoneCharges = serviceZoneRate + minimumSpendSurcharge;
+  const timeLocale = lang === "ar" ? "ar-QA" : "en-QA";
 
   return (
     <section className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5" aria-labelledby="membership-booking-summary-heading">
@@ -2976,7 +2979,7 @@ function MembershipSummary({
           <dd className="max-w-[65%] text-end font-semibold">
             {dateLabel}
             <span className="mt-1 block text-xs font-normal text-[color:var(--muted-foreground)]">
-              {slot} · {options.duration_minutes} {t("min")}
+              {slot ? formatQatarWallClockTime(slot, timeLocale) : ""} · {options.duration_minutes} {t("min")}
             </span>
           </dd>
         </div>
@@ -3094,6 +3097,7 @@ function Summary({
       day: "numeric",
     },
   );
+  const timeLocale = lang === "ar" ? "ar-QA" : "en-QA";
   return (
     <div className="rounded-3xl border border-[color:var(--border)] bg-white/70 p-5">
       <h3 className="text-sm font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">
@@ -3169,7 +3173,7 @@ function Summary({
           <span className="text-right font-medium">
             {dateLabel}
             <span className="block text-xs text-[color:var(--muted-foreground)]">
-              {timeRangeLabel ?? slot}
+              {formatQatarWallClockLabel(timeRangeLabel ?? slot ?? "", timeLocale)}
               {durationLabel && ` · ${durationLabel}`}
             </span>
           </span>

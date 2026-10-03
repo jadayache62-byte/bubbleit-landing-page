@@ -3,10 +3,18 @@ import test from "node:test";
 
 import {
   formatQatarDateTime,
+  formatQatarWallClockLabel,
+  formatQatarWallClockTime,
   qatarSlotMs,
   qatarServiceDate,
   serializeQatarBookingDateTime,
 } from "../lib/datetime.ts";
+
+test("renders Qatar wall-clock slots with a localized 12-hour period", () => {
+  assert.equal(formatQatarWallClockTime("00:00", "en-QA"), "12:00 AM");
+  assert.equal(formatQatarWallClockTime("13:15", "en-QA"), "1:15 PM");
+  assert.equal(formatQatarWallClockLabel("13:15–14:00", "en-QA"), "1:15 PM–2:00 PM");
+});
 
 test("serializes a Qatar wall-clock selection with an explicit offset", () => {
   assert.equal(

@@ -1,5 +1,12 @@
 # Changelog
 
+## [2026-10-03] Booking time display
+
+### Changed
+
+- Schedule hour buttons, quarter-hour options, and booking summaries now show localized 12-hour
+  times with AM/PM while API slot values remain unchanged.
+
 ## [2026-09-20] Configurable zone minimum spend
 
 ### Added
