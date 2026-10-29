@@ -88,3 +88,5 @@ Use `components/booking`, `components/loyalty`, `app/book`, and `lib/booking`. U
 - [Separate store checkout](../store/AGENTS.md)
 
 _Drafted by /audit from the repo, worth a quick human pass. Edit freely: once a line stops matching this draft, later runs treat it as curated and will flag rather than overwrite it._
+
+Missing membership service errors explain that the included wash needs team correction in English and Arabic, preserving the diagnostic reference. Never guess the plan service or consume benefits to recover an options read. Paid or active account membership cards do not offer wallet payment actions.

@@ -1,6 +1,5 @@
 "use client";
 import {useRouter} from 'next/navigation';
-import {WalletIntentSelector} from '@/components/payments/WalletIntentSelector';
 import {prepareWalletPurchase} from '@/lib/api/client';
 
 
@@ -99,7 +98,7 @@ export default function MembershipsPage() {
   const [error, setError] = useState<string | null>(null);
   const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
   const router = useRouter();
-  const [walletIntent,setWalletIntent] = useState(false);
+  const walletIntent = paymentOptions?.wallet_available === true;
   const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>("skipcash_hosted");
 
   const refreshMine = useCallback(() => {
@@ -442,7 +441,6 @@ export default function MembershipsPage() {
                 </dl>
               </div>
               <div className="flex items-end justify-between border-t border-slate-200 pt-4"><div><p className="text-sm font-semibold text-[color:var(--muted-foreground)]">{t("Total")}</p><p className="mt-1 text-xs text-[color:var(--muted-foreground)]"><bdi dir="ltr">{formatQar(buyingPlan.price / buyingPlan.washes_count, lang, 0)}</bdi> / {t("wash")}</p></div><p className="text-3xl font-extrabold text-[color:var(--navy)]" dir="ltr">{formatQar(buyingPlan.price, lang)}</p></div>
-              <WalletIntentSelector available={paymentOptions?.wallet_available} checked={walletIntent} onChange={setWalletIntent} />
               {!walletIntent && <PaymentMethodSelector options={paymentOptions} value={paymentChannel} onChange={setPaymentChannel} />}
             </div>
 

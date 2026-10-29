@@ -14,6 +14,15 @@ export type { Lang } from "@/lib/locale";
 
 // UI strings. Keys are English; Arabic provided per key.
 const AR: Record<string, string> = {
+  "Yes": "نعم",
+  "No": "لا",
+  "Would you like to use wallet credit?": "هل ترغب في استخدام رصيد المحفظة؟",
+  "Continue to card payment": "المتابعة للدفع بالبطاقة",
+  "Continue securely with your card.": "تابع الدفع بأمان باستخدام بطاقتك.",
+  "Remaining card payment": "المبلغ المتبقي للدفع بالبطاقة",
+  "Enter an amount up to the available credit and purchase total.": "أدخل مبلغاً لا يتجاوز الرصيد المتاح وإجمالي الشراء.",
+  "Payment is awaiting verification. Cancel the wallet hold before changing payment.": "الدفع بانتظار التحقق. ألغِ حجز رصيد المحفظة قبل تغيير طريقة الدفع.",
+  "We cannot book your membership wash because its included wash service is missing. Please contact our team to correct your membership.": "لا يمكننا حجز غسلة اشتراكك لأن خدمة الغسيل المشمولة غير محددة. يرجى التواصل مع فريقنا لتصحيح إعداد الاشتراك.",
   "Paid from wallet": "المدفوع من المحفظة",
   "Other payment": "المدفوع بطريقة أخرى",
   "This payment hold is no longer available. Refresh or cancel before paying.": "لم يعد حجز هذا الدفع متاحاً. حدّث الحالة أو ألغِ الحجز قبل الدفع.",

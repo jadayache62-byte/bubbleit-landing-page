@@ -20,7 +20,7 @@ export function validateFundingReview(value: FundingReview): FundingReview {
       || value.currency !== 'QAR' || !Number.isSafeInteger(value.amount_minor) || value.amount_minor < 1
       || !['pending','paid','failed','partially_refunded','refunded','cancelled','quarantined'].includes(value.status)
       || value.review_path !== `/account/payments/${value.purchase_id}`
-      || !Array.isArray(value.external_channels) || value.external_channels.some(c => !channels.includes(c))) throw new Error('Invalid purchase review');
+      || !Array.isArray(value.external_channels) || value.external_channels.some(c => c !== 'skipcash_hosted')) throw new Error('Invalid purchase review');
   const wallet = value.wallet;
   if (!wallet || wallet.currency !== 'QAR' || typeof wallet.capabilities?.can_spend !== 'boolean'
       || ![wallet.balance_minor,wallet.reserved_minor,wallet.available_minor].every(n=>Number.isSafeInteger(n) && n >= 0)

@@ -1,6 +1,5 @@
 "use client";
 import {useRouter} from 'next/navigation';
-import {WalletIntentSelector} from '@/components/payments/WalletIntentSelector';
 import {prepareWalletPurchase} from '@/lib/api/client';
 
 
@@ -253,7 +252,7 @@ export function StoreCheckoutClient() {
   const [step, setStep] = useState<CheckoutStep>("location");
   const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
   const router = useRouter();
-  const [walletIntent,setWalletIntent] = useState(false);
+  const walletIntent = paymentOptions?.wallet_available === true;
   const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>("skipcash_hosted");
 
   const applySavedAddress = useCallback((address: Address) => {
@@ -1192,7 +1191,6 @@ export function StoreCheckoutClient() {
                 </section>
 
                 <section className="commerce-card p-5 sm:p-7">
-                  <WalletIntentSelector available={paymentOptions?.wallet_available} checked={walletIntent} onChange={setWalletIntent} />
                   {!walletIntent && <PaymentMethodSelector
                     options={paymentOptions}
                     value={paymentChannel}

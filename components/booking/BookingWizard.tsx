@@ -1,6 +1,5 @@
 "use client";
 import {useRouter} from 'next/navigation';
-import {WalletIntentSelector} from '@/components/payments/WalletIntentSelector';
 import {prepareWalletPurchase} from '@/lib/api/client';
 
 
@@ -351,7 +350,7 @@ export function BookingWizard() {
   const [paymentRetrying, setPaymentRetrying] = useState(false);
   const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
   const router = useRouter();
-  const [walletIntent,setWalletIntent] = useState(false);
+  const walletIntent = paymentOptions?.wallet_available === true;
   const [paymentChannel, setPaymentChannel] = useState<PaymentChannel>("skipcash_hosted");
   const bookingAttemptRef = useRef<string | null>(null);
   const vehicleIdempotencyEntriesRef = useRef(new Map<string, VehicleIdempotencyEntry>());
@@ -664,7 +663,10 @@ export function BookingWizard() {
         setError(null);
         setStep(1);
       } else {
-        setError(caught instanceof ApiError ? caught.message : t("Could not validate this location."));
+        const missingServiceMessage = "We cannot book your membership wash because its included wash service is missing. Please contact our team to correct your membership.";
+        setError(caught instanceof ApiError
+          ? caught.message.replace(missingServiceMessage, t(missingServiceMessage))
+          : t("Could not validate this location."));
       }
       return false;
     }
@@ -1842,7 +1844,6 @@ export function BookingWizard() {
               </div>
             )}
 
-            {authed && dueTotal > 0 && <WalletIntentSelector available={paymentOptions?.wallet_available} checked={walletIntent} onChange={value=>{setWalletIntent(value);clearBookingAttempt();}} />}
             {!walletIntent && authed && !quoteLoading && (membershipMode || quote) && dueTotal > 0 && (
               <PaymentMethodSelector
                 options={paymentOptions}

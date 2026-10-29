@@ -8,7 +8,7 @@ import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { AuthPanel } from "@/components/booking/AuthPanel";
 import { HourSlotPicker } from "@/components/booking/HourSlotPicker";
-import { WalletPaymentButton } from "@/components/account/WalletPaymentButton";
+import { CompletePaymentButton } from "@/components/account/CompletePaymentButton";
 import { CustomerWallet } from "@/components/account/CustomerWallet";
 import { BookingRefundRequest } from "@/components/account/BookingRefundRequest";
 import { CustomerNotifications } from "@/components/account/CustomerNotifications";
@@ -398,7 +398,6 @@ export default function AccountPage() {
   }
 
   async function handleCompleteBookingPayment(booking: Booking) {
-    if (booking.wallet_review_path && /^\/account\/payments\/[1-9][0-9]*$/.test(booking.wallet_review_path)) {window.location.assign(booking.wallet_review_path);return;}
     const action = `booking:${booking.id}`;
     if (paymentAction) return;
     setPaymentAction(action);
@@ -421,7 +420,6 @@ export default function AccountPage() {
   }
 
   async function handleCompleteStorePayment(order: StoreOrder) {
-    if (order.wallet_review_path && /^\/account\/payments\/[1-9][0-9]*$/.test(order.wallet_review_path)) {window.location.assign(order.wallet_review_path);return;}
     const action = `order:${order.id}`;
     if (paymentAction) return;
     setPaymentAction(action);
@@ -686,7 +684,7 @@ export default function AccountPage() {
 
             <div key={tab} id={`account-panel-${tab}`} role="tabpanel" aria-labelledby={`account-tab-${tab}`} tabIndex={0} className="checkout-step mt-6 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--blue)] focus-visible:ring-offset-4">
               {tab === "overview" && <div className="grid gap-5 lg:grid-cols-2">
-                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} busy={paymentAction !== null} paying={paymentAction === `booking:${activeBookings[0].id}`} cancelling={paymentAction === `cancel-booking:${activeBookings[0].id}`} onPay={() => handleCompleteBookingPayment(activeBookings[0])} onCancel={() => handleCancel(activeBookings[0].id)} onReschedule={() => loadRescheduleOptions(activeBookings[0], qatarServiceDate(activeBookings[0].scheduled_at))} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
+                <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Next up")}</p><h2 className="mt-1 text-xl font-bold">{t("Upcoming booking")}</h2></div><button type="button" aria-label={t("View all bookings")} onClick={() => setTab("bookings")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{bookings === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeBookings.length > 0 ? <BookingCard booking={activeBookings[0]} onPaymentUpdated={()=>void refresh()} busy={paymentAction !== null} paying={paymentAction === `booking:${activeBookings[0].id}`} cancelling={paymentAction === `cancel-booking:${activeBookings[0].id}`} onPay={() => handleCompleteBookingPayment(activeBookings[0])} onCancel={() => handleCancel(activeBookings[0].id)} onReschedule={() => loadRescheduleOptions(activeBookings[0], qatarServiceDate(activeBookings[0].scheduled_at))} /> : <EmptyState title={t("No upcoming wash")} copy={t("Choose a service and we’ll come to you.")} action={t("Book a Wash")} href="/book" />}</section>
                 <section><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Savings")}</p><h2 className="mt-1 text-xl font-bold">{t("Membership")}</h2></div><button type="button" aria-label={t("View all memberships")} onClick={() => setTab("memberships")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View all")}</button></div>{memberships === null ? <div className="commerce-card h-44 animate-pulse bg-slate-100" /> : activeMemberships.length > 0 ? <MembershipCard membership={activeMemberships[0]} busy={paymentAction === `cancel-membership:${activeMemberships[0].id}`} onCancel={() => handleCancelCashMembership(activeMemberships[0])} /> : <EmptyState title={t("Wash more, pay less")} copy={t("Prepaid wash bundles make every booking faster.")} action={t("See memberships")} href="/memberships" />}</section>
                 <section className="lg:col-span-2"><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--blue)]">{t("Loyalty")}</p><h2 className="mt-1 text-xl font-bold">{t("Your free-wash progress")}</h2></div><button type="button" aria-label={t("View all rewards")} onClick={() => setTab("rewards")} className="min-h-11 text-sm font-bold text-[color:var(--blue)]">{t("View rewards")}</button></div><LoyaltyOverview loyalty={loyalty} /></section>
               </div>}
@@ -760,6 +758,7 @@ export default function AccountPage() {
                         <BookingCard
                           key={booking.id}
                           booking={booking}
+                          onPaymentUpdated={()=>void refresh()}
                           busy={paymentAction !== null}
                           paying={paymentAction === `booking:${booking.id}`}
                           cancelling={paymentAction === `cancel-booking:${booking.id}`}
@@ -774,9 +773,9 @@ export default function AccountPage() {
                 </section>
               )}
 
-              {tab === "orders" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My store orders")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Track product purchases, delivery, and payment status.")}</p></div><Link href="/store" className="primary-button shrink-0 px-4">{t("Shop products")}</Link></div>{orders === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : orders.length === 0 ? <EmptyState title={t("No store orders yet")} copy={t("Products you purchase from the Bubbleit store will appear here.")} action={t("Browse the store")} href="/store" /> : <div className="grid gap-4 md:grid-cols-2">{orders.map((order) => <StoreOrderCard key={order.id} order={order} busy={paymentAction === `order:${order.id}` || paymentAction === `cancel-order:${order.id}`} onPay={() => handleCompleteStorePayment(order)} onCancel={() => handleCancelStoreOrder(order)} />)}</div>}</section>}
+              {tab === "orders" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My store orders")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Track product purchases, delivery, and payment status.")}</p></div><Link href="/store" className="primary-button shrink-0 px-4">{t("Shop products")}</Link></div>{orders === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-48 animate-pulse bg-slate-100" />)}</div> : orders.length === 0 ? <EmptyState title={t("No store orders yet")} copy={t("Products you purchase from the Bubbleit store will appear here.")} action={t("Browse the store")} href="/store" /> : <div className="grid gap-4 md:grid-cols-2">{orders.map((order) => <StoreOrderCard key={order.id} order={order} onPaymentUpdated={()=>void refresh()} busy={paymentAction === `order:${order.id}` || paymentAction === `cancel-order:${order.id}`} onPay={() => handleCompleteStorePayment(order)} onCancel={() => handleCancelStoreOrder(order)} />)}</div>}</section>}
 
-              {tab === "memberships" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My memberships")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("See remaining washes, validity, and book with a plan.")}</p></div><Link href="/memberships" className="primary-button shrink-0 px-4">{t("Browse plans")}</Link></div>{memberships === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-44 animate-pulse bg-slate-100" />)}</div> : memberships.length === 0 ? <EmptyState title={t("No memberships yet")} copy={t("Save more when you wash regularly.")} action={t("See memberships")} href="/memberships" /> : <div className="grid gap-4 md:grid-cols-2">{memberships.map((membership) => <MembershipCard key={membership.id} membership={membership} busy={paymentAction === `cancel-membership:${membership.id}`} onCancel={() => handleCancelCashMembership(membership)} />)}</div>}</section>}
+              {tab === "memberships" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My memberships")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("See remaining washes, validity, and book with a plan.")}</p></div><Link href="/memberships" className="primary-button shrink-0 px-4">{t("Browse plans")}</Link></div>{memberships === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-44 animate-pulse bg-slate-100" />)}</div> : memberships.length === 0 ? <EmptyState title={t("No memberships yet")} copy={t("Save more when you wash regularly.")} action={t("See memberships")} href="/memberships" /> : <div className="grid gap-4 md:grid-cols-2">{memberships.map((membership) => <MembershipCard key={membership.id} membership={membership} onPaymentUpdated={()=>void refresh()} busy={paymentAction === `cancel-membership:${membership.id}`} onCancel={() => handleCancelCashMembership(membership)} />)}</div>}</section>}
 
               {tab === "vehicles" && <section><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-2xl font-bold">{t("My vehicles")}</h2><p className="mt-1 text-sm text-[color:var(--muted-foreground)]">{t("Vehicles saved during booking appear here.")}</p></div><Link href="/book" className="primary-button shrink-0 px-4">{t("Add through booking")}</Link></div>{vehicles === null ? <div className="grid gap-4 md:grid-cols-2">{[0,1].map((item) => <div key={item} className="commerce-card h-36 animate-pulse bg-slate-100" />)}</div> : vehicles.length === 0 ? <EmptyState title={t("No vehicles saved")} copy={t("Your vehicle is saved automatically when you book.")} action={t("Book a Wash")} href="/book" /> : <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{vehicles.map((vehicle) => <article key={vehicle.id} className="commerce-card flex min-h-40 flex-col p-5"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-[color:var(--muted-foreground)]">{t(VEHICLE_TYPE_LABELS[vehicle.type])}</p><p className="mt-1 text-2xl font-extrabold tracking-wider text-[color:var(--navy)]">{vehicle.plate_number}</p></div><svg viewBox="0 0 24 24" className="h-6 w-6 text-[color:var(--blue)]" fill="none" aria-hidden="true"><path d="m5 16 1-5h12l1 5M7 11l2-4h6l2 4M4 16h16v3H4z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></div>{(vehicle.make || vehicle.model || vehicle.color) && <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">{[vehicle.make, vehicle.model, vehicle.color].filter(Boolean).join(" · ")}</p>}<div className="mt-auto flex items-center justify-between pt-4"><Link href="/book" className="min-h-11 py-3 text-sm font-bold text-[color:var(--blue)]">{t("Book a wash")}</Link><button type="button" className="min-h-11 px-2 text-sm font-semibold text-red-600 hover:underline" onClick={() => handleRemoveVehicle(vehicle.id)}>{t("Remove")}</button></div></article>)}</div>}</section>}
 
@@ -915,10 +914,12 @@ function EmptyState({
 
 function StoreOrderCard({
   order,
+  onPaymentUpdated,
   busy,
   onPay,
   onCancel,
 }: {
+  onPaymentUpdated?: () => void;
   order: StoreOrder;
   busy: boolean;
   onPay: () => void;
@@ -999,8 +1000,7 @@ function StoreOrderCard({
       <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
         <span className="font-bold" dir="ltr">{formatQar(order.total, lang)}</span>
         <div className="flex flex-wrap gap-2">
-          {(order.wallet_payment_available || order.wallet_review_path) && <WalletPaymentButton subjectType="store_order" subjectId={order.id} reviewPath={order.wallet_review_path} />}
-          {canPay && <button type="button" className="primary-button min-h-9 px-4 py-2 text-xs" disabled={busy} onClick={onPay}>{busy ? t("Checking payment…") : t("Complete payment")}</button>}
+          {canPay && <CompletePaymentButton subjectType="store_order" subjectId={order.id} reviewPath={order.wallet_review_path} walletAvailable={order.wallet_payment_available} disabled={busy} onCardPayment={onPay} onUpdated={onPaymentUpdated} />}
           {canCancel && <button type="button" className="secondary-button min-h-9 px-4 py-2 text-xs text-red-600 hover:border-red-400 hover:text-red-600" disabled={busy} onClick={onCancel}>{t("Cancel order")}</button>}
           <Link href="/store" className="secondary-button min-h-9 px-4 py-2 text-xs">{t("Shop again")}</Link>
         </div>
@@ -1011,9 +1011,11 @@ function StoreOrderCard({
 
 function MembershipCard({
   membership,
+  onPaymentUpdated,
   busy,
   onCancel,
 }: {
+  onPaymentUpdated?: () => void;
   membership: CustomerMembership;
   busy: boolean;
   onCancel: () => void;
@@ -1037,7 +1039,7 @@ function MembershipCard({
       {membership.refund_cancellation_pending && <p role="status" className="mt-4">{t("Cancellation refund pending. Membership benefits are on hold.")}</p>}
       {cashDue && <p role="status" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{t("Cash due. This membership remains inactive until an authorized team member records the full payment.")}</p>}
       <div className="mt-auto flex flex-col gap-2 pt-5 sm:flex-row">
-        {(membership.wallet_payment_available || membership.wallet_review_path) && <WalletPaymentButton subjectType="membership" subjectId={membership.id} reviewPath={membership.wallet_review_path} />}
+        {membership.status === "pending_payment" && !membership.payment?.captured && !cashDue && !reconciliationRequired && <CompletePaymentButton subjectType="membership" subjectId={membership.id} reviewPath={membership.wallet_review_path} walletAvailable={membership.wallet_payment_available} onUpdated={onPaymentUpdated} disabled={busy} />}
         {active && <Link href="/book" className="primary-button flex-1 px-4">{t("Book a Wash")}</Link>}
         {cashDue && <button type="button" disabled={busy} onClick={onCancel} className="secondary-button flex-1 px-4 text-red-600 hover:border-red-400 hover:text-red-600">{t("Cancel membership")}</button>}
         <Link href="/memberships" className="secondary-button flex-1 px-4">{t(active ? "View plans" : "Renew plan")}</Link>
@@ -1048,6 +1050,7 @@ function MembershipCard({
 
 function BookingCard({
   booking,
+  onPaymentUpdated,
   busy,
   paying,
   cancelling,
@@ -1056,6 +1059,7 @@ function BookingCard({
   onReschedule,
   onRefundRequested,
 }: {
+  onPaymentUpdated?: () => void;
   booking: Booking;
   busy: boolean;
   paying: boolean;
@@ -1156,11 +1160,8 @@ function BookingCard({
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
         <span className="font-bold" dir="ltr">{formatQar(booking.total, lang)}</span>
         <div className="flex flex-wrap gap-2">
-          {(booking.wallet_payment_available || booking.wallet_review_path) && <WalletPaymentButton subjectType="booking" subjectId={booking.id} reviewPath={booking.wallet_review_path} />}
           {paymentRequired && (
-            <button type="button" className="primary-button min-h-9 px-4 py-2 text-xs" disabled={busy} onClick={onPay}>
-              {paying ? t("Checking payment…") : t("Complete payment")}
-            </button>
+            <CompletePaymentButton subjectType="booking" subjectId={booking.id} reviewPath={booking.wallet_review_path} walletAvailable={booking.wallet_payment_available} disabled={busy || paying} onCardPayment={onPay} onUpdated={onPaymentUpdated} />
           )}
           <Link href="/book" className="secondary-button min-h-9 px-4 py-2 text-xs">
             {t("Book again")}

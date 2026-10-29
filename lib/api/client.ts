@@ -638,3 +638,7 @@ export async function cancelWalletPurchase(purchaseId: number, fundingPlanId: nu
   const { validateFundingReview } = await import('./funding-types');
   return validateFundingReview(await request<import('./funding-types').FundingReview>(`/purchase-funding/${purchaseId}/cancel`, {method: 'POST', body: {funding_plan_id: fundingPlanId}}));
 }
+
+export function payWalletPurchaseByCard(purchaseId: number, commandKey: string) {
+  return request<PaymentCheckoutContract>(`/purchase-funding/${purchaseId}/card`, {method: "POST", body: {command_key: commandKey}});
+}

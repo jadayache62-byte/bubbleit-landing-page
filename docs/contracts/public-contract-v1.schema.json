@@ -1489,11 +1489,7 @@
           "type": "array",
           "items": {
             "enum": [
-              "skipcash_hosted",
-              "skipcash_qpay",
-              "paylater",
-              "cash",
-              "bank_transfer"
+              "skipcash_hosted"
             ]
           }
         },
@@ -1590,6 +1586,19 @@
         "wallet",
         "external_channels",
         "funding"
+      ],
+      "additionalProperties": false
+    },
+    "PurchaseFundingCardRequest": {
+      "type": "object",
+      "properties": {
+        "command_key": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "command_key"
       ],
       "additionalProperties": false
     }

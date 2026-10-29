@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-28
+
+### Documentation
+
+- Correct stale account guidance to describe implemented full and split wallet checkout under backend capability switches. Refund history readers do not grant spending permission.
+
 ## 2026-10-26
 
 ### Changed
@@ -596,3 +602,9 @@
 
 ### Fixed
 - **No contract drift in booking submit flow** — the website still sends the same booking creation payload and only renders the new dispatch-aware feedback when the backend includes it.
+
+## 2026-10-28 membership recovery
+
+- Hide wallet payment actions on active or closed memberships and localize missing included wash guidance while preserving support references.
+
+- Replace separate wallet checkout controls with one Complete payment modal, optional exact credit and card remainder. Preserve historical holds and remove payment actions from paid memberships, bookings and orders.
