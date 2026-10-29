@@ -171,7 +171,8 @@ export default function AccountPage() {
   const [paymentNotice, setPaymentNotice] = useState<PaymentFeedback | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [paymentAction, setPaymentAction] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const refreshInFlight = useRef<Promise<void> | null>(null);
+  const lastVisibleRefreshAt = useRef(0);
   const rescheduleDialogRef = useRef<HTMLElement>(null);
   const rescheduleCloseRef = useRef<HTMLButtonElement>(null);
   const [reschedule, setReschedule] = useState<{
@@ -238,20 +239,37 @@ export default function AccountPage() {
   }, [rescheduleOpen]);
 
   const refresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const request = Promise.all([
         listBookings().then(setBookings).catch(() => setBookings([])),
         listVehicles().then(setVehicles).catch(() => setVehicles([])),
         listAddresses().then(setAddresses).catch(() => setAddresses([])),
         listMemberships().then(setMemberships).catch(() => setMemberships([])),
         listStoreOrders().then(setOrders).catch(() => setOrders([])),
         getCustomerLoyalty().then(setLoyalty).catch(() => setLoyalty(null)),
-      ]);
-    } finally {
-      setRefreshing(false);
-    }
+      ]).then(() => undefined).finally(() => { refreshInFlight.current = null; });
+    refreshInFlight.current = request;
+    return request;
   }, []);
+
+  useEffect(() => {
+    if (!customer) return;
+    function refreshWhenVisible() {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastVisibleRefreshAt.current < 1000) return;
+      lastVisibleRefreshAt.current = now;
+      void refresh();
+    }
+    window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("pageshow", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener("pageshow", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [customer, refresh]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -646,21 +664,9 @@ export default function AccountPage() {
                   <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-white/12 text-xl font-extrabold" aria-hidden="true">{(customer.name?.trim()?.[0] ?? "B").toUpperCase()}</span>
                   <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-white/65">{t("My Account")}</p><h1 className="mt-1 text-2xl font-bold sm:text-3xl">{customer.name ? t("Hi,") + " " + customer.name.split(" ")[0] : t("Welcome back")}</h1><p className="mt-1 text-sm font-medium text-white/70" dir="ltr">{customer.phone}</p></div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full border border-white/40 px-4 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-70 sm:flex-none"
-                    onClick={() => void refresh()}
-                    disabled={refreshing}
-                    aria-live="polite"
-                  >
-                    <svg viewBox="0 0 24 24" className={clsx("h-5 w-5", refreshing && "animate-spin motion-reduce:animate-none")} fill="none" aria-hidden="true">
-                      <path d="M20 11a8 8 0 1 0-2.34 5.66M20 5v6h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    {refreshing ? t("Refreshing account…") : t("Refresh account")}
-                  </button>
-                  <Link href="/book" aria-label={t("Book a new wash")} className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-[color:var(--cyan)] px-5 text-sm font-extrabold transition hover:bg-white sm:flex-none" style={{ color: "#262262" }}>{t("Book a Wash")}</Link>
-                  <button type="button" className="min-h-12 rounded-full border border-white/40 px-4 text-sm font-semibold text-white transition hover:bg-white/10" onClick={handleLogout}>{t("Log out")}</button>
+                <div className="flex w-full flex-col gap-2 sm:w-44">
+                  <Link href="/book" aria-label={t("Book a new wash")} className="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-[color:var(--cyan)] px-5 text-sm font-extrabold transition hover:bg-white" style={{ color: "#262262" }}>{t("Book a Wash")}</Link>
+                  <button type="button" className="min-h-12 w-full rounded-full border border-white/40 px-4 text-sm font-semibold text-white transition hover:bg-white/10" onClick={handleLogout}>{t("Log out")}</button>
                 </div>
               </div>
               <div className="grid grid-cols-4 divide-x divide-slate-200 bg-white">
@@ -1157,23 +1163,23 @@ function BookingCard({
         </p>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--border)] pt-4">
+      <div className="flex flex-col gap-3 border-t border-[color:var(--border)] pt-4">
         <span className="font-bold" dir="ltr">{formatQar(booking.total, lang)}</span>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex w-full flex-col gap-2">
           {paymentRequired && (
-            <CompletePaymentButton subjectType="booking" subjectId={booking.id} reviewPath={booking.wallet_review_path} walletAvailable={booking.wallet_payment_available} disabled={busy || paying} onCardPayment={onPay} onUpdated={onPaymentUpdated} />
+            <div className="w-full [&>button]:w-full"><CompletePaymentButton subjectType="booking" subjectId={booking.id} reviewPath={booking.wallet_review_path} walletAvailable={booking.wallet_payment_available} disabled={busy || paying} onCardPayment={onPay} onUpdated={onPaymentUpdated} /></div>
           )}
-          <Link href="/book" className="secondary-button min-h-9 px-4 py-2 text-xs">
+          <Link href="/book" className="secondary-button min-h-11 w-full px-4 py-2 text-sm">
             {t("Book again")}
           </Link>
           {!reconciliationRequired && CANCELLABLE.includes(booking.status) && (
-            <button type="button" disabled={busy} className="secondary-button min-h-9 px-4 py-2 text-xs" onClick={onReschedule}>{t("Reschedule")}</button>
+            <button type="button" disabled={busy} className="secondary-button min-h-11 w-full px-4 py-2 text-sm" onClick={onReschedule}>{t("Reschedule")}</button>
           )}
           {!reconciliationRequired && CANCELLABLE.includes(booking.status) && (
             <button
               type="button"
               disabled={busy}
-              className="secondary-button min-h-9 px-4 py-2 text-xs text-red-600 hover:border-red-400 hover:text-red-600"
+              className="secondary-button min-h-11 w-full px-4 py-2 text-sm text-red-600 hover:border-red-400 hover:text-red-600"
               onClick={onCancel}
             >
               {cancelling ? (

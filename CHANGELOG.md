@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-29
+
+### Changed
+
+- Remove the manual account refresh control. Reload account summaries when the page becomes visible and after account actions, and show account and booking actions as full-width rows.
+
 ## 2026-10-28
 
 ### Documentation
